@@ -3488,6 +3488,8 @@ function bindExportSel() {
 function bindRatToggle() {
   var box = document.getElementById('ratToggleTop') || document.getElementById('ratToggle');
   if (!box) return;
+  var _all = box.querySelector('button[data-rat="*"]');
+  if (_all) _all.classList.add('on');
   var btns = box.querySelectorAll('button');
   for (var i = 0; i < btns.length; i++) {
     (function (btn) {
@@ -3502,10 +3504,10 @@ function bindRatToggle() {
         renderLayerList();
         scheduleDraw();
         saveViewState();
-        // 高亮当前按钮
+        // 高亮当前按钮（走 CSS .on 类）
         for (var j = 0; j < btns.length; j++) {
-          btns[j].style.background = (btns[j] === btn) ? 'var(--accent)' : 'var(--soft)';
-          btns[j].style.color = (btns[j] === btn) ? '#fff' : 'var(--fg2)';
+          if (btns[j] === btn) btns[j].classList.add('on');
+          else btns[j].classList.remove('on');
         }
       };
     })(btns[i]);
