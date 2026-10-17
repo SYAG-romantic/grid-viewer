@@ -104,6 +104,66 @@ function buildSiteArrays(data) {
   };
 }
 
+// 墨卡托投影（与主线程一致）
+var R_EARTH = 6378137, DEG = Math.PI / 180;
+function lonToMercX(lon) { return lon * R_EARTH * DEG; }
+function latToMercY(lat) {
+  var s = Math.sin(lat * DEG);
+  if (s > 0.999999) s = 0.999999;
+  if (s < -0.999999) s = -0.999999;
+  return R_EARTH * 0.5 * Math.log((1 + s) / (1 - s));
+}
+
+// 栅格坐标投影：lon/lat → mx/my（Float32Array）
+function projectGrid(data) {
+  var lon = data.lon, lat = data.lat, n = data.n;
+  var mx = new Float32Array(n), my = new Float32Array(n);
+  for (var i = 0; i < n; i++) {
+    var x = lon[i], y = lat[i];
+    if (!isFinite(x) || !isFinite(y)) { mx[i] = NaN; my[i] = NaN; continue; }
+    mx[i] = lonToMercX(x);
+    my[i] = latToMercY(y);
+  }
+  return { mx: mx, my: my };
+}
+
+// 构建栅格 GL 数组：返回 { pos, bnd, count, refX, refY }
+function buildGridArrays(data) {
+  var mx = data.mx, my = data.my;
+  var buckets = data.buckets; // array of arrays
+  var nb = buckets.length;
+  var total = 0;
+  for (var b = 0; b < nb; b++) total += buckets[b].length;
+  if (!total) return null;
+
+  // 参考点
+  var sx = 0, sy = 0, sc = 0;
+  for (var b2 = 0; b2 < nb; b2++) {
+    var idx0 = buckets[b2];
+    for (var k = 0; k < idx0.length; k += 97) {
+      var ii = idx0[k];
+      if (!isFinite(mx[ii]) || !isFinite(my[ii])) continue;
+      sx += mx[ii]; sy += my[ii]; sc++;
+    }
+  }
+  var refX = sc ? sx / sc : 0, refY = sc ? sy / sc : 0;
+
+  var pos = new Float32Array(total * 2);
+  var bnd = new Float32Array(total);
+  var p = 0;
+  for (var b3 = 0; b3 < nb; b3++) {
+    var idx = buckets[b3];
+    for (var m = 0; m < idx.length; m++) {
+      var i = idx[m];
+      pos[p * 2] = mx[i] - refX;
+      pos[p * 2 + 1] = my[i] - refY;
+      bnd[p] = b3;
+      p++;
+    }
+  }
+  return { pos: pos, bnd: bnd, count: p, refX: refX, refY: refY };
+}
+
 self.onmessage = function (e) {
   var msg = e.data;
   try {
@@ -127,6 +187,26 @@ self.onmessage = function (e) {
           refX: arrResult.refX, refY: arrResult.refY, alpha: arrResult.alpha,
           pos: arrResult.pos, col: arrResult.col, azk: arrResult.azk, cityA: arrResult.cityA
         }, [arrResult.pos.buffer, arrResult.col.buffer, arrResult.azk.buffer, arrResult.cityA.buffer]);
+      }
+    } else if (msg.type === 'projectGrid') {
+      var projResult = projectGrid(msg.data);
+      self.postMessage({
+        type: 'projectGrid',
+        id: msg.id,
+        mx: projResult.mx, my: projResult.my
+      }, [projResult.mx.buffer, projResult.my.buffer]);
+    } else if (msg.type === 'gridArrays') {
+      var gridResult = buildGridArrays(msg.data);
+      if (!gridResult) {
+        self.postMessage({ type: 'gridArrays', id: msg.id, error: 'no data' });
+      } else {
+        self.postMessage({
+          type: 'gridArrays',
+          id: msg.id,
+          count: gridResult.count,
+          refX: gridResult.refX, refY: gridResult.refY,
+          pos: gridResult.pos, bnd: gridResult.bnd
+        }, [gridResult.pos.buffer, gridResult.bnd.buffer]);
       }
     }
   } catch (err) {
