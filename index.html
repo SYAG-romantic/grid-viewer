@@ -93,7 +93,7 @@ body{font:12.5px/1.5 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:
 #brand .tk-status:hover{color:var(--ok);background:var(--hover)}
 
 /* 密钥设置弹窗（浮在面板内，点击状态按钮打开） */
-#tkPop{position:absolute;left:10px;right:10px;top:58px;z-index:12;
+#tkPop{backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:absolute;left:10px;right:10px;top:58px;z-index:12;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 32px rgba(0,0,0,.45);overflow:hidden;display:none}
 #tkPop.show{display:block;animation:tpIn .22s cubic-bezier(.34,1.2,.5,1)}
@@ -352,11 +352,19 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #searchBox input{width:clamp(104px,11vw,176px);min-width:0;background:transparent;border:none;outline:none;
   color:var(--fg);font:inherit;font-size:12.5px;padding:2px}
 #searchBox input::placeholder{color:var(--fg3)}
+/* 4G/5G 切换：与顶栏统一（9px圆角/34px高/8px间距，hover 有反馈） */
+#ratToggleTop{display:flex;gap:8px;align-items:center;background:var(--glass);
+  border:1px solid var(--line);border-radius:9px;height:34px;padding:0 4px}
+#ratToggleTop button{height:26px;padding:0 12px;border:1px solid transparent;border-radius:6px;
+  background:transparent;color:var(--fg2);cursor:pointer;font-size:12.5px;
+  transition:background-color .16s ease,color .16s ease}
+#ratToggleTop button:hover{background:var(--soft);color:var(--fg)}
+#ratToggleTop button.on{background:var(--accent);color:#fff}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
-#coord{background:var(--glass);border:1px solid var(--line);border-radius:9px;height:30px;
+#coord{background:var(--glass);border:1px solid var(--line);border-radius:9px;height:34px;
   padding:0 9px;display:flex;align-items:center;align-self:center;
-  font-size:11px;color:var(--fg3);font-variant-numeric:tabular-nums;
+  font-size:12px;color:var(--fg3);font-variant-numeric:tabular-nums;
   box-shadow:0 4px 16px rgba(0,0,0,.4);white-space:nowrap;flex:0 0 auto}
 #coord b{color:var(--fg);font-weight:400;font-size:11.5px}
 /* 底图切换：自定义下拉，弹出/收起带过渡（原生 select 的弹层无法做动画） */
@@ -373,7 +381,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .dsel.open .dsel-btn .chev{transform:rotate(180deg)}
 /* 图标按钮 */
 .icobtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
-border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg2);cursor:pointer;
+border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--fg2);cursor:pointer;
 transition:all .22s cubic-bezier(.4,0,.2,1)}
 .icobtn:hover{background:var(--hover);border-color:var(--hoverbd);color:var(--accent);transform:translateY(-1px);
 box-shadow:0 3px 10px rgba(0,0,0,.18)}
@@ -382,11 +390,11 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
 button{transition:background .2s,color .2s,border-color .2s,box-shadow .25s,transform .18s}
 .dsel-btn:hover,.themebtn:hover{box-shadow:0 4px 14px rgba(0,0,0,.16);transform:translateY(-1px)}
 .dsel-btn:active,.themebtn:active{transform:translateY(0) scale(.97)}
-.dsel-pop button{border-radius:8px;transition:background .18s,transform .15s}
+.dsel-pop button{transition:background .18s,transform .15s}
 .dsel-pop button:hover{transform:translateX(2px)}
 #legend{border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.22);transition:box-shadow .3s}
 #legend:hover{box-shadow:0 12px 36px rgba(0,0,0,.3)}
-.dsel-pop{backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
+.dsel-pop{z-index:10;backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 30px rgba(0,0,0,.45);
   opacity:0;transform:translateY(-8px) scale(.96);transform-origin:top left;
@@ -429,7 +437,7 @@ button{transition:background .2s,color .2s,border-color .2s,box-shadow .25s,tran
 #legend header .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #legend .sub{color:var(--fg3);font-weight:400;font-size:calc(11.5px * var(--ls))}
 button.lvbtn{width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
-  background:none;border:none;color:var(--fg3);cursor:pointer;border-radius:4px;flex:0 0 20px}
+  background:none;border:none;color:var(--fg3);cursor:pointer;border-radius:6px;flex:0 0 20px}
 button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 #legend button.lvbtn{width:calc(20px * var(--ls));height:calc(20px * var(--ls));
   flex:0 0 calc(20px * var(--ls))}
@@ -465,7 +473,7 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 #legend .lz-ne:hover,#legend .lz-nw:hover,#legend .lz-se:hover,#legend .lz-sw:hover{background:rgba(59,130,246,.16)}
 
 /* ---------- 弹窗 ---------- */
-#popup{position:absolute;z-index:9;width:auto;min-width:200px;max-width:320px;
+#popup{backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:absolute;z-index:9;width:auto;min-width:200px;max-width:320px;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden;
   display:none}
@@ -550,7 +558,7 @@ html.light #btnTheme .ic-sun{display:block}
   box-shadow:0 8px 22px rgba(0,0,0,.35);
   animation:errIn .22s cubic-bezier(.2,.8,.2,1)}
 #errX{flex:0 0 auto;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
-  border:none;background:transparent;color:var(--errfg);opacity:.65;font-size:13px;line-height:1;border-radius:5px;
+  border:none;background:transparent;color:var(--errfg);opacity:.65;font-size:12.5px;line-height:1;border-radius:6px;
   cursor:pointer}
 #errX:hover{opacity:1;background:rgba(255,255,255,.12)}
 #errX:active{transform:scale(.9)}
@@ -635,7 +643,7 @@ html.light #btnTheme .ic-sun{display:block}
           </div>
           <div id="cellSearchBox" style="display:flex;gap:6px;margin:8px 0 4px;">
         <input id="cellSearchInput" placeholder="搜索小区名/CellID" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);font-size:12.5px;">
-        <button id="cellSearchBtn" class="pri" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--accent);color:#fff;cursor:pointer;">搜索</button>
+        <button id="cellSearchBtn" class="pri pri">搜索</button>
       </div>
       <div id="cellSearchResults" style="max-height:180px;overflow:auto;display:none;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;"></div>
       <button id="btnExportSel" style="width:100%;padding:7px;margin:2px 0 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);cursor:pointer;font-size:12.5px;">导出框选小区 (CSV)</button>
@@ -831,10 +839,10 @@ html.light #btnTheme .ic-sun{display:block}
         </div>
       </div>
 
-      <div id="ratToggleTop" style="display:flex;gap:4px;align-items:center;background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:10px;padding:3px;">
-        <button data-rat="4G" title="只显示4G图层" style="padding:5px 12px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .2s;">4G</button>
-        <button data-rat="5G" title="只显示5G图层" style="padding:5px 12px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .2s;">5G</button>
-        <button data-rat="*" title="显示全部图层" style="padding:5px 12px;border:1px solid transparent;border-radius:7px;background:var(--accent);color:#fff;cursor:pointer;font-size:12.5px;transition:all .2s;">全部</button>
+      <div id="ratToggleTop">
+        <button data-rat="4G" title="只显示4G图层">4G</button>
+        <button data-rat="5G" title="只显示5G图层">5G</button>
+        <button data-rat="*" title="显示全部图层">全部</button>
       </div>
       <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
