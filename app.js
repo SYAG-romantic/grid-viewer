@@ -581,7 +581,7 @@ var layers = [];
 var layerSeq = 1;
 var selected = null;
 
-function makeLayer(ds, kind) {
+function makeLayer(ds, kind, skipCity) {
   var L = {
     id: 'L' + (layerSeq++),
     name: ds.name,
@@ -633,7 +633,7 @@ function makeLayer(ds, kind) {
 
   // 城市编码（用于筛选）：数值列按原逻辑；文本列（如工参的"地市"）按字符串分组
   var cityCol = pickColumn(ds.columns, ['cityid', 'city', '城市', '地市', '行政区']);
-  if (cityCol) {
+  if (cityCol && !skipCity) {
     var arr = ds.num[cityCol];
     var map = {}, list = [];
     var idx = new Int16Array(ds.n);
@@ -660,6 +660,68 @@ function makeLayer(ds, kind) {
     }
   }
   return L;
+}
+
+/* Worker 异步构建城市索引 */
+async function buildCityIdxAsync(L) {
+  var _w = getSiteWorker();
+  var ds = L.ds;
+  var cityCol = pickColumn(ds.columns, ['cityid', 'city', '城市', '地市', '行政区']);
+  if (!cityCol) return;
+  if (_w) {
+    try {
+      var numCols = {}, strCols = {};
+      if (ds.num[cityCol]) numCols[cityCol] = ds.num[cityCol];
+      if (ds.str && ds.str[cityCol]) strCols[cityCol] = ds.str[cityCol];
+      var _res = await workerCall('cityIndex', {
+        n: ds.n, columns: ds.columns,
+        numCols: numCols, strCols: strCols, cityCol: cityCol
+      });
+      if (_res && !_res.error && _res.idx) {
+        L.cities = _res.list; L.cityIdx = _res.idx; L.cityCol = cityCol;
+        return;
+      }
+    } catch (e) { console.warn('Worker cityIndex 失败，回退主线程', e); }
+  }
+  /* 回退：主线程同步构建 */
+  var arr = ds.num[cityCol];
+  var map = {}, list = [];
+  var idx = new Int16Array(ds.n);
+  if (arr) {
+    for (var i = 0; i < ds.n; i++) {
+      var k = String(Math.round(arr[i]));
+      var v = map[k];
+      if (v === undefined) { v = list.length; map[k] = v; list.push(k); }
+      idx[i] = v;
+    }
+    L.cities = list; L.cityIdx = idx; L.cityCol = cityCol;
+  }
+}
+
+/* Worker 异步投影（栅格大数据量时避免阻塞） */
+async function projectLayerAsync(L) {
+  var _w = getSiteWorker();
+  var ds = L.ds, n = ds.n;
+  var lon = ds.num[L.lonCol], lat = ds.num[L.latCol];
+  if (!lon || !lat) { L.ok = false; L.error = '经纬度列不是数值'; return; }
+  /* 大数据量（>50万）才走 Worker，小数据量主线程更快 */
+  if (_w && n > 500000) {
+    try {
+      var _res = await workerCall('projectGrid', {
+        data: { lon: lon, lat: lat, n: n }
+      });
+      if (_res && !_res.error && _res.mx) {
+        L.mx = _res.mx; L.my = _res.my;
+        L.projectRaw = { lon: lon, lat: lat };
+        L.projected = true;
+        L.crsFix = false;
+        if (L.kind === 'grid') detectGridStep(L);
+        if (L.kind === 'site') buildSiteColors(L);
+        return;
+      }
+    } catch (e) { console.warn('Worker projectGrid 失败，回退主线程', e); }
+  }
+  projectLayer(L);
 }
 
 function projectLayer(L) {
@@ -1947,6 +2009,41 @@ function buildGridGL(L) {
   L.glPosBuf = pb; L.glBandBuf = bb;
   L.glCount = total;
   L.glOk = true;
+}
+
+/* buildGridGL 的 Worker 异步版：数组构建放 Worker，主线程只做 GPU 上传 */
+async function buildGridGLAsync(L) {
+  var _w = getSiteWorker();
+  if (_w && L.buckets && L.mx && L.my) {
+    try {
+      var _res = await workerCall('gridArrays', {
+        data: { mx: L.mx, my: L.my, buckets: L.buckets }
+      });
+      if (_res && !_res.error && _res.count > 0) {
+        if (!glrInit()) return;
+        var gl = GLR.gl;
+        if (L.glPosBuf) {
+          try { gl.deleteBuffer(L.glPosBuf); gl.deleteBuffer(L.glBandBuf); } catch (e) {}
+          L.glPosBuf = null; L.glBandBuf = null;
+        }
+        var pb = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, pb);
+        gl.bufferData(gl.ARRAY_BUFFER, _res.pos, gl.STATIC_DRAW);
+        var bb = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bb);
+        gl.bufferData(gl.ARRAY_BUFFER, _res.bnd, gl.STATIC_DRAW);
+        L.glPosBuf = pb; L.glBandBuf = bb;
+        L.glRefX = _res.refX; L.glRefY = _res.refY;
+        L.glCount = _res.count;
+        L.glOk = true;
+        return;
+      }
+    } catch (e3) {
+      console.warn('Worker buildGridGL 失败，回退主线程', e3);
+    }
+  }
+  /* 回退主线程同步版 */
+  buildGridGL(L);
 }
 
 /* 每帧清空一次 WebGL 画布（含按需重设尺寸）。
@@ -4104,19 +4201,21 @@ async function restoreFromCache(cache) {
             ds.stypeIdx = sn ? ds.columns.indexOf(sn) : -1;
             ds.stype = ds.stypeIdx >= 0 ? ds.columnText(sn) : null;
           }
-          var L = makeLayer(ds, meta.kind);
+          var L = makeLayer(ds, meta.kind, true);   /* 跳过同步城市索引，走 Worker */
           layers.push(L);
           if (!selected) selectLayer(L);
           if (L.ok) {
             await yieldFrame();
-            projectLayer(L);
+            await buildCityIdxAsync(L);   /* Worker 异步构建城市索引 */
+            await yieldFrame();
+            await projectLayerAsync(L);   /* Worker 异步投影（大数据量） */
             await yieldFrame();
             if (L.kind === 'grid') {
               if (STATE.cityFilter && STATE.cityFilter !== '*') setLayerCity(L, STATE.cityFilter);
               await yieldFrame();
               rebuildBuckets(L, true);
               await yieldFrame();
-              try { buildGridGL(L); } catch (e2) { L.glOk = false; }
+              try { await buildGridGLAsync(L); } catch (e2) { L.glOk = false; }
             }
             restoredNames.push((meta.name || '图层').slice(0, 16) + '（' + (meta.n || 0).toLocaleString() + ' 行 · ' + meta.columns.length + ' 列）');
           } else {
@@ -5846,7 +5945,7 @@ function getSiteWorker() {
     var workerUrl = 'worker.js';
     try {
       var _src = (document.currentScript && document.currentScript.src) || '';
-      var _m = _src.match(/图层工具-(v\d+)\.js/);
+      var _m = _src.match(/图层工具-(v\\d+)\\.js/);
       if (_m) workerUrl = '图层Worker-' + _m[1] + '.js';
     } catch (e2) {}
 
