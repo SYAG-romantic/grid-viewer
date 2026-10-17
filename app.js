@@ -1,5 +1,5 @@
 /* ==========================================================================
-   众测栅格 · 工参 查看器
+   图层查看
    依赖：OpenLayers 10（底图/交互）、SheetJS（可选，读 xlsx）
    设计：所有要素用自绘 Canvas 叠加层渲染，支持百万级点
    ========================================================================== */
@@ -3301,7 +3301,7 @@ function renderLayerList() {
   var html = '';
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
-    var tag = L.kind === 'grid' ? '<span class="tag grid">众测栅格</span>'
+    var tag = L.kind === 'grid' ? '<span class="tag grid">栅格</span>'
       : L.kind === 'site' ? '<span class="tag site">工参</span>'
         : '<span class="tag site">未识别</span>';
     var meta = L.ok
@@ -5945,7 +5945,7 @@ function getSiteWorker() {
     var workerUrl = 'worker.js';
     try {
       var _src = (document.currentScript && document.currentScript.src) || '';
-      var _m = _src.match(/图层工具-(v\\d+)\\.js/);
+      var _m = _src.match(/图层工具-(v\d+)\.js/);
       if (_m) workerUrl = '图层Worker-' + _m[1] + '.js';
     } catch (e2) {}
 
