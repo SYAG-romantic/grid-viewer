@@ -3511,7 +3511,7 @@ function bindPopupResize(popupId) {
     head.addEventListener('dblclick', function (e) {
       if (e.target.closest('button')) return;
       el.style.width = ''; el.style.height = '';
-      el.style.maxWidth = ''; el.style.maxHeight = '';
+      el.style.maxHeight = '';
     });
   }
   var handles = el.querySelectorAll('.rsz');
