@@ -3509,12 +3509,7 @@ function bindPopupResize(popupId) {
     head.title = '双击恢复默认大小';
     head.addEventListener('dblclick', function (e) {
       if (e.target.closest('button')) return;
-      /* 重叠扇区给默认宽度，避免缩到很难看 */
-      if (el.querySelector('.msec')) {
-        el.style.width = 'min(680px,92vw)';
-      } else {
-        el.style.width = '';
-      }
+      el.style.width = '';
       el.style.height = '';
       el.style.maxHeight = '';
     });
