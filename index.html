@@ -503,13 +503,13 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 #popup table{width:auto;border-collapse:collapse;font-size:12.5px}
 #popup .msec{border-bottom:1px solid var(--soft2);padding:4px 0}
 #popup .msec:last-child{border-bottom:none}
-#popup .msec-h{font-weight:600;font-size:13px;padding:6px 12px 2px;color:var(--fg);position:sticky;top:0;background:var(--popbg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#popup .msec-h{font-weight:600;font-size:13px;padding:6px 12px 2px;color:var(--fg);position:sticky;top:0;background:var(--popbg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #popup .pb{overflow:auto}
 #popup td{padding:6px 12px;border-bottom:1px solid var(--soft2);vertical-align:middle}
 #popup tr:last-child td{border-bottom:none}
 /* 斑马纹分隔：相邻行交替底色（避开高亮行，高亮有自己的淡色底） */
 #popup tr:nth-child(even) td:not(.hl){background:var(--soft2)}
-#popup td:first-child{color:var(--fg3);width:1%;max-width:130px}
+#popup td:first-child{color:var(--fg3);white-space:nowrap;width:1%}
 #popup td:last-child{color:var(--fg);word-break:break-all;font-variant-numeric:tabular-nums;max-width:280px}
 /* 关键字段（RSRP/SINR/采样数）：淡色底 + 主色文字，比整块蓝底克制得多 */
 #popup td.hl{background:rgba(59,130,246,.08)}
