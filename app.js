@@ -2691,8 +2691,12 @@ function drawSites(c, L, t, w, h, box) {
 function pickSiteSector(L, pixel, t, res) {
   if (!L.mx || !L.my) return [];
   var _dpr3 = Math.min(window.devicePixelRatio || 1, 2);
-  var Rpx = 80 / (res || 1) * _dpr3;   /* 与视觉 dpr 校准一致 */
-  var half = (STATE.beamW || 65) * Math.PI / 360;
+  /* 按制式分规格（与 glDrawSites 一致）：4G 80米/35°，5G 60米/45° */
+  var _is5g = (L.rat === '5G');
+  var _sectorM = _is5g ? 60 : 80;
+  var _beamW = _is5g ? 45 : 35;
+  var Rpx = _sectorM / (res || 1) * _dpr3;
+  var half = _beamW * Math.PI / 360;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var n = L.ds.n, mx = L.mx, my = L.my;
   var hits = [];
