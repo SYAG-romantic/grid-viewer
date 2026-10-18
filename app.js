@@ -2734,7 +2734,7 @@ function showMultiSectorPopup(L, rows, pixel) {
     for (var wi = 0; wi < want.length; wi++) {
       if (cn.indexOf(want[wi]) >= 0) { keyCols.push(ci); break; }
     }
-    if (keyCols.length >= 6) break;
+    /* 不限制列数，全部显示 */
   }
   if (!keyCols.length) keyCols = [0, 1, 2].filter(function (c) { return c < ds.columns.length; });
   var html = '<table><tr>';
@@ -2756,6 +2756,7 @@ function showMultiSectorPopup(L, rows, pixel) {
   if (subEl) subEl.textContent = L.name;
   var _pf = document.getElementById('popFoot'); if (_pf) _pf.innerHTML = '';
   var el = document.getElementById('popup');
+  el.style.maxWidth = 'min(860px,92vw)';
   /* 拉伸后的尺寸换显示器时按当前视口钳住 */
   if (el.style.width) {
     var pw = parseFloat(el.style.width);
@@ -2897,6 +2898,7 @@ function showPopup(L, i, pixel) {
   /* 底部经纬度已去掉，表格内已有 */
 
   var el = document.getElementById('popup');
+  el.style.maxWidth = '';
   /* 拉伸后的尺寸换显示器时按当前视口钳住 */
   if (el.style.width) {
     var pw = parseFloat(el.style.width);
