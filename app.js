@@ -3518,6 +3518,7 @@ function bindPopupResize(popupId) {
         var startL = rect.left, startT = rect.top;
         // popup 是 absolute 定位，取 offsetLeft/Top 更准
         var ol = el.offsetLeft, ot = el.offsetTop;
+        el.style.maxHeight = 'none';
         function onMove(ev) {
           var dx = ev.clientX - startX, dy = ev.clientY - startY;
           var nw = startW, nh = startH, nl = ol, nt = ot;
