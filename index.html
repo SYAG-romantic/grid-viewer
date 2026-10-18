@@ -410,7 +410,7 @@ button{transition:background .2s,color .2s,border-color .2s,box-shadow .25s,tran
 .dsel-pop button span{white-space:nowrap}
 /* 着色选项的色阶预览条 */
 .dsel-pop button .ramp{width:26px;height:10px;border-radius:2px;flex:0 0 26px;
-.dsel-pop button .dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;}
+.dsel-pop button .dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;display:block;}
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
 @media (max-width: 1100px){#coord{display:none}}
 
@@ -842,9 +842,9 @@ html.light #btnTheme .ic-sun{display:block}
         </button>
         <div class="dsel-pop" id="ratPop" role="listbox">
           <div class="dsel-h">选择制式</div>
-          <button type="button" role="option" data-rat="*"><i class="dot" style="background:linear-gradient(135deg,#f59e0b 50%,#3b82f6 50%)"></i><span>全部</span></button>
-          <button type="button" role="option" data-rat="4G"><i class="dot" style="background:#f59e0b"></i><span>4G</span></button>
-          <button type="button" role="option" data-rat="5G"><i class="dot" style="background:#3b82f6"></i><span>5G</span></button>
+          <button type="button" role="option" data-rat="*"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:linear-gradient(135deg,#f59e0b 50%,#3b82f6 50%)"></span><span>全部</span></button>
+          <button type="button" role="option" data-rat="4G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#f59e0b"></span><span>4G</span></button>
+          <button type="button" role="option" data-rat="5G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#3b82f6"></span><span>5G</span></button>
         </div>
       </div>
       <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
