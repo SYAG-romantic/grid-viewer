@@ -2754,7 +2754,7 @@ function showMultiSectorPopup(L, rows, pixel) {
   document.getElementById('popTable').innerHTML = html;
   var subEl = document.getElementById('popSub');
   if (subEl) subEl.textContent = L.name;
-  document.getElementById('popFoot').innerHTML = '';
+  var _pf = document.getElementById('popFoot'); if (_pf) _pf.innerHTML = '';
   var el = document.getElementById('popup');
   el.classList.add('show');
   var wrap = document.getElementById('mapwrap');
@@ -2885,8 +2885,7 @@ function showPopup(L, i, pixel) {
   var lat = ds.num[L.latCol] ? ds.num[L.latCol][i] : NaN;
   var subEl = document.getElementById('popSub');
   if (subEl) subEl.textContent = L.name;
-  document.getElementById('popFoot').innerHTML =
-    '<span>经度 ' + fmt(lon, 6) + '</span><span>纬度 ' + fmt(lat, 6) + '</span>';
+  /* 底部经纬度已去掉，表格内已有 */
 
   var el = document.getElementById('popup');
   el.classList.add('show');
