@@ -1436,15 +1436,7 @@ function initMap() {
     map._navT = setTimeout(scheduleDraw, 250);
   });
 
-  map.on('pointermove', function (evt) {
-    var c = evt.coordinate;
-    document.getElementById('cLon').textContent = mercXToLon(c[0]).toFixed(6);
-    document.getElementById('cLat').textContent = mercYToLat(c[1]).toFixed(6);
-    document.getElementById('cZoom').textContent = map.getView().getZoom().toFixed(2);
-  });
-  map.getView().on('change:resolution', function () {
-    document.getElementById('cZoom').textContent = map.getView().getZoom().toFixed(2);
-  });
+  /* 实时经纬度显示已移除（v114） */
 
   map.on('singleclick', function (evt) {
     pickAt(evt.pixel);
@@ -3703,7 +3695,7 @@ function drawLabels() {
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
-  ctx.font = '600 12px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+  ctx.font = '600 11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
   ctx.textBaseline = 'middle';
   var drawn = 0;
   var placed = [];
