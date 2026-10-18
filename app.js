@@ -2723,25 +2723,29 @@ function pickAt(pixel) {
   else showPopup(best.L, best.i, pixel);
 }
 
-/* 多扇区重叠弹窗：列出所有命中的小区供查看 */
+/* 多扇区重叠弹窗：每个扇区一个键值小节，上下堆叠 */
 function showMultiSectorPopup(L, rows, pixel) {
   var ds = L.ds;
   var title = '重叠扇区（' + rows.length + ' 个）';
-  var keyCols = [];
-  for (var ci = 0; ci < ds.columns.length; ci++) keyCols.push(ci);
-  var html = '<table><tr>';
-  for (var k = 0; k < keyCols.length; k++) html += '<th>' + ds.columns[keyCols[k]] + '</th>';
-  html += '</tr>';
+  var html = '';
   for (var r = 0; r < rows.length; r++) {
     var cells = ds.cells(rows[r]);
-    html += '<tr>';
-    for (var k2 = 0; k2 < keyCols.length; k2++) {
-      var v = cells[keyCols[k2]];
-      html += '<td>' + (v === undefined ? '' : String(v)) + '</td>';
+    // 取小区名做小节标题
+    var secName = '';
+    for (var ci = 0; ci < ds.columns.length; ci++) {
+      var cn = ds.columns[ci] || '';
+      if (cn.indexOf('小区名') >= 0 && cells[ci]) { secName = String(cells[ci]); break; }
     }
-    html += '</tr>';
+    if (!secName) secName = '扇区 ' + (r + 1);
+    html += '<div class="msec"><div class="msec-h">' + secName + '</div><table>';
+    for (var c = 0; c < ds.columns.length; c++) {
+      var colName = ds.columns[c] || '';
+      var v = cells[c];
+      if (v === undefined || v === '' || v === null) continue;
+      html += '<tr><td>' + colName + '</td><td>' + String(v) + '</td></tr>';
+    }
+    html += '</table></div>';
   }
-  html += '</table>';
   document.getElementById('popTitle').textContent = title;
   document.getElementById('popTable').innerHTML = html;
   var subEl = document.getElementById('popSub');
