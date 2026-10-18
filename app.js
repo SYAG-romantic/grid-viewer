@@ -70,7 +70,7 @@ var ALIAS = {
   lat:   ['weidu', 'lat', 'lati', 'latitude', '纬度', 'y', 'wd', '纬度(y)', '纬度y'],
   az:    ['azimuth', '方位角', '方向角', 'az', '天线方位角', '方位角(度)', 'angle'],
   name:  ['小区名', '小区名称', 'cellname', 'cell_name', 'name', '站名', '基站名称',
-          'cgi', 'eci', 'ecgi', '小区', '扇区', 'cell', 'cellid', '基站名'],
+          '小区', '扇区', 'cell', 'cellid', '基站名', 'cgi', 'eci', 'ecgi'],
   band:  ['频段', 'band', '频点', '工作频段', '中心频率', '频率', 'freq', '频段信息'],
   tilt:  ['下倾角', 'downtilt', '电下倾', '机械下倾', '倾角', 'tilt'],
   hgt:   ['挂高', '天线挂高', 'height', '天线高度', 'altitude'],
