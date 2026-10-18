@@ -722,7 +722,7 @@ html.light #btnTheme .ic-sun{display:block}
         </svg>
       </button>
       <div id="searchBox" style="position:relative">
-        <input type="text" id="jump" placeholder="搜索小区名/CGI/经度,纬度" title="输入小区名、CGI 或经纬度（如 87.4807,43.9161）" style="width:220px">
+        <input type="text" id="jump" placeholder="搜索小区名/CGI/经度,纬度" title="输入小区名、CGI 或经纬度（如 87.4807,43.9161）" style="width:150px">
         <button id="btnJump" class="pri">搜索</button>
         <button id="btnPinClear" class="dim" title="清除地图上的定位标记">清除</button>
         <div id="jumpResults" style="display:none;position:absolute;top:38px;left:0;right:0;max-height:320px;overflow:auto;background:var(--popbg);border:1px solid var(--line);border-radius:8px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
@@ -753,6 +753,47 @@ html.light #btnTheme .ic-sun{display:block}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>
             <span>无底图</span>
           </button>
+        </div>
+      </div>
+      
+      <div id="gmodeBox" class="dsel">
+        <button type="button" id="gmodeBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span>指标</span><b id="gmodeCur">RSRP</b>
+          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <div class="dsel-pop" id="gmodePop" role="listbox">
+          <div class="dsel-h">选择指标</div>
+          <button type="button" role="option" data-v="rsrp">
+            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 16.6%,#f7a518 16.6% 33.3%,#edf038 33.3% 50%,#4ff380 50% 66.6%,#0cac0f 66.6% 83.3%,#002aff 83.3% 100%)"></i>
+            <span>RSRP均值</span>
+          </button>
+          <button type="button" role="option" data-v="sinr">
+            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 14.3%,#ffa500 14.3% 28.6%,#ffff00 28.6% 42.9%,#00ffff 42.9% 57.2%,#0000ff 57.2% 71.5%,#00ff00 71.5% 85.8%,#008000 85.8% 100%)"></i>
+            <span>SINR均值</span>
+          </button>
+          <button type="button" role="option" data-v="cov">
+            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 20%,#ffa500 20% 40%,#ffff00 40% 60%,#00ff00 60% 80%,#008000 80% 100%)"></i>
+            <span>覆盖率</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="ratBox" class="dsel">
+        <button type="button" id="ratBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span>制式</span><b id="ratCur">全部</b>
+          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <div class="dsel-pop" id="ratPop" role="listbox">
+          <div class="dsel-h">选择制式</div>
+          <button type="button" role="option" data-rat="*"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:linear-gradient(135deg,#e74c3c 50%,#3498db 50%)"></span><span>全部</span></button>
+          <button type="button" role="option" data-rat="4G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#e74c3c"></span><span>4G</span></button>
+          <button type="button" role="option" data-rat="5G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#3498db"></span><span>5G</span></button>
         </div>
       </div>
       <div id="cityBox" class="dsel">
@@ -833,46 +874,6 @@ html.light #btnTheme .ic-sun{display:block}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l5-4v17"/><path d="M9 21V4l6 3v14"/><path d="M15 21v-8l5 2v6"/><path d="M2 21h20"/></svg>
             <span>石河子</span>
           </button>
-        </div>
-      </div>
-      <div id="gmodeBox" class="dsel">
-        <button type="button" id="gmodeBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span>指标</span><b id="gmodeCur">RSRP</b>
-          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
-               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </button>
-        <div class="dsel-pop" id="gmodePop" role="listbox">
-          <div class="dsel-h">选择指标</div>
-          <button type="button" role="option" data-v="rsrp">
-            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 16.6%,#f7a518 16.6% 33.3%,#edf038 33.3% 50%,#4ff380 50% 66.6%,#0cac0f 66.6% 83.3%,#002aff 83.3% 100%)"></i>
-            <span>RSRP均值</span>
-          </button>
-          <button type="button" role="option" data-v="sinr">
-            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 14.3%,#ffa500 14.3% 28.6%,#ffff00 28.6% 42.9%,#00ffff 42.9% 57.2%,#0000ff 57.2% 71.5%,#00ff00 71.5% 85.8%,#008000 85.8% 100%)"></i>
-            <span>SINR均值</span>
-          </button>
-          <button type="button" role="option" data-v="cov">
-            <i class="ramp" style="background:linear-gradient(90deg,#ff0000 0 20%,#ffa500 20% 40%,#ffff00 40% 60%,#00ff00 60% 80%,#008000 80% 100%)"></i>
-            <span>覆盖率</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="ratBox" class="dsel">
-        <button type="button" id="ratBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span>制式</span><b id="ratCur">全部</b>
-          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
-               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </button>
-        <div class="dsel-pop" id="ratPop" role="listbox">
-          <div class="dsel-h">选择制式</div>
-          <button type="button" role="option" data-rat="*"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:linear-gradient(135deg,#e74c3c 50%,#3498db 50%)"></span><span>全部</span></button>
-          <button type="button" role="option" data-rat="4G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#e74c3c"></span><span>4G</span></button>
-          <button type="button" role="option" data-rat="5G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#3498db"></span><span>5G</span></button>
         </div>
       </div>
       <button id="btnLabel" class="toolbtn" title="显示/隐藏小区名注记">注记</button>
