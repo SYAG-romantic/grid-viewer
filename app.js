@@ -3703,7 +3703,7 @@ function drawLabels() {
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
-  ctx.font = '12px sans-serif';
+  ctx.font = '12px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
   ctx.textBaseline = 'middle';
   var drawn = 0;
   var placed = [];
@@ -3766,8 +3766,9 @@ function drawLabels() {
       ctx.textAlign = falign;
       // 4G 柔和红，5G 柔和蓝
       var is5g = L.rat === '5G';
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = 'rgba(255,255,255,.92)';
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.lineJoin = 'round';
       ctx.strokeText(nm, fpx, fpy);
       ctx.fillStyle = is5g ? '#2980b9' : '#c0392b';
       ctx.fillText(nm, fpx, fpy);
