@@ -3612,19 +3612,28 @@ function drawLabels() {
       var tw0 = ctx.measureText(nm).width;
       var bx0 = align === 'left' ? px[0] : (align === 'right' ? px[0] - tw0 : px[0] - tw0 / 2);
       var by0 = px[1] - 8;
-      var overlap = false;
+      var overlap = false, overlapDiffRat = false;
       for (var k = 0; k < placed.length; k++) {
         var pb = placed[k];
         if (bx0 < pb[0] + pb[2] && bx0 + tw0 > pb[0] && by0 < pb[1] + pb[3] && by0 + 16 > pb[1]) {
-          overlap = true; break;
+          overlap = true;
+          // 不同制式（4G/5G）同位置则错开而非跳过
+          if (pb[4] && pb[4] !== L.rat) overlapDiffRat = true;
+          break;
         }
       }
-      // 重叠则跳过不画，保留先画的主要标签
-      if (overlap) continue;
       var fpx = px[0], fpy = px[1], falign = align;
+      if (overlap && !overlapDiffRat) continue; // 同制式重叠跳过
+      if (overlapDiffRat) fpy += 18; // 不同制式下移 18px 错开
       var tw2 = ctx.measureText(nm).width;
-      var fbx = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
-      placed.push([fbx, fpy - 8, tw2, 16]);
+      // 错开后重新计算包围盒
+      if (overlapDiffRat) {
+        var fbx2 = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
+        placed.push([fbx2, fpy - 8, tw2, 16, L.rat]);
+      } else {
+        var fbx = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
+        placed.push([fbx, fpy - 8, tw2, 16, L.rat]);
+      }
       ctx.textAlign = falign;
       // 4G 柔和红，5G 柔和蓝
       var is5g = L.rat === '5G';
