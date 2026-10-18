@@ -806,7 +806,7 @@ function buildSiteColors(L) {
   var bandTextArr = (L.bandCol && !bandArr) ? ds.columnText(L.bandCol) : null;
   var stypeArr = L.ds.stype;   /* 解析时已存成字符串数组，O(1) 读 */
   /* 按制式配色：4G 橙、5G 蓝，室分与同制式宏站同色（靠形状区分：圆 vs 扇区） */
-  var ratColor = (L.rat === '5G') ? 'rgba(56,132,255,0.6)' : 'rgba(255,138,0,0.6)';
+  var ratColor = (L.rat === '5G') ? 'rgba(40,116,166,0.55)' : 'rgba(176,58,46,0.55)';
   function isIndoor(i) {
     if (!stypeArr) return false;
     var v = stypeArr[i];
