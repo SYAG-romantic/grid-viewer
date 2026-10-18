@@ -364,12 +364,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #searchBox input::placeholder{color:var(--fg3)}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
-#coord{position:absolute;top:52px;right:10px;z-index:5;
-  background:var(--glass);border:1px solid var(--line);border-radius:7px;height:24px;
-  padding:0 8px;display:flex;align-items:center;
-  font-size:10.5px;color:var(--fg3);font-variant-numeric:tabular-nums;
-  box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;pointer-events:none}
-#coord b{color:var(--fg);font-weight:400;font-size:10px}
+
 /* 底图切换：自定义下拉，弹出/收起带过渡（原生 select 的弹层无法做动画） */
 .dsel{position:relative;flex:0 0 auto}
 .dsel-btn{display:flex;align-items:center;gap:5px;height:34px;padding:0 11px;border-radius:9px;
@@ -894,7 +889,6 @@ html.light #btnTheme .ic-sun{display:block}
         </svg>
       </button>
     </div>
-    <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
 
     <div id="legend" class="fold">
       <header id="legendHead" title="按住可拖动，单击折叠 / 展开">
