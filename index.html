@@ -346,7 +346,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 
 #topbar{position:absolute;top:10px;left:calc(var(--mleft) + 10px);right:10px;z-index:5;display:flex;gap:6px;
   transition:left .3s cubic-bezier(.22,.61,.36,1);
-        align-items:center;pointer-events:none;flex-wrap:nowrap;overflow:hidden}
+        align-items:center;pointer-events:none;flex-wrap:nowrap}
 @media (max-width:900px){
   #topbar{gap:6px}
   #searchBox{max-width:none;flex:1 1 100%;order:-1}
@@ -364,9 +364,9 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #searchBox input::placeholder{color:var(--fg3)}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
-#coord{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:10;
+#coord{position:absolute;top:52px;left:calc(var(--mleft) + 10px);z-index:5;
   background:var(--glass);border:1px solid var(--line);border-radius:7px;height:24px;
-  padding:0 8px;display:flex;align-items:center;
+  padding:0 8px;display:flex;align-items:center;transition:left .3s cubic-bezier(.22,.61,.36,1);
   font-size:10.5px;color:var(--fg3);font-variant-numeric:tabular-nums;
   box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;pointer-events:none}
 #coord b{color:var(--fg);font-weight:400;font-size:10px}
@@ -380,7 +380,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .dsel-btn .chev{color:var(--fg3);margin-left:1px;
   transition:transform .26s cubic-bezier(.22,.61,.36,1)}
 .dsel-btn:hover{border-color:var(--hoverbd)}
-#btnLabel{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px}
+#btnLabel{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .18s ease}
 #btnLabel:hover{border-color:var(--hoverbd)}
 #btnLabel.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .dsel.open .dsel-btn{border-color:var(--accent)}
