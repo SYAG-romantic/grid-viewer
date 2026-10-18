@@ -2737,7 +2737,7 @@ function showMultiSectorPopup(L, rows, pixel) {
       if (cn.indexOf('小区名') >= 0 && cells[ci]) { secName = String(cells[ci]); break; }
     }
     if (!secName) secName = '扇区 ' + (r + 1);
-    html += '<div class="msec"><div class="msec-h" title="' + secName.replace(/"/g, '&quot;') + '">' + secName + '</div><table>';
+    html += '<div class="msec"><table><tr><td colspan="2" class="msec-h">' + secName + '</td></tr>';
     for (var c = 0; c < ds.columns.length; c++) {
       var colName = ds.columns[c] || '';
       var v = cells[c];
