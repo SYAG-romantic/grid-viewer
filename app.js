@@ -69,8 +69,8 @@ var ALIAS = {
           '经纬'],   /* 「经纬」是某批工参的经度列名笔误 */
   lat:   ['weidu', 'lat', 'lati', 'latitude', '纬度', 'y', 'wd', '纬度(y)', '纬度y'],
   az:    ['azimuth', '方位角', '方向角', 'az', '天线方位角', '方位角(度)', 'angle'],
-  name:  ['小区名', '小区名称', 'cellname', 'cell_name', 'name', '站名', '基站名称',
-          '小区', '扇区', 'cell', 'cellid', '基站名', 'cgi', 'eci', 'ecgi'],
+  name:  ['小区名', '小区名称', 'cellname', 'cell_name', '小区', '扇区', 'cell',
+          'cellid', 'name', 'cgi', 'eci', 'ecgi'],
   band:  ['频段', 'band', '频点', '工作频段', '中心频率', '频率', 'freq', '频段信息'],
   tilt:  ['下倾角', 'downtilt', '电下倾', '机械下倾', '倾角', 'tilt'],
   hgt:   ['挂高', '天线挂高', 'height', '天线高度', 'altitude'],
@@ -3626,11 +3626,12 @@ function drawLabels() {
       var fbx = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
       placed.push([fbx, fpy - 8, tw2, 16]);
       ctx.textAlign = falign;
-      // 细白描边 + 黑字
+      // 4G 柔和红，5G 柔和蓝
+      var is5g = L.rat === '5G';
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(255,255,255,.92)';
       ctx.strokeText(nm, fpx, fpy);
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = is5g ? '#2874a6' : '#b03a2e';
       ctx.fillText(nm, fpx, fpy);
       drawn++;
     }
@@ -3679,6 +3680,7 @@ function bindRatToggle() {
     if (cur) cur.textContent = RAT_NAME[rat] || '全部';
     renderLayerList();
     scheduleDraw();
+    scheduleLabels();
     saveViewState();
   }
   btn.onclick = function (e) {
