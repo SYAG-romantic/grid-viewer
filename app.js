@@ -3563,7 +3563,7 @@ function bindPopupResize(popupId) {
 }
 /* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
 var LABEL_ON = false;
-var LABEL_MIN_ZOOM = 15;
+var LABEL_MIN_ZOOM = 14;
 var LABEL_MAX = 3000;
 function drawLabels() {
   var cv = document.getElementById('labelCanvas');
