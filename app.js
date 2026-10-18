@@ -1356,10 +1356,24 @@ function applyGridColorMode(mode) {
     }
   }
   STATE.gridColorMode = mode;
+  var _gridLs = [];
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
-    if (L.kind === 'grid' && L.ok && L.buckets) rebuildBuckets(L);
+    if (L.kind === 'grid' && L.ok && L.buckets) {
+      rebuildBuckets(L, true);  /* 跳过同步 GL 构建，避免卡顿 */
+      _gridLs.push(L);
+    }
   }
+  /* WebGL 缓冲异步重建 */
+  (function (_ls) {
+    var _idx = 0;
+    function _next() {
+      if (_idx >= _ls.length) { scheduleDraw(); return; }
+      var _L = _ls[_idx++];
+      buildGridGLAsync(_L).then(_next, _next);
+    }
+    _next();
+  })(_gridLs);
   /* 选区还开着时重算统计（档位分布要跟新指标走） */
   if (currentSel()) applySelection();
   renderLegend();
