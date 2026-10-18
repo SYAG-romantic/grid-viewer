@@ -264,6 +264,7 @@ table.stat td.pct{text-align:right;color:var(--fg3);width:52px;font-variant-nume
 
 /* ---------- 地图 ---------- */
 #mapwrap{position:absolute;inset:0}
+#labelCanvas{position:absolute;inset:0;pointer-events:none;z-index:4}
 #map{position:absolute;inset:0;background:var(--mapbg)}
 .ol-viewport{z-index:0}
 .ol-overlaycontainer-stopevent{z-index:3}
@@ -369,6 +370,9 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .dsel-btn .chev{color:var(--fg3);margin-left:1px;
   transition:transform .26s cubic-bezier(.22,.61,.36,1)}
 .dsel-btn:hover{border-color:var(--hoverbd)}
+#btnLabel{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px}
+#btnLabel:hover{border-color:var(--hoverbd)}
+#btnLabel.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .dsel.open .dsel-btn{border-color:var(--accent)}
 .dsel.open .dsel-btn .chev{transform:rotate(180deg)}
 /* 图标按钮 */
@@ -706,6 +710,7 @@ html.light #btnTheme .ic-sun{display:block}
   <main id="mapwrap">
     <div id="map"></div>
     <canvas id="pts"></canvas>
+    <canvas id="labelCanvas"></canvas>
 
     <div id="topbar">
       <button id="btnFold" class="panbtn" title="收起 / 展开左侧面板" aria-label="收起或展开左侧面板">
@@ -867,6 +872,7 @@ html.light #btnTheme .ic-sun{display:block}
           <button type="button" role="option" data-rat="5G"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:#3b82f6"></span><span>5G</span></button>
         </div>
       </div>
+      <button id="btnLabel" class="toolbtn" title="显示/隐藏小区名注记">注记</button>
       <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
