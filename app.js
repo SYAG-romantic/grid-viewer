@@ -2064,7 +2064,7 @@ function glClearFrame(w, h, dpr) {
    扇区/室分圆点/无方位角小点 都用同一个扇形几何，shader 按类型展开。 */
 
 var GLS = null;   /* {cv, gl, progFan, locFan, fanBuf, fanN, progPt, locPt, ok} */
-var SITE_FAN_SEG = 10;   /* 扇形弧段数 */
+var SITE_FAN_SEG = 24;   /* 扇形弧段数：室分圆 24 边更圆滑 */
 
 function glsInit() {
   if (GLS) return GLS.ok;
