@@ -806,7 +806,7 @@ function buildSiteColors(L) {
   var bandTextArr = (L.bandCol && !bandArr) ? ds.columnText(L.bandCol) : null;
   var stypeArr = L.ds.stype;   /* 解析时已存成字符串数组，O(1) 读 */
   /* 按制式配色：4G 橙、5G 蓝，室分与同制式宏站同色（靠形状区分：圆 vs 扇区） */
-  var ratColor = (L.rat === '5G') ? 'rgba(31,97,141,0.72)' : 'rgba(148,49,38,0.72)';
+  var ratColor = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
   function isIndoor(i) {
     if (!stypeArr) return false;
     var v = stypeArr[i];
@@ -3644,7 +3644,7 @@ function drawLabels() {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(255,255,255,.92)';
       ctx.strokeText(nm, fpx, fpy);
-      ctx.fillStyle = is5g ? '#2874a6' : '#b03a2e';
+      ctx.fillStyle = is5g ? '#2980b9' : '#c0392b';
       ctx.fillText(nm, fpx, fpy);
       drawn++;
     }
