@@ -85,7 +85,7 @@ body{font:12.5px/1.5 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:
 #brand .tk-status:hover{color:var(--ok);background:var(--hover)}
 
 /* 密钥设置弹窗（浮在面板内，点击状态按钮打开） */
-#tkPop{backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:absolute;left:10px;right:10px;top:58px;z-index:12;
+#tkPop{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);position:absolute;left:10px;right:10px;top:58px;z-index:12;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 32px rgba(0,0,0,.45);overflow:hidden;display:none}
 #tkPop.show{display:block;animation:tpIn .22s cubic-bezier(.34,1.2,.5,1)}
@@ -272,7 +272,7 @@ table.stat td.pct{text-align:right;color:var(--fg3);width:52px;font-variant-nume
   display:flex;flex-direction:column;gap:6px;transition:left .3s cubic-bezier(.22,.61,.36,1)}
 .tgroup{position:relative}
 button.tbtn{width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;
-  border-radius:9px;background:var(--glass);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  border-radius:9px;background:var(--glass);backdrop-filter:blur(8px) saturate(1.3);-webkit-backdrop-filter:blur(8px) saturate(1.3);
   border:1px solid var(--line);color:var(--fg2);
   box-shadow:0 4px 16px rgba(0,0,0,.4);position:relative;
   /* Dock 式放大的手感：带轻微回弹的缓动 */
@@ -361,7 +361,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 /* 底图切换：自定义下拉，弹出/收起带过渡（原生 select 的弹层无法做动画） */
 .dsel{position:relative;flex:0 0 auto}
 .dsel-btn{display:flex;align-items:center;gap:5px;height:34px;padding:0 11px;border-radius:9px;
-  background:var(--glass);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  background:var(--glass);backdrop-filter:blur(8px) saturate(1.3);-webkit-backdrop-filter:blur(8px) saturate(1.3);
   border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.4);
   color:var(--fg);font-size:12.5px;white-space:nowrap}
 .dsel-btn>span{color:var(--fg3);font-size:11.5px}
@@ -388,7 +388,7 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .dsel-pop button:hover{transform:translateX(2px)}
 #legend{border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.22);transition:box-shadow .3s}
 #legend:hover{box-shadow:0 12px 36px rgba(0,0,0,.3)}
-.dsel-pop{z-index:10;backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
+.dsel-pop{z-index:10;backdrop-filter:blur(10px) saturate(1.4);-webkit-backdrop-filter:blur(10px) saturate(1.4);position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 30px rgba(0,0,0,.45);
   opacity:0;transform:translateY(-8px) scale(.96);transform-origin:top left;
@@ -478,7 +478,7 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 .rsz-ne{top:36px;right:-4px;width:12px;height:12px;cursor:nesw-resize}
 .rsz-sw{bottom:-4px;left:-4px;width:12px;height:12px;cursor:nesw-resize}
 .rsz-se{bottom:-4px;right:-4px;width:12px;height:12px;cursor:nwse-resize}
-#popup{backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:absolute;z-index:9;width:auto;min-width:180px;max-width:min(380px,90vw);max-height:min(420px,75vh);
+#popup{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);position:absolute;z-index:9;width:auto;min-width:180px;max-width:min(380px,90vw);max-height:min(420px,75vh);
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden;
   display:none}
