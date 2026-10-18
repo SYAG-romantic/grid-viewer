@@ -1285,7 +1285,7 @@ function syncCityDropdown() {
     else if (common !== raw) { common = 'mixed'; break; }
   }
   if (common === null || common === 'none') common = STATE.cityFilter || '*';
-  if (cur) cur.textContent = common === '*' ? '新疆' : common === 'mixed' ? '多值'
+  if (cur) cur.textContent = common === '*' ? '全部地市' : common === 'mixed' ? '多值'
     : (CITY_NAMES[common] || common);
   if (box) {
     Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
@@ -3444,6 +3444,73 @@ function searchCells(keyword) {
     }
   }
   return results;
+}
+/* 增强搜索：小区名 + CGI */
+function searchCellsEx(keyword) {
+  var kw = String(keyword || '').trim().toLowerCase();
+  if (!kw) return [];
+  var results = [];
+  for (var li = 0; li < layers.length && results.length < 100; li++) {
+    var L = layers[li];
+    if (!L.ok || L.kind !== 'site') continue;
+    var ds = L.ds, n = ds.n;
+    // 找 CGI 列
+    var cgiCol = null;
+    for (var ci = 0; ci < ds.columns.length; ci++) {
+      var cn = String(ds.columns[ci] || '').toLowerCase();
+      if (cn === 'cgi' || cn === 'ecgi') { cgiCol = ds.columns[ci]; break; }
+    }
+    var nameCol = L.nameCol;
+    for (var i = 0; i < n && results.length < 100; i++) {
+      var nm = nameCol ? String(ds.value(i, nameCol) || '') : '';
+      var cgi = cgiCol ? String(ds.value(i, cgiCol) || '') : '';
+      if (nm.toLowerCase().indexOf(kw) >= 0 || (cgi && cgi.toLowerCase().indexOf(kw) >= 0)) {
+        results.push({ L: L, i: i, name: nm, cgi: cgi });
+      }
+    }
+  }
+  return results;
+}
+function showJumpResults(res, kw) {
+  var box = document.getElementById('jumpResults');
+  if (!box) return;
+  if (!res.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (kw.trim()) showErr('未找到匹配的小区或CGI');
+    return;
+  }
+  var html = '';
+  for (var k = 0; k < res.length; k++) {
+    var r = res[k];
+    html += '<div class="cs-item" data-k="' + k + '" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);font-size:12.5px;">' +
+      '<span style="color:var(--fg)">' + esc(r.name) + '</span>' +
+      (r.cgi ? '<span style="color:var(--fg3);font-size:11px;margin-left:8px;">' + esc(r.cgi) + '</span>' : '') +
+      '<span style="color:var(--fg3);font-size:11px;margin-left:8px;">' + esc(r.L.name) + '</span></div>';
+  }
+  box.innerHTML = html;
+  box.style.display = 'block';
+  // 暂存结果供点击用
+  box._res = res;
+  var items = box.querySelectorAll('.cs-item');
+  for (var j = 0; j < items.length; j++) {
+    (function (el) {
+      el.onclick = function () {
+        var r = box._res[parseInt(el.getAttribute('data-k'), 10)];
+        if (!r) return;
+        var x = r.L.mx[r.i], y = r.L.my[r.i];
+        if (!isFinite(x) || !isFinite(y)) return;
+        try {
+          map.getView().animate({ center: [x, y], zoom: 16, duration: 400 });
+        } catch (e) {}
+        box.style.display = 'none';
+      };
+    })(items[j]);
+  }
+}
+function hideJumpResults() {
+  var box = document.getElementById('jumpResults');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 /* 框选导出：把选区内的小区导出为 CSV */
 function pointInSel(x, y, sel) {
@@ -6032,22 +6099,28 @@ function bindUI() {
 
   /* 地市筛选只保留顶部「地市」下拉（侧栏同名筛选已移除） */
 
-  /* 定位 + 地图标记 */
+  /* 统一搜索：经纬度 / 小区名 / CGI */
   function doJump() {
     var v = $('jump').value.trim();
+    if (!v) return;
+    // 1. 尝试经纬度
     var m = v.match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
-    if (!m) { showErr('请输入「经度,纬度」，例如 87.4807,43.9161'); return; }
-    var lon = parseFloat(m[1]), lat = parseFloat(m[2]);
-    if (lon < -180 || lon > 180 || lat < -90 || lat > 90) {
-      showErr('经纬度超出有效范围（经度 -180~180，纬度 -90~90）');
-      return;
+    if (m) {
+      var lon = parseFloat(m[1]), lat = parseFloat(m[2]);
+      if (lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
+        setPin(lon, lat);
+        map.getView().animate({
+          center: [lonToMercX(lon), latToMercY(lat)],
+          zoom: Math.max(map.getView().getZoom(), 16),
+          duration: 320
+        });
+        hideJumpResults();
+        return;
+      }
     }
-    setPin(lon, lat);
-    map.getView().animate({
-      center: [lonToMercX(lon), latToMercY(lat)],
-      zoom: Math.max(map.getView().getZoom(), 16),
-      duration: 320
-    });
+    // 2. 搜索小区名 / CGI
+    var res = searchCellsEx(v);
+    showJumpResults(res, v);
   }
   $('btnJump').onclick = doJump;
   $('jump').onkeydown = function (e) { if (e.key === 'Enter') doJump(); };
