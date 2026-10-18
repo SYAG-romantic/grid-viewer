@@ -3695,7 +3695,7 @@ function drawLabels() {
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
-  ctx.font = '500 10px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+  ctx.font = '11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
   ctx.textBaseline = 'middle';
   var drawn = 0;
   var placed = [];
