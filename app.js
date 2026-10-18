@@ -3590,35 +3590,41 @@ function pointInSel(x, y, sel) {
 function exportSelection() {
   var sel = currentSel();
   if (!sel) { showErr('请先在地图上框选区域（矩形/圆形/多边形工具）'); return; }
-  var rows = [];
+  var rows4g = [], rows5g = [];
   var header = null;
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
     if (!L.ok || !L.visible || L.kind !== 'site') continue;
     var ds = L.ds;
     if (!header) header = ['图层'].concat(ds.columns);
-    for (var i = 0; i < ds.n; i++) {
+    var is5g = (L.rat === '5G');
+    var total = rows4g.length + rows5g.length;
+    for (var i = 0; i < ds.n && total < 50000; i++) {
       var x = L.mx[i], y = L.my[i];
       if (!isFinite(x) || !isFinite(y)) continue;
       if (!pointInSel(x, y, sel)) continue;
       var cells = ds.cells(i);
-      rows.push([L.name].concat(cells));
-      if (rows.length >= 50000) break;
+      var row = [L.name].concat(cells);
+      if (is5g) rows5g.push(row); else rows4g.push(row);
+      total++;
     }
-    if (rows.length >= 50000) break;
+    if (total >= 50000) break;
   }
-  if (!rows.length) { showErr('选区内没有小区'); return; }
-  var csv = header.map(function (h) { return '"' + String(h).replace(/"/g, '""') + '"'; }).join(',') + '\n';
-  for (var r = 0; r < rows.length; r++) {
-    csv += rows[r].map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(',') + '\n';
+  var totalRows = rows4g.length + rows5g.length;
+  if (!totalRows) { showErr('选区内没有小区'); return; }
+  // 导出 xlsx：4G 和 5G 分两个 sheet
+  if (typeof XLSX === 'undefined') { showErr('xlsx 组件未加载，无法导出'); return; }
+  var wb = XLSX.utils.book_new();
+  if (rows4g.length) {
+    var ws4 = XLSX.utils.aoa_to_sheet([header].concat(rows4g));
+    XLSX.utils.book_append_sheet(wb, ws4, '4G');
   }
-  var blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8' });
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = '框选小区_' + rows.length + '条.csv';
-  a.click();
-  setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
-  showErr('已导出 ' + rows.length + ' 条小区');
+  if (rows5g.length) {
+    var ws5 = XLSX.utils.aoa_to_sheet([header].concat(rows5g));
+    XLSX.utils.book_append_sheet(wb, ws5, '5G');
+  }
+  XLSX.writeFile(wb, '框选小区_' + totalRows + '条.xlsx');
+  showErr('已导出 ' + totalRows + ' 条小区（4G ' + rows4g.length + ' 条，5G ' + rows5g.length + ' 条）');
 }
 function bindExportSel() {
   var btn = document.getElementById('btnExportSel');
