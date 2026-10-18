@@ -3597,11 +3597,11 @@ function drawLabels() {
       var nm = L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 标签放在扇区外端：沿方位角 115 米处
+      // 标签放在扇区外边：沿方位角 150 米处
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
-      var lx = x + Math.sin(rad) * 115;
-      var ly = y + Math.cos(rad) * 115;
+      var lx = x + Math.sin(rad) * 150;
+      var ly = y + Math.cos(rad) * 150;
       var px = map.getPixelFromCoordinate([lx, ly]);
       if (!px) continue;
       // 无描边纯黑字；重叠时沿方位角外推
@@ -3616,9 +3616,9 @@ function drawLabels() {
       }
       var fpx = px[0], fpy = px[1];
       if (overlap) {
-        // 外推到 160 米再试
-        var lx2 = x + Math.sin(rad) * 160;
-        var ly2 = y + Math.cos(rad) * 160;
+        // 外推到 200 米再试
+        var lx2 = x + Math.sin(rad) * 200;
+        var ly2 = y + Math.cos(rad) * 200;
         var px2 = map.getPixelFromCoordinate([lx2, ly2]);
         if (px2) { fpx = px2[0]; fpy = px2[1]; }
       }
