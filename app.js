@@ -6120,6 +6120,25 @@ function bindUI() {
     }
     // 2. 搜索小区名 / CGI
     var res = searchCellsEx(v);
+    // 精确唯一命中直接飞，不用弹窗确认
+    var kwLow = v.toLowerCase();
+    var exact = [];
+    for (var ei = 0; ei < res.length; ei++) {
+      var rn = String(res[ei].name || '').toLowerCase();
+      var rc = String(res[ei].cgi || '').toLowerCase();
+      if (rn === kwLow || rc === kwLow) exact.push(res[ei]);
+    }
+    if (exact.length === 1) {
+      var r0 = exact[0];
+      var x0 = r0.L.mx[r0.i], y0 = r0.L.my[r0.i];
+      if (isFinite(x0) && isFinite(y0)) {
+        try {
+          map.getView().animate({ center: [x0, y0], zoom: 16, duration: 400 });
+        } catch (e) {}
+        hideJumpResults();
+        return;
+      }
+    }
     showJumpResults(res, v);
   }
   $('btnJump').onclick = doJump;
