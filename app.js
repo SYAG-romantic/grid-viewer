@@ -3583,6 +3583,7 @@ function drawLabels() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   var drawn = 0;
+  var placed = [];
   var res = map.getView().getResolution() || 1; // 米/像素
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
@@ -3603,12 +3604,28 @@ function drawLabels() {
       var ly = y + Math.cos(rad) * 95;
       var px = map.getPixelFromCoordinate([lx, ly]);
       if (!px) continue;
-      // QGIS 风格：红字白描边
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(255,255,255,.9)';
-      ctx.strokeText(nm, px[0], px[1]);
+      // 无描边纯黑字；重叠时沿方位角外推
+      var tw0 = ctx.measureText(nm).width;
+      var bx0 = px[0] - tw0 / 2, by0 = px[1] - 8;
+      var overlap = false;
+      for (var k = 0; k < placed.length; k++) {
+        var pb = placed[k];
+        if (bx0 < pb[0] + pb[2] && bx0 + tw0 > pb[0] && by0 < pb[1] + pb[3] && by0 + 16 > pb[1]) {
+          overlap = true; break;
+        }
+      }
+      var fpx = px[0], fpy = px[1];
+      if (overlap) {
+        // 外推 40 米再试
+        var lx2 = x + Math.sin(rad) * 135;
+        var ly2 = y + Math.cos(rad) * 135;
+        var px2 = map.getPixelFromCoordinate([lx2, ly2]);
+        if (px2) { fpx = px2[0]; fpy = px2[1]; }
+      }
+      var tw2 = ctx.measureText(nm).width;
+      placed.push([fpx - tw2 / 2, fpy - 8, tw2, 16]);
       ctx.fillStyle = '#000';
-      ctx.fillText(nm, px[0], px[1]);
+      ctx.fillText(nm, fpx, fpy);
       drawn++;
     }
   }
