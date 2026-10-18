@@ -3580,7 +3580,6 @@ function drawLabels() {
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
   ctx.font = '12px sans-serif';
-  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   var drawn = 0;
   var placed = [];
@@ -3604,9 +3603,15 @@ function drawLabels() {
       var ly = y + Math.cos(rad) * 150;
       var px = map.getPixelFromCoordinate([lx, ly]);
       if (!px) continue;
-      // 无描边纯黑字；重叠时沿方位角外推
+      // 按方位角决定对齐：东向左对齐（向右延伸），西向右对齐（向左延伸），南北居中
+      var sinAz = Math.sin(rad);
+      var align = 'center';
+      if (sinAz > 0.35) align = 'left';
+      else if (sinAz < -0.35) align = 'right';
+      ctx.textAlign = align;
       var tw0 = ctx.measureText(nm).width;
-      var bx0 = px[0] - tw0 / 2, by0 = px[1] - 8;
+      var bx0 = align === 'left' ? px[0] : (align === 'right' ? px[0] - tw0 : px[0] - tw0 / 2);
+      var by0 = px[1] - 8;
       var overlap = false;
       for (var k = 0; k < placed.length; k++) {
         var pb = placed[k];
@@ -3614,7 +3619,7 @@ function drawLabels() {
           overlap = true; break;
         }
       }
-      var fpx = px[0], fpy = px[1];
+      var fpx = px[0], fpy = px[1], falign = align;
       if (overlap) {
         // 外推到 200 米再试
         var lx2 = x + Math.sin(rad) * 200;
@@ -3623,8 +3628,10 @@ function drawLabels() {
         if (px2) { fpx = px2[0]; fpy = px2[1]; }
       }
       var tw2 = ctx.measureText(nm).width;
-      placed.push([fpx, fpy - 8, tw2, 16]);
-      // 细白描边 + 黑字，QGIS 风格
+      var fbx = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
+      placed.push([fbx, fpy - 8, tw2, 16]);
+      ctx.textAlign = falign;
+      // 细白描边 + 黑字
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(255,255,255,.92)';
       ctx.strokeText(nm, fpx, fpy);
