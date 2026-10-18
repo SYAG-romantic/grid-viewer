@@ -3485,6 +3485,50 @@ function bindExportSel() {
   if (btn) btn.onclick = exportSelection;
 }
 /* 4G/5G 快捷切换 */
+/* 弹窗 8 方向拉伸 */
+function bindPopupResize(popupId) {
+  var el = document.getElementById(popupId);
+  if (!el) return;
+  var handles = el.querySelectorAll('.rsz');
+  for (var hi = 0; hi < handles.length; hi++) {
+    (function (h) {
+      h.addEventListener('mousedown', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var dir = h.getAttribute('data-dir');
+        var rect = el.getBoundingClientRect();
+        var startX = e.clientX, startY = e.clientY;
+        var startW = rect.width, startH = rect.height;
+        var startL = rect.left, startT = rect.top;
+        // popup 是 absolute 定位，取 offsetLeft/Top 更准
+        var ol = el.offsetLeft, ot = el.offsetTop;
+        function onMove(ev) {
+          var dx = ev.clientX - startX, dy = ev.clientY - startY;
+          var nw = startW, nh = startH, nl = ol, nt = ot;
+          if (dir.indexOf('e') >= 0) nw = startW + dx;
+          if (dir.indexOf('s') >= 0) nh = startH + dy;
+          if (dir.indexOf('w') >= 0) { nw = startW - dx; nl = ol + dx; }
+          if (dir.indexOf('n') >= 0) { nh = startH - dy; nt = ot + dy; }
+          nw = Math.max(180, Math.min(nw, window.innerWidth * 0.9));
+          nh = Math.max(120, Math.min(nh, window.innerHeight * 0.9));
+          // 西/北方向拉伸时，如果撞到最小尺寸，位置也要钳住
+          if (dir.indexOf('w') >= 0) nl = ol + (startW - nw);
+          if (dir.indexOf('n') >= 0) nt = ot + (startH - nh);
+          el.style.width = nw + 'px';
+          el.style.height = nh + 'px';
+          el.style.left = nl + 'px';
+          el.style.top = nt + 'px';
+          el.style.maxWidth = 'none';
+        }
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    })(handles[hi]);
+  }
+}
 function bindRatToggle() {
   var box = document.getElementById('ratBox');
   var btn = document.getElementById('ratBtn');
@@ -6009,6 +6053,8 @@ function boot() {
   bindUI();
   bindCellSearch();
   bindRatToggle();
+  bindPopupResize('popup');
+  bindPopupResize('tkPop');
   bindExportSel();
   getSiteWorker();   /* 预热 Worker */
   initTheme();
