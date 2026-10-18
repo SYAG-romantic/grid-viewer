@@ -670,41 +670,7 @@ html.light #btnTheme .ic-sun{display:block}
         </div>
       </details>
 
-      <details>
-        <summary>显示设置<span id="curLayerName" style="color:var(--fg3);font-weight:400;font-size:11.5px"></span></summary>
-        <div class="sec">
-          <div id="gridOpts">
-            <div class="fld">
-              <span>栅格实际尺寸 <b id="stepInfo" style="color:var(--fg3);font-weight:400">—</b></span>
-            </div>
-            <div style="font-size:11.5px;color:var(--fg3);margin-top:2px;line-height:1.5">
-              格子按栅格真实尺寸绘制，随地图缩放自动变化，因此无需手动调节大小。
-            </div>
-          </div>
 
-          <div id="siteOpts" style="display:none">
-            <div class="fld">
-              <span>扇区张角 <b id="bwVal" style="color:var(--fg3);font-weight:400">65°</b></span>
-              <input type="range" id="beamW" min="20" max="180" step="5" value="65">
-            </div>
-            <div class="fld">
-              <span>扇区半径 <b id="srVal" style="color:var(--fg3);font-weight:400">34 px</b></span>
-              <input type="range" id="siteR" min="8" max="90" step="2" value="34">
-            </div>
-            <div class="fld">
-              <span>扇区着色</span>
-              <select id="siteColor">
-                <option value="rat">按制式（4G 红 / 5G 蓝）</option>
-                <option value="band">按频段自动配色</option>
-                <option value="az">按方位角配色</option>
-                <option value="one">单色</option>
-              </select>
-            </div>
-          </div>
-
-          <button id="btnZoomLayer" class="wide" style="margin-top:8px">缩放到当前图层</button>
-        </div>
-      </details>
 
     </div>
   </aside>
