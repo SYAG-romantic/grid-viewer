@@ -2728,7 +2728,7 @@ function showMultiSectorPopup(L, rows, pixel) {
   var ds = L.ds;
   var title = '重叠扇区（' + rows.length + ' 个）';
   var keyCols = [];
-  var want = ['小区名', '方位角', '频段', '工作频段', 'PCI', 'CELLID', '基站名'];
+  var want = ['基站名', 'CELLID', '小区名', '频段', '工作频段', 'PCI', '方位角', '挂高', '机械下倾角', '电子下倾角', '经度', '纬度', 'TAC'];
   for (var ci = 0; ci < ds.columns.length; ci++) {
     var cn = ds.columns[ci] || '';
     for (var wi = 0; wi < want.length; wi++) {
