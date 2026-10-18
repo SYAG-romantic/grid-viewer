@@ -3486,32 +3486,45 @@ function bindExportSel() {
 }
 /* 4G/5G 快捷切换 */
 function bindRatToggle() {
-  var box = document.getElementById('ratToggleTop') || document.getElementById('ratToggle');
-  if (!box) return;
-  var _all = box.querySelector('button[data-rat="*"]');
-  if (_all) _all.classList.add('on');
-  var btns = box.querySelectorAll('button');
-  for (var i = 0; i < btns.length; i++) {
-    (function (btn) {
-      btn.onclick = function () {
-        var rat = btn.getAttribute('data-rat');
-        for (var li = 0; li < layers.length; li++) {
-          var L = layers[li];
-          if (!L.rat) continue;   /* 无制式标识的不参与 */
-          var show = (rat === '*') || (L.rat === rat);
-          L.visible = show;
-        }
-        renderLayerList();
-        scheduleDraw();
-        saveViewState();
-        // 高亮当前按钮（走 CSS .on 类）
-        for (var j = 0; j < btns.length; j++) {
-          if (btns[j] === btn) btns[j].classList.add('on');
-          else btns[j].classList.remove('on');
-        }
-      };
-    })(btns[i]);
+  var box = document.getElementById('ratBox');
+  var btn = document.getElementById('ratBtn');
+  var cur = document.getElementById('ratCur');
+  if (!box || !btn) return;
+  var RAT_NAME = { '*': '全部', '4G': '4G', '5G': '5G' };
+  function close() {
+    box.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
   }
+  function applyRat(rat) {
+    for (var li = 0; li < layers.length; li++) {
+      var L = layers[li];
+      if (!L.rat) continue;
+      L.visible = (rat === '*') || (L.rat === rat);
+    }
+    if (cur) cur.textContent = RAT_NAME[rat] || '全部';
+    renderLayerList();
+    scheduleDraw();
+    saveViewState();
+  }
+  btn.onclick = function (e) {
+    e.stopPropagation();
+    var open = box.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  Array.prototype.forEach.call(box.querySelectorAll('#ratPop button'), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      applyRat(b.getAttribute('data-rat'));
+      close();
+    };
+  });
+  document.addEventListener('click', function () {
+    if (box.classList.contains('open')) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && box.classList.contains('open')) close();
+  });
+  if (cur) cur.textContent = '全部';
 }
 function bindCellSearch() {
   var input = document.getElementById('cellSearchInput');
