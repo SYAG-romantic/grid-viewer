@@ -3561,6 +3561,70 @@ function bindPopupResize(popupId) {
     })(handles[hi]);
   }
 }
+/* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
+var LABEL_ON = false;
+var LABEL_MIN_ZOOM = 15;
+var LABEL_MAX = 250;
+function drawLabels() {
+  var cv = document.getElementById('labelCanvas');
+  if (!cv) return;
+  var wrap = document.getElementById('mapwrap');
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  if (cv.width !== W) cv.width = W;
+  if (cv.height !== H) cv.height = H;
+  var ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (!LABEL_ON || !map) return;
+  var zoom = map.getView().getZoom();
+  if (zoom < LABEL_MIN_ZOOM) return;
+  var extent = map.getView().calculateExtent(map.getSize());
+  // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  var drawn = 0;
+  for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
+    var L = layers[li];
+    if (!L.visible || !L.ok || L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
+    var mx = L.mx, my = L.my, n = L.ds.n;
+    var nameCol = L.nameCol;
+    // 步长抽稀：点太多时跳过
+    var step = Math.max(1, Math.floor(n / 5000));
+    for (var i = 0; i < n && drawn < LABEL_MAX; i += step) {
+      var x = mx[i], y = my[i];
+      if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
+      var px = map.getPixelFromCoordinate([x, y]);
+      if (!px) continue;
+      var nm = L.ds.value(i, nameCol);
+      if (!nm) continue;
+      nm = String(nm);
+      // 白色描边 + 深色字，QGIS 风格
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      ctx.strokeText(nm, px[0], px[1] - 6);
+      ctx.fillStyle = '#222';
+      ctx.fillText(nm, px[0], px[1] - 6);
+      drawn++;
+    }
+  }
+}
+var _labelTimer = null;
+function scheduleLabels() {
+  if (_labelTimer) clearTimeout(_labelTimer);
+  _labelTimer = setTimeout(drawLabels, 200);
+}
+function bindLabelToggle() {
+  var btn = document.getElementById('btnLabel');
+  if (!btn) return;
+  btn.onclick = function () {
+    LABEL_ON = !LABEL_ON;
+    btn.classList.toggle('on', LABEL_ON);
+    drawLabels();
+  };
+  if (map) {
+    map.on('moveend', scheduleLabels);
+  }
+}
 function bindRatToggle() {
   var box = document.getElementById('ratBox');
   var btn = document.getElementById('ratBtn');
@@ -6085,6 +6149,7 @@ function boot() {
   bindUI();
   bindCellSearch();
   bindRatToggle();
+  bindLabelToggle();
   bindPopupResize('popup');
   bindPopupResize('tkPop');
   bindExportSel();
