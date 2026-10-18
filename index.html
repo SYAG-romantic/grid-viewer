@@ -352,14 +352,6 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #searchBox input{width:clamp(104px,11vw,176px);min-width:0;background:transparent;border:none;outline:none;
   color:var(--fg);font:inherit;font-size:12.5px;padding:2px}
 #searchBox input::placeholder{color:var(--fg3)}
-/* 4G/5G 切换：与顶栏统一（9px圆角/34px高/8px间距，hover 有反馈） */
-#ratToggleTop{display:flex;gap:8px;align-items:center;background:var(--glass);
-  border:1px solid var(--line);border-radius:9px;height:34px;padding:0 4px}
-#ratToggleTop button{height:26px;padding:0 12px;border:1px solid transparent;border-radius:6px;
-  background:transparent;color:var(--fg2);cursor:pointer;font-size:12.5px;
-  transition:background-color .16s ease,color .16s ease}
-#ratToggleTop button:hover{background:var(--soft);color:var(--fg)}
-#ratToggleTop button.on{background:var(--accent);color:#fff}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
 #coord{background:var(--glass);border:1px solid var(--line);border-radius:9px;height:34px;
@@ -839,10 +831,20 @@ html.light #btnTheme .ic-sun{display:block}
         </div>
       </div>
 
-      <div id="ratToggleTop">
-        <button data-rat="4G" title="只显示4G图层">4G</button>
-        <button data-rat="5G" title="只显示5G图层">5G</button>
-        <button data-rat="*" title="显示全部图层">全部</button>
+      <div id="ratBox" class="dsel">
+        <button type="button" id="ratBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span>制式</span><b id="ratCur">全部</b>
+          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <div class="dsel-pop" id="ratPop" role="listbox">
+          <div class="dsel-h">选择制式</div>
+          <button type="button" role="option" data-rat="*"><span>全部</span></button>
+          <button type="button" role="option" data-rat="4G"><span>4G</span></button>
+          <button type="button" role="option" data-rat="5G"><span>5G</span></button>
+        </div>
       </div>
       <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
