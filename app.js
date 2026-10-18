@@ -3506,6 +3506,17 @@ function bindExportSel() {
 function bindPopupResize(popupId) {
   var el = document.getElementById(popupId);
   if (!el) return;
+  /* 双击标题栏恢复默认大小 */
+  var head = el.querySelector('.ph');
+  if (head) {
+    head.title = '双击恢复默认大小';
+    head.addEventListener('dblclick', function (e) {
+      if (e.target.closest('button')) return;
+      el.style.width = ''; el.style.height = '';
+      el.style.left = ''; el.style.top = '';
+      el.style.maxWidth = ''; el.style.maxHeight = '';
+    });
+  }
   var handles = el.querySelectorAll('.rsz');
   for (var hi = 0; hi < handles.length; hi++) {
     (function (h) {
