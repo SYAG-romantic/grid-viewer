@@ -3619,14 +3619,9 @@ function drawLabels() {
           overlap = true; break;
         }
       }
+      // 重叠则跳过不画，保留先画的主要标签
+      if (overlap) continue;
       var fpx = px[0], fpy = px[1], falign = align;
-      if (overlap) {
-        // 外推到 200 米再试
-        var lx2 = x + Math.sin(rad) * 200;
-        var ly2 = y + Math.cos(rad) * 200;
-        var px2 = map.getPixelFromCoordinate([lx2, ly2]);
-        if (px2) { fpx = px2[0]; fpy = px2[1]; }
-      }
       var tw2 = ctx.measureText(nm).width;
       var fbx = falign === 'left' ? fpx : (falign === 'right' ? fpx - tw2 : fpx - tw2 / 2);
       placed.push([fbx, fpy - 8, tw2, 16]);
