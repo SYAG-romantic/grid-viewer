@@ -509,7 +509,7 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 #popup tr:last-child td{border-bottom:none}
 /* 斑马纹分隔：相邻行交替底色（避开高亮行，高亮有自己的淡色底） */
 #popup tr:nth-child(even) td:not(.hl){background:var(--soft2)}
-#popup td:first-child{color:var(--fg3);white-space:nowrap;width:1%}
+#popup td:first-child{color:var(--fg3);width:1%;max-width:130px}
 #popup td:last-child{color:var(--fg);word-break:break-all;font-variant-numeric:tabular-nums;max-width:280px}
 /* 关键字段（RSRP/SINR/采样数）：淡色底 + 主色文字，比整块蓝底克制得多 */
 #popup td.hl{background:rgba(59,130,246,.08)}
