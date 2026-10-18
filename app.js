@@ -3579,35 +3579,36 @@ function drawLabels() {
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
-  ctx.font = '11px sans-serif';
+  ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   var drawn = 0;
+  var res = map.getView().getResolution() || 1; // 米/像素
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
     if (!L.visible || !L.ok || L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
+    var azArr = L.azCol ? L.ds.num[L.azCol] : null;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
-      var px = map.getPixelFromCoordinate([x, y]);
-      if (!px) continue;
       var nm = L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      var tw = ctx.measureText(nm).width;
-      var bx = px[0] - tw / 2 - 3, by = px[1] - 20, bw = tw + 6, bh = 16;
-      ctx.fillStyle = 'rgba(255,255,255,.88)';
-      if (ctx.roundRect) {
-        ctx.beginPath();
-        ctx.roundRect(bx, by, bw, bh, 4);
-        ctx.fill();
-      } else {
-        ctx.fillRect(bx, by, bw, bh);
-      }
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillText(nm, px[0], px[1] - 12);
+      // 标签放在扇区外端：沿方位角 95 米处
+      var az = azArr ? azArr[i] : 0;
+      var rad = (az || 0) * Math.PI / 180;
+      var lx = x + Math.sin(rad) * 95;
+      var ly = y + Math.cos(rad) * 95;
+      var px = map.getPixelFromCoordinate([lx, ly]);
+      if (!px) continue;
+      // QGIS 风格：红字白描边
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255,255,255,.9)';
+      ctx.strokeText(nm, px[0], px[1]);
+      ctx.fillStyle = '#d63a3a';
+      ctx.fillText(nm, px[0], px[1]);
       drawn++;
     }
   }
