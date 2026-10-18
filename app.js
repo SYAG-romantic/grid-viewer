@@ -536,14 +536,13 @@ function parseXlsx(file, name) {
 /* ---- 类型判别 / 字段识别 ---- */
 function pickColumn(columns, keys) {
   var low = columns.map(function (c) { return String(c).trim().toLowerCase(); });
+  // 按 key 优先级：每个 key 先精确再模糊，避免低优先级精确抢占高优先级模糊
   for (var i = 0; i < keys.length; i++) {
     for (var j = 0; j < low.length; j++) {
       if (low[j] === keys[i]) return columns[j];
     }
-  }
-  for (var i2 = 0; i2 < keys.length; i2++) {
     for (var j2 = 0; j2 < low.length; j2++) {
-      if (low[j2].indexOf(keys[i2]) >= 0) return columns[j2];
+      if (low[j2].indexOf(keys[i]) >= 0) return columns[j2];
     }
   }
   return null;
