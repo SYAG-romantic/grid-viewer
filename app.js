@@ -2756,6 +2756,15 @@ function showMultiSectorPopup(L, rows, pixel) {
   if (subEl) subEl.textContent = L.name;
   var _pf = document.getElementById('popFoot'); if (_pf) _pf.innerHTML = '';
   var el = document.getElementById('popup');
+  /* 拉伸后的尺寸换显示器时按当前视口钳住 */
+  if (el.style.width) {
+    var pw = parseFloat(el.style.width);
+    if (pw > window.innerWidth * 0.9) el.style.width = Math.floor(window.innerWidth * 0.9) + 'px';
+  }
+  if (el.style.height) {
+    var ph2 = parseFloat(el.style.height);
+    if (ph2 > window.innerHeight * 0.85) el.style.height = Math.floor(window.innerHeight * 0.85) + 'px';
+  }
   el.classList.add('show');
   var wrap = document.getElementById('mapwrap');
   var W = wrap.clientWidth, H = wrap.clientHeight;
@@ -2888,6 +2897,15 @@ function showPopup(L, i, pixel) {
   /* 底部经纬度已去掉，表格内已有 */
 
   var el = document.getElementById('popup');
+  /* 拉伸后的尺寸换显示器时按当前视口钳住 */
+  if (el.style.width) {
+    var pw = parseFloat(el.style.width);
+    if (pw > window.innerWidth * 0.9) el.style.width = Math.floor(window.innerWidth * 0.9) + 'px';
+  }
+  if (el.style.height) {
+    var ph2 = parseFloat(el.style.height);
+    if (ph2 > window.innerHeight * 0.85) el.style.height = Math.floor(window.innerHeight * 0.85) + 'px';
+  }
   el.classList.add('show');
 
   /* 定位到点击处，越界自动翻转 */
