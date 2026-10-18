@@ -499,14 +499,14 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
 
 #popup.show{display:flex;flex-direction:column}
 #popup .pb{flex:1;min-height:0;overflow:auto;max-height:none}
-#popup .pb table{width:100%}
+#popup .pb table{width:auto;min-width:100%}
 #popup table{width:100%;border-collapse:collapse;font-size:12.5px}
 #popup td{padding:6px 12px;border-bottom:1px solid var(--soft2);vertical-align:middle}
 #popup tr:last-child td{border-bottom:none}
 /* 斑马纹分隔：相邻行交替底色（避开高亮行，高亮有自己的淡色底） */
 #popup tr:nth-child(even) td:not(.hl){background:var(--soft2)}
 #popup td:first-child{color:var(--fg3);white-space:nowrap;width:1%}
-#popup td:last-child{color:var(--fg);word-break:break-all;font-variant-numeric:tabular-nums}
+#popup td:last-child{color:var(--fg);word-break:break-all;font-variant-numeric:tabular-nums;max-width:280px}
 /* 关键字段（RSRP/SINR/采样数）：淡色底 + 主色文字，比整块蓝底克制得多 */
 #popup td.hl{background:rgba(59,130,246,.08)}
 #popup td.hl:last-child{color:var(--accent);font-weight:500}
