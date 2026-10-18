@@ -2414,7 +2414,7 @@ function glDrawSites(L, t, w, h, box, dpr) {
   var _is5g = (L.rat === '5G');
   var _sectorM = _is5g ? 60 : 80;
   var _dotM = _is5g ? 25 : 30;
-  var _beamW = _is5g ? 45 : 40;
+  var _beamW = _is5g ? 45 : 35;
   var R, dotR;
   if (_res > 0 && isFinite(_res)) {
     /* 分辨率校准：getResolution 返回值与设备像素比有关，乘 dpr 修正（用户实测约 1.6） */
