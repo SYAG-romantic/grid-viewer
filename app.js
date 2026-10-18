@@ -2410,19 +2410,24 @@ function glDrawSites(L, t, w, h, box, dpr) {
   /* 实地尺寸：宏站 80 米，室分 30 米。直接用 view 分辨率（米/像素） */
   var _res = 0;
   try { _res = map.getView().getResolution() || 0; } catch (e) {}
+  /* 4G/5G 分规格：4G 80米/40°，5G 60米/45°，室分按比例 */
+  var _is5g = (L.rat === '5G');
+  var _sectorM = _is5g ? 60 : 80;
+  var _dotM = _is5g ? 25 : 30;
+  var _beamW = _is5g ? 45 : 40;
   var R, dotR;
   if (_res > 0 && isFinite(_res)) {
     /* 分辨率校准：getResolution 返回值与设备像素比有关，乘 dpr 修正（用户实测约 1.6） */
     var _dpr2 = (isFinite(dpr) && dpr > 0) ? dpr : 1;
-    R = 80 / _res * _dpr2;
-    dotR = 30 / _res * _dpr2;
+    R = _sectorM / _res * _dpr2;
+    dotR = _dotM / _res * _dpr2;
     /* 钳位：太小看不见，太大卡死 */
     if (R < 2) R = 2; if (R > 500) R = 500;
     if (dotR < 2) dotR = 2; if (dotR > 200) dotR = 200;
   } else {
     R = STATE.siteR; dotR = Math.max(4, R * 0.35);
   }
-  var half = STATE.beamW * Math.PI / 180 * 0.5;
+  var half = _beamW * Math.PI / 180 * 0.5;
 
   /* 参考点偏移进平移量：实例存 (x-refX)，u_t1 = t0*refX + t2*refY + t4（与栅格一致） */
   var t4 = (t[0] * L.siteRefX + t[2] * L.siteRefY + t[4]);
@@ -3594,7 +3599,8 @@ function drawLabels() {
       // 室分：圆外 45 米处；宏站：沿方位角 150 米处
       var _sv = stypeArr ? stypeArr[i] : '';
       var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
-      var _dist = _isIndoor ? 45 : 150;
+      var _is5gLb = (L.rat === '5G');
+      var _dist = _isIndoor ? (_is5gLb ? 40 : 45) : (_is5gLb ? 120 : 150);
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
       var lx = x + Math.sin(rad) * _dist;
