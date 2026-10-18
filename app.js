@@ -3579,16 +3579,16 @@ function drawLabels() {
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
-  ctx.font = '12px sans-serif';
+  ctx.font = '11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
+  ctx.textBaseline = 'middle';
   var drawn = 0;
+  var placed = []; // 已放置的标签包围盒，用于防重叠
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
     if (!L.visible || !L.ok || L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
-    // 步长抽稀：点太多时跳过
     var step = Math.max(1, Math.floor(n / 5000));
     for (var i = 0; i < n && drawn < LABEL_MAX; i += step) {
       var x = mx[i], y = my[i];
@@ -3598,12 +3598,29 @@ function drawLabels() {
       var nm = L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 白色描边 + 深色字，QGIS 风格
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(255,255,255,.85)';
-      ctx.strokeText(nm, px[0], px[1] - 6);
-      ctx.fillStyle = '#222';
-      ctx.fillText(nm, px[0], px[1] - 6);
+      var tw = ctx.measureText(nm).width;
+      var bx = px[0] - tw / 2 - 3, by = px[1] - 20, bw = tw + 6, bh = 16;
+      // 碰撞检测：与已放置的标签重叠则跳过
+      var overlap = false;
+      for (var k = 0; k < placed.length; k++) {
+        var pb = placed[k];
+        if (bx < pb[0] + pb[2] && bx + bw > pb[0] && by < pb[1] + pb[3] && by + bh > pb[1]) {
+          overlap = true; break;
+        }
+      }
+      if (overlap) continue;
+      placed.push([bx, by, bw, bh]);
+      // 半透明圆角底 + 深色字，干净风格
+      ctx.fillStyle = 'rgba(255,255,255,.88)';
+      if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 4);
+        ctx.fill();
+      } else {
+        ctx.fillRect(bx, by, bw, bh);
+      }
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillText(nm, px[0], px[1] - 12);
       drawn++;
     }
   }
