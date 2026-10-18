@@ -3906,8 +3906,11 @@ function syncLayerPanel() {
   var L = selected;
   document.getElementById('curLayerName').textContent = L ? '　' + shortName(L.name) : '';
   var isSite = L && L.kind === 'site';
-  document.getElementById('gridOpts').style.display = isSite ? 'none' : '';
-  document.getElementById('siteOpts').style.display = isSite ? '' : 'none';
+  /* 显示设置模块已删除（v117） */
+  var _go = document.getElementById('gridOpts');
+  if (_go) _go.style.display = isSite ? 'none' : '';
+  var _so = document.getElementById('siteOpts');
+  if (_so) _so.style.display = isSite ? '' : 'none';
 
   var citySel = document.getElementById('citySel');
   if (citySel) {
