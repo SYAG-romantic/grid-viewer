@@ -1660,8 +1660,44 @@ function drawAll() {
       STATE.coordPick || (STATE.polyPts && STATE.polyPts.length)) drawSelection(ctx, t, w, h);
   if (STATE.measPts && STATE.measPts.length) drawMeasure(ctx, t, w, h);
   if (STATE.pin) drawPin(ctx, t, w, h);
+  if (STATE.hlRing) drawHlRing(ctx, t, w, h);
 }
 
+/* 搜索命中高亮圈：红色脉冲，3 秒后自动消失 */
+function drawHlRing(c, t, w, h) {
+  var r = STATE.hlRing;
+  var age = (Date.now() - r.t0) / 1000;
+  if (age > 3) { STATE.hlRing = null; return; }
+  var px = t[0] * r.mx + t[2] * r.my + t[4];
+  var py = t[1] * r.mx + t[3] * r.my + t[5];
+  if (px < -100 || py < -100 || px > w + 100 || py > h + 100) return;
+  // 脉冲：半径 24→36 振荡，透明度随时间衰减
+  var pulse = (Math.sin(age * 6) + 1) / 2;  // 0~1
+  var rad = 24 + pulse * 12;
+  var alpha = 0.9 * (1 - age / 3);
+  c.beginPath();
+  c.arc(px, py, rad, 0, Math.PI * 2);
+  c.strokeStyle = 'rgba(231,76,60,' + alpha.toFixed(2) + ')';
+  c.lineWidth = 3;
+  c.stroke();
+  c.beginPath();
+  c.arc(px, py, 4, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(231,76,60,' + alpha.toFixed(2) + ')';
+  c.fill();
+  // 需要持续重绘以产生脉冲动画
+  if (typeof scheduleHlRedraw === 'function') scheduleHlRedraw();
+}
+
+var _hlTimer = null;
+function scheduleHlRedraw() {
+  if (_hlTimer || !STATE.hlRing) return;
+  _hlTimer = setTimeout(function () {
+    _hlTimer = null;
+    if (STATE.hlRing && typeof drawAll === 'function') {
+      try { drawAll(); } catch (e) {}
+    }
+  }, 80);
+}
 /* 定位标记 */
 function drawPin(c, t, w, h) {
   var p = STATE.pin;
@@ -3500,6 +3536,7 @@ function showJumpResults(res, kw) {
         if (!r) return;
         var x = r.L.mx[r.i], y = r.L.my[r.i];
         if (!isFinite(x) || !isFinite(y)) return;
+        STATE.hlRing = { mx: x, my: y, t0: Date.now() };
         try {
           map.getView().animate({ center: [x, y], zoom: 16, duration: 400 });
         } catch (e) {}
@@ -6132,6 +6169,7 @@ function bindUI() {
       var r0 = exact[0];
       var x0 = r0.L.mx[r0.i], y0 = r0.L.my[r0.i];
       if (isFinite(x0) && isFinite(y0)) {
+        STATE.hlRing = { mx: x0, my: y0, t0: Date.now() };
         try {
           map.getView().animate({ center: [x0, y0], zoom: 16, duration: 400 });
         } catch (e) {}
