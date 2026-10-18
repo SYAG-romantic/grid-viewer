@@ -8,7 +8,7 @@
   --soft:rgba(255,255,255,.07);
   --soft2:rgba(255,255,255,.032);
   --mapbg:#0c0c0e;
-  --popbg:rgba(24,24,29,.94); --popbd:rgba(255,255,255,.1);
+  --popbg:rgba(24,24,29,.82); --popbd:rgba(255,255,255,.1);
   --busybg:rgba(10,10,12,.6);
   --errbg:#3d1a1a; --errbd:#6e2a2a; --errfg:#f2b8b8;
   --tagGridBg:#1c2c4a; --tagGridFg:#8fb8f5;
@@ -32,7 +32,7 @@ html.light{
   --soft:rgba(0,0,0,.06);
   --soft2:rgba(0,0,0,.03);
   --mapbg:#e8e8ec;
-  --popbg:rgba(255,255,255,.94); --popbd:rgba(0,0,0,.08);
+  --popbg:rgba(255,255,255,.88); --popbd:rgba(0,0,0,.08);
   --busybg:rgba(244,244,247,.66);
   --errbg:#fdeaea; --errbd:#e8b4b4; --errfg:#a12626;
   --tagGridBg:#dce8fd; --tagGridFg:#1f55d6;
