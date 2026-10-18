@@ -3564,7 +3564,7 @@ function bindPopupResize(popupId) {
 /* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
 var LABEL_ON = false;
 var LABEL_MIN_ZOOM = 15;
-var LABEL_MAX = 250;
+var LABEL_MAX = 800;
 function drawLabels() {
   var cv = document.getElementById('labelCanvas');
   if (!cv) return;
@@ -3583,14 +3583,12 @@ function drawLabels() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   var drawn = 0;
-  var placed = []; // 已放置的标签包围盒，用于防重叠
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
     if (!L.visible || !L.ok || L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
-    var step = Math.max(1, Math.floor(n / 5000));
-    for (var i = 0; i < n && drawn < LABEL_MAX; i += step) {
+    for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
       var px = map.getPixelFromCoordinate([x, y]);
@@ -3600,17 +3598,6 @@ function drawLabels() {
       nm = String(nm);
       var tw = ctx.measureText(nm).width;
       var bx = px[0] - tw / 2 - 3, by = px[1] - 20, bw = tw + 6, bh = 16;
-      // 碰撞检测：与已放置的标签重叠则跳过
-      var overlap = false;
-      for (var k = 0; k < placed.length; k++) {
-        var pb = placed[k];
-        if (bx < pb[0] + pb[2] && bx + bw > pb[0] && by < pb[1] + pb[3] && by + bh > pb[1]) {
-          overlap = true; break;
-        }
-      }
-      if (overlap) continue;
-      placed.push([bx, by, bw, bh]);
-      // 半透明圆角底 + 深色字，干净风格
       ctx.fillStyle = 'rgba(255,255,255,.88)';
       if (ctx.roundRect) {
         ctx.beginPath();
