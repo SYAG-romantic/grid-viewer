@@ -3584,17 +3584,21 @@ function drawLabels() {
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
     var azArr = L.azCol ? L.ds.num[L.azCol] : null;
+    var stypeArr = L.ds.stype;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
       var nm = L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 标签放在扇区外边：沿方位角 150 米处
+      // 室分：圆外 45 米处；宏站：沿方位角 150 米处
+      var _sv = stypeArr ? stypeArr[i] : '';
+      var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
+      var _dist = _isIndoor ? 45 : 150;
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
-      var lx = x + Math.sin(rad) * 150;
-      var ly = y + Math.cos(rad) * 150;
+      var lx = x + Math.sin(rad) * _dist;
+      var ly = y + Math.cos(rad) * _dist;
       var px = map.getPixelFromCoordinate([lx, ly]);
       if (!px) continue;
       // 按方位角决定对齐：东向左对齐（向右延伸），西向右对齐（向左延伸），南北居中
