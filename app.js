@@ -6206,11 +6206,17 @@ function bindUI() {
   $('btnPinClear').onclick = function () {
     var hadHl = !!STATE.hlCell;
     STATE.hlCell = null;
+    if (hadHl && typeof drawAll === 'function') {
+      try { drawAll(); } catch (e) {}
+    }
     if (!STATE.pin) {
       if (!hadHl) showErr('当前地图上没有定位标记');
       return;
     }
     STATE.pin = null;
+    if (typeof drawAll === 'function') {
+      try { drawAll(); } catch (e) {}
+    }
     scheduleDraw();
   };
   /* 报错弹窗的关闭 X */
