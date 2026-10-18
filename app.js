@@ -3904,7 +3904,8 @@ function removeLayer(L) {
 /* ---- 面板与当前图层联动 ---- */
 function syncLayerPanel() {
   var L = selected;
-  document.getElementById('curLayerName').textContent = L ? '　' + shortName(L.name) : '';
+  var _cln = document.getElementById('curLayerName');
+  if (_cln) _cln.textContent = L ? '　' + shortName(L.name) : '';
   var isSite = L && L.kind === 'site';
   /* 显示设置模块已删除（v117） */
   var _go = document.getElementById('gridOpts');
@@ -3930,6 +3931,7 @@ function syncLayerPanel() {
     }
   }
   var cityInfo = document.getElementById('cityInfo');
+  if (!cityInfo) return;
   if (cityInfo) {
     cityInfo.textContent = (L && L.kind === 'grid' && L.cities && L.cities.length)
       ? '共 ' + L.cities.length + ' 个' : '';
@@ -3937,6 +3939,7 @@ function syncLayerPanel() {
 
   var condStr = L && L.filters.length ? '（' + L.filters.length + ' 条生效）' : '';
   var filterInfo = document.getElementById('filterInfo');
+  if (!filterInfo) return;
   if (filterInfo) filterInfo.textContent = condStr;
 }
 
@@ -6127,17 +6130,22 @@ function bindUI() {
   });
 
   /* 显示设置（坐标纠偏/描边开关/聚合开关已移除：均为固定自动行为） */
-  $('beamW').oninput = function (e) {
+  var _bw = $('beamW');
+  if (_bw) _bw.oninput = function (e) {
     STATE.beamW = parseInt(e.target.value, 10);
-    $('bwVal').textContent = STATE.beamW + '°';
+    var _bwv = $('bwVal');
+  if (_bwv) _bwv.textContent = STATE.beamW + '°';
     scheduleDraw();
   };
-  $('siteR').oninput = function (e) {
+  var _sr = $('siteR');
+  if (_sr) _sr.oninput = function (e) {
     STATE.siteR = parseInt(e.target.value, 10);
-    $('srVal').textContent = STATE.siteR + ' px';
+    var _srv = $('srVal');
+  if (_srv) _srv.textContent = STATE.siteR + ' px';
     scheduleDraw();
   };
-  $('siteColor').onchange = function (e) {
+  var _sc = $('siteColor');
+  if (_sc) _sc.onchange = function (e) {
     STATE.siteColor = e.target.value;
     for (var i = 0; i < layers.length; i++) {
       if (layers[i].kind === 'site' && layers[i].projected) buildSiteColors(layers[i]);
@@ -6149,7 +6157,8 @@ function bindUI() {
   var gridColorEl = $('gridColor');
   if (gridColorEl) gridColorEl.onchange = function (e) { applyGridColorMode(e.target.value); };
   applyGridColorMode(STATE.gridColorMode);
-  $('btnZoomLayer').onclick = function () { if (selected) fitLayer(selected); };
+  var _bzl = $('btnZoomLayer');
+  if (_bzl) _bzl.onclick = function () { if (selected) fitLayer(selected); };
 
   /* 地市筛选只保留顶部「地市」下拉（侧栏同名筛选已移除） */
 
