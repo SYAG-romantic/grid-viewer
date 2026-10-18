@@ -346,7 +346,17 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 
 #topbar{position:absolute;top:10px;left:calc(var(--mleft) + 10px);right:10px;z-index:5;display:flex;gap:8px;
   transition:left .3s cubic-bezier(.22,.61,.36,1);
-        align-items:center;pointer-events:none;flex-wrap:nowrap}
+        align-items:center;pointer-events:none;flex-wrap:wrap}
+@media (max-width:900px){
+  #topbar{gap:6px}
+  #searchBox{max-width:none;flex:1 1 100%;order:-1}
+  #coord{display:none}
+}
+@media (max-width:600px){
+  #topbar{top:6px;left:6px;right:6px}
+  .dsel-btn{height:30px;padding:0 8px;font-size:12px}
+  #btnLabel{height:30px;padding:0 8px;font-size:12px}
+}
 #topbar>*{pointer-events:auto}
 #searchBox{max-width:340px;background:var(--glass);border:1px solid var(--line);border-radius:9px;height:34px;
   padding:0 7px;display:flex;gap:5px;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,.4);flex:0 1 auto;min-width:0}
@@ -658,11 +668,7 @@ html.light #btnTheme .ic-sun{display:block}
             也可把文件直接拖到右侧地图。支持 csv / txt / geojson / xlsx。
             文件名含「工参/小区/基站」按工参图层加载，含「栅格」按栅格图层加载，其余自动判别。
           </div>
-          <div id="cellSearchBox" style="display:flex;gap:6px;margin:8px 0 4px;">
-        <input id="cellSearchInput" placeholder="搜索小区名/CellID" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);font-size:12.5px;">
-        <button id="cellSearchBtn" class="pri pri">搜索</button>
-      </div>
-      <div id="cellSearchResults" style="max-height:180px;overflow:auto;display:none;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;"></div>
+
       <button id="btnExportSel" style="width:100%;padding:7px;margin:2px 0 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);cursor:pointer;font-size:12.5px;">导出框选小区 (CSV)</button>
 <div id="layerList" style="margin-top:9px"></div>
         </div>
@@ -719,10 +725,11 @@ html.light #btnTheme .ic-sun{display:block}
           <path d="M15 5l-7 7 7 7"/>
         </svg>
       </button>
-      <div id="searchBox">
-        <input type="text" id="jump" placeholder="经度,纬度" title="输入经纬度定位，如 87.4807,43.9161">
-        <button id="btnJump" class="pri">定位</button>
+      <div id="searchBox" style="position:relative">
+        <input type="text" id="jump" placeholder="搜索小区名/CGI/经度,纬度" title="输入小区名、CGI 或经纬度（如 87.4807,43.9161）" style="width:220px">
+        <button id="btnJump" class="pri">搜索</button>
         <button id="btnPinClear" class="dim" title="清除地图上的定位标记">清除</button>
+        <div id="jumpResults" style="display:none;position:absolute;top:38px;left:0;right:0;max-height:320px;overflow:auto;background:var(--popbg);border:1px solid var(--line);border-radius:8px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
       </div>
       <div id="baseBox" class="dsel">
         <button type="button" id="baseBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -754,7 +761,7 @@ html.light #btnTheme .ic-sun{display:block}
       </div>
       <div id="cityBox" class="dsel">
         <button type="button" id="cityBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span>地市</span><b id="cityCur">新疆</b>
+          <span>地市</span><b id="cityCur">全部地市</b>
           <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
                stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 9l6 6 6-6"/>
@@ -764,7 +771,7 @@ html.light #btnTheme .ic-sun{display:block}
           <div class="dsel-h">选择地市</div>
           <button type="button" role="option" data-v="*">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19l6.5-11 4 6.5L16 11l5 8z"/></svg>
-            <span>新疆</span>
+            <span>全部地市</span>
           </button>
           <button type="button" role="option" data-v="6501">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l5-4v17"/><path d="M9 21V4l6 3v14"/><path d="M15 21v-8l5 2v6"/><path d="M2 21h20"/></svg>
