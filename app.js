@@ -3597,11 +3597,11 @@ function drawLabels() {
       var nm = L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 标签放在扇区外端：沿方位角 95 米处
+      // 标签放在扇区外端：沿方位角 115 米处
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
-      var lx = x + Math.sin(rad) * 95;
-      var ly = y + Math.cos(rad) * 95;
+      var lx = x + Math.sin(rad) * 115;
+      var ly = y + Math.cos(rad) * 115;
       var px = map.getPixelFromCoordinate([lx, ly]);
       if (!px) continue;
       // 无描边纯黑字；重叠时沿方位角外推
@@ -3616,15 +3616,19 @@ function drawLabels() {
       }
       var fpx = px[0], fpy = px[1];
       if (overlap) {
-        // 外推 40 米再试
-        var lx2 = x + Math.sin(rad) * 135;
-        var ly2 = y + Math.cos(rad) * 135;
+        // 外推到 160 米再试
+        var lx2 = x + Math.sin(rad) * 160;
+        var ly2 = y + Math.cos(rad) * 160;
         var px2 = map.getPixelFromCoordinate([lx2, ly2]);
         if (px2) { fpx = px2[0]; fpy = px2[1]; }
       }
       var tw2 = ctx.measureText(nm).width;
       placed.push([fpx - tw2 / 2, fpy - 8, tw2, 16]);
-      ctx.fillStyle = '#000';
+      // 细白描边 + 黑字，QGIS 风格
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(255,255,255,.92)';
+      ctx.strokeText(nm, fpx, fpy);
+      ctx.fillStyle = '#111';
       ctx.fillText(nm, fpx, fpy);
       drawn++;
     }
