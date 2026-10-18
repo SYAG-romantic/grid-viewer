@@ -3580,7 +3580,7 @@ function drawLabels() {
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
   ctx.font = '12px sans-serif';
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   var drawn = 0;
   var placed = [];
@@ -3623,7 +3623,7 @@ function drawLabels() {
         if (px2) { fpx = px2[0]; fpy = px2[1]; }
       }
       var tw2 = ctx.measureText(nm).width;
-      placed.push([fpx - tw2 / 2, fpy - 8, tw2, 16]);
+      placed.push([fpx, fpy - 8, tw2, 16]);
       // 细白描边 + 黑字，QGIS 风格
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(255,255,255,.92)';
