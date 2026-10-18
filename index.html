@@ -344,13 +344,12 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .tp-b .k{color:var(--fg3)}
 .tp-b .hl{color:var(--accent);font-weight:500}
 
-#topbar{position:absolute;top:10px;left:calc(var(--mleft) + 10px);right:10px;z-index:5;display:flex;gap:8px;
+#topbar{position:absolute;top:10px;left:calc(var(--mleft) + 10px);right:10px;z-index:5;display:flex;gap:6px;
   transition:left .3s cubic-bezier(.22,.61,.36,1);
-        align-items:center;pointer-events:none;flex-wrap:wrap}
+        align-items:center;pointer-events:none;flex-wrap:nowrap;overflow:hidden}
 @media (max-width:900px){
   #topbar{gap:6px}
   #searchBox{max-width:none;flex:1 1 100%;order:-1}
-  #coord{display:none}
 }
 @media (max-width:600px){
   #topbar{top:6px;left:6px;right:6px}
@@ -365,11 +364,12 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #searchBox input::placeholder{color:var(--fg3)}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
-#coord{background:var(--glass);border:1px solid var(--line);border-radius:9px;height:34px;
-  padding:0 9px;display:flex;align-items:center;align-self:center;
-  font-size:12px;color:var(--fg3);font-variant-numeric:tabular-nums;
-  box-shadow:0 4px 16px rgba(0,0,0,.4);white-space:nowrap;flex:0 0 auto}
-#coord b{color:var(--fg);font-weight:400;font-size:11.5px}
+#coord{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:10;
+  background:var(--glass);border:1px solid var(--line);border-radius:7px;height:24px;
+  padding:0 8px;display:flex;align-items:center;
+  font-size:10.5px;color:var(--fg3);font-variant-numeric:tabular-nums;
+  box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap;pointer-events:none}
+#coord b{color:var(--fg);font-weight:400;font-size:10px}
 /* 底图切换：自定义下拉，弹出/收起带过渡（原生 select 的弹层无法做动画） */
 .dsel{position:relative;flex:0 0 auto}
 .dsel-btn{display:flex;align-items:center;gap:5px;height:34px;padding:0 11px;border-radius:9px;
@@ -426,7 +426,7 @@ button{transition:background .2s,color .2s,border-color .2s,box-shadow .25s,tran
 .dsel-pop button .ramp{width:26px;height:10px;border-radius:2px;flex:0 0 26px;
 .dsel-pop button .dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;display:block;}
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
-@media (max-width: 1100px){#coord{display:none}}
+
 
 /* ---------- 图例（可拖动 / 可缩放） ---------- */
 #legend{--ls:1;position:absolute;right:12px;bottom:12px;z-index:5;background:var(--glass);
@@ -551,7 +551,7 @@ html.light #popup td.hl:last-child{color:var(--accent2)}
 #busy .s{font-size:11.5px;color:var(--fg3);margin-top:8px;font-variant-numeric:tabular-nums}
 
 .ol-zoom{top:auto!important;bottom:26px!important;left:calc(var(--mleft) + 12px)!important;
-  transition:left .3s cubic-bezier(.22,.61,.36,1)}
+  transition:left .3s cubic-bezier(.22,.61,.36,1);z-index:10}
 /* 缩放按钮改成独立圆角方块，圆角与工具条图标按钮统一（9px）。
    覆盖 ol.css 的默认 2px 上下粘连样式，并给玻璃底/边框，视觉与其他按钮一致 */
 .ol-zoom .ol-zoom-in,
@@ -880,7 +880,6 @@ html.light #btnTheme .ic-sun{display:block}
         </div>
       </div>
       <button id="btnLabel" class="toolbtn" title="显示/隐藏小区名注记">注记</button>
-      <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -894,6 +893,7 @@ html.light #btnTheme .ic-sun{display:block}
         </svg>
       </button>
     </div>
+    <div id="coord">经度 <b id="cLon">-</b>　纬度 <b id="cLat">-</b>　层级 <b id="cZoom">-</b></div>
 
     <div id="legend" class="fold">
       <header id="legendHead" title="按住可拖动，单击折叠 / 展开">
