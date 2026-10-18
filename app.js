@@ -1660,6 +1660,49 @@ function drawAll() {
       STATE.coordPick || (STATE.polyPts && STATE.polyPts.length)) drawSelection(ctx, t, w, h);
   if (STATE.measPts && STATE.measPts.length) drawMeasure(ctx, t, w, h);
   if (STATE.pin) drawPin(ctx, t, w, h);
+  if (STATE.hlCell) drawHlCell(ctx, t, w, h);
+}
+
+/* 搜索命中小区红框：持久显示，点清除才消失 */
+function drawHlCell(c, t, w, h) {
+  var hl = STATE.hlCell;
+  var L = hl.L, i = hl.i;
+  if (!L || !L.ok) { STATE.hlCell = null; return; }
+  var x = L.mx[i], y = L.my[i];
+  if (!isFinite(x) || !isFinite(y)) return;
+  var px = t[0] * x + t[2] * y + t[4];
+  var py = t[1] * x + t[3] * y + t[5];
+  // 判断是否室分
+  var stypeArr = L.ds.stype;
+  var sv = stypeArr ? stypeArr[i] : '';
+  var isIndoor = typeof sv === 'string' && /室分|室内/.test(sv);
+  var is5g = (L.rat === '5G');
+  // 实地半径转像素
+  var res = 0;
+  try { res = map.getView().getResolution() || 0; } catch (e) {}
+  var dpr = 1;
+  try { dpr = window.devicePixelRatio || 1; } catch (e) {}
+  var mR = isIndoor ? (is5g ? 25 : 30) : (is5g ? 60 : 80);
+  var rp = (res > 0) ? mR / res * dpr : 40;
+  if (px < -rp - 20 || py < -rp - 20 || px > w + rp + 20 || py > h + rp + 20) return;
+  c.strokeStyle = '#e74c3c';
+  c.lineWidth = 2.5;
+  c.beginPath();
+  if (isIndoor) {
+    c.arc(px, py, rp, 0, Math.PI * 2);
+  } else {
+    var azArr = L.azCol ? L.ds.num[L.azCol] : null;
+    var az = azArr ? azArr[i] : 0;
+    var beam = is5g ? 45 : 35;
+    // 方位角 0=北顺时针，转 canvas 弧度（0=东逆时针为正？canvas 用 0=东顺时针）
+    // 统一：azDeg 北起顺时针 → canvas 角 = azDeg*PI/180 - PI/2
+    var a0 = (az - beam / 2) * Math.PI / 180 - Math.PI / 2;
+    var a1 = (az + beam / 2) * Math.PI / 180 - Math.PI / 2;
+    c.moveTo(px, py);
+    c.arc(px, py, rp, a0, a1);
+    c.closePath();
+  }
+  c.stroke();
 }
 
 
@@ -3514,6 +3557,7 @@ function showJumpResults(res, kw) {
         if (!r) return;
         var x = r.L.mx[r.i], y = r.L.my[r.i];
         if (!isFinite(x) || !isFinite(y)) return;
+        STATE.hlCell = { L: r.L, i: r.i };
         try {
           map.getView().animate({ center: [x, y], zoom: 16, duration: 400 });
         } catch (e) {}
@@ -6146,6 +6190,7 @@ function bindUI() {
       var r0 = exact[0];
       var x0 = r0.L.mx[r0.i], y0 = r0.L.my[r0.i];
       if (isFinite(x0) && isFinite(y0)) {
+        STATE.hlCell = { L: r0.L, i: r0.i };
         try {
           map.getView().animate({ center: [x0, y0], zoom: 16, duration: 400 });
         } catch (e) {}
@@ -6158,7 +6203,12 @@ function bindUI() {
   $('btnJump').onclick = doJump;
   $('jump').onkeydown = function (e) { if (e.key === 'Enter') doJump(); };
   $('btnPinClear').onclick = function () {
-    if (!STATE.pin) { showErr('当前地图上没有定位标记'); return; }
+    var hadHl = !!STATE.hlCell;
+    STATE.hlCell = null;
+    if (!STATE.pin) {
+      if (!hadHl) showErr('当前地图上没有定位标记');
+      return;
+    }
     STATE.pin = null;
     scheduleDraw();
   };
