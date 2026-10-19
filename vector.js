@@ -411,12 +411,30 @@ function parseVectorFiles(files, baseName) {
   } else {
     throw new Error('缺少 .MAP 或 .SHP 文件');
   }
-  // 合并属性
-  var out = new Array(polygons.length);
+  // 合并属性 + 多边形级 bbox 过滤（去掉跨全球的坏多边形）
+  var out = [];
   for (var i = 0; i < polygons.length; i++) {
     var pg = polygons[i];
+    // 算 bbox
+    var minLon = 180, maxLon = -180, minLat = 90, maxLat = -90;
+    var ptCount = 0;
+    for (var ri = 0; ri < pg.rings.length; ri++) {
+      var ring = pg.rings[ri];
+      for (var vi = 0; vi < ring.length; vi++) {
+        var lon = ring[vi][0], lat = ring[vi][1];
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        ptCount++;
+      }
+    }
+    if (!ptCount) continue;
+    var spanLon = maxLon - minLon, spanLat = maxLat - minLat;
+    // 坏多边形：跨度超过 30 度（正常县级边界跨度几度）
+    if (spanLon > 30 || spanLat > 30) continue;
     var pr = (props && pg.recNo >= 1 && pg.recNo <= props.length) ? props[pg.recNo - 1] : {};
-    out[i] = { rings: pg.rings, props: pr };
+    out.push({ rings: pg.rings, props: pr });
   }
   return { name: baseName, polygons: out, fields: propFields };
 }
