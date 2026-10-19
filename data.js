@@ -628,28 +628,19 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
-    /* 后台分块预建搜索小写索引，不阻塞 */
+    /* 同步建精确匹配索引（加载多1-2秒，换搜索毫秒级） */
     if (L.nameCol && ds.str && ds.str[L.nameCol]) {
-      (function (_L, _arr) {
-        var _n = _L.ds.n, _lc = new Array(_n), _i = 0;
-        function _chunk() {
-          try {
-            var _end = Math.min(_i + 20000, _n);
-            for (; _i < _end; _i++) {
-              var _nm = String(_arr[_i] || '').toLowerCase();
-              _lc[_i] = _nm;
-              if (_nm && !_L._nameMap) _L._nameMap = {};
-              if (_nm) _L._nameMap[_nm] = _i;
-            }
-            if (_i < _n) {
-              setTimeout(_chunk, 0);
-            } else {
-              _L._lcNames = _lc;
-            }
-          } catch (e) {}
+      try {
+        var _arr2 = ds.str[L.nameCol], _n2 = ds.n;
+        var _map = {}, _lc2 = new Array(_n2);
+        for (var _j = 0; _j < _n2; _j++) {
+          var _nm2 = String(_arr2[_j] || '').toLowerCase();
+          _lc2[_j] = _nm2;
+          if (_nm2) _map[_nm2] = _j;
         }
-        setTimeout(_chunk, 100);
-      })(L, ds.str[L.nameCol]);
+        L._nameMap = _map;
+        L._lcNames = _lc2;
+      } catch (e) {}
     }
     L.bandCol = pickColumn(ds.columns, ALIAS.band);
     L.tiltCol = pickColumn(ds.columns, ALIAS.tilt);
