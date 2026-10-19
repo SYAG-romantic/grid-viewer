@@ -97,13 +97,25 @@ function parseDbf(buf, encoding, fieldTypes) {
           try { s = String.fromCharCode.apply(null, u8.subarray(b0, e)); } catch (er) { s = ''; }
         } else {
           try { s = dec.decode(u8.subarray(b0, e)); } catch (er2) { s = ''; }
-          /* 有乱码（�）时换另一种编码重试 */
+          /* 有乱码时尝试多种编码，选乱码最少的 */
           if (s.indexOf('\uFFFD') >= 0) {
-            try {
-              var dec2 = new TextDecoder(encoding === 'utf-8' ? 'gbk' : 'utf-8');
-              var s2 = dec2.decode(u8.subarray(b0, e));
-              if (s2.indexOf('\uFFFD') < 0) s = s2;
-            } catch (er3) {}
+            var cands = ['gbk', 'gb18030', 'utf-8', 'big5'];
+            var best = s, bestBad = 9999;
+            /* 数当前乱码数 */
+            var _bad = 0;
+            for (var _bi2 = 0; _bi2 < s.length; _bi2++) if (s.charCodeAt(_bi2) === 0xFFFD) _bad++;
+            bestBad = _bad;
+            for (var _ci = 0; _ci < cands.length; _ci++) {
+              if (cands[_ci] === encoding) continue;
+              try {
+                var _d2 = new TextDecoder(cands[_ci]);
+                var _s2 = _d2.decode(u8.subarray(b0, e));
+                var _b2 = 0;
+                for (var _bj = 0; _bj < _s2.length; _bj++) if (_s2.charCodeAt(_bj) === 0xFFFD) _b2++;
+                if (_b2 < bestBad) { bestBad = _b2; best = _s2; if (_b2 === 0) break; }
+              } catch (_er3) {}
+            }
+            s = best;
           }
           /* 两种编码都有乱码：可能是二进制数字，按长度试读 */
           if (s.indexOf('\uFFFD') >= 0) {
