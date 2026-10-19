@@ -2051,15 +2051,22 @@ function initPopupDrag() {
 /* 边界多边形弹窗：显示属性表 */
 function showVectorPopup(L, pg, pixel) {
   var props = pg.props || {};
-  var title = L.name;
-  // 标题用第一个非空属性值
-  for (var k in props) {
-    var vv = String(props[k] || '').trim();
-    if (vv) { title = vv; break; }
+  /* 标题优先用名称类字段 */
+  var title = props.AREANAME || props.Areaname || props.areaname || props.name || props.NAME || props.Name || L.name;
+  if (!title) {
+    title = L.name;
+    for (var k in props) {
+      var vv = String(props[k] || '').trim();
+      if (vv && vv.indexOf('\uFFFD') < 0) { title = vv; break; }
+    }
+  } else {
+    title = String(title);
   }
   var html = '';
   for (var k2 in props) {
     var v2 = String(props[k2] == null ? '' : props[k2]).trim();
+    /* 跳过乱码字段 */
+    if (v2.indexOf('\uFFFD') >= 0) continue;
     html += '<tr><td>' + esc(k2) + '</td><td>' + esc(v2) + '</td></tr>';
   }
   if (!html) html = '<tr><td colspan="2">无属性</td></tr>';
