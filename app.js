@@ -2937,6 +2937,9 @@ function bindUI() {
     STATE.hlCell = null;
     STATE.hlPoly = null;
     STATE.pin = null;
+    var ji = $('jump');
+    if (ji) ji.value = '';
+    hideJumpResults();
     // 直接清 2D 覆盖层并重绘
     try {
       var _cv = document.getElementById('pts');
