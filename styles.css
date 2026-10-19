@@ -241,8 +241,8 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .layer .meta{font-size:12px;color:var(--fg3);margin-top:3px;padding-left:21px}
 .layer .ops{display:flex;gap:5px;margin-top:6px;padding-left:21px}
 .layer .ops button{padding:2px 7px;font-size:12px;transition:transform .12s ease}
-.layer .ops button:hover{transform:scale(1.08)}
-.layer .ops button:active{transform:scale(.78);color:var(--accent)}
+.layer .ops button:hover{transform:scale(1.05)!important;color:inherit!important;background:var(--glass)!important}
+.layer .ops button:active{transform:scale(.8)!important;color:var(--accent)!important}
 .empty{color:var(--fg3);font-size:12.5px;padding:8px 0;text-align:center}
 
 /* ---------- 条件筛选 ---------- */
