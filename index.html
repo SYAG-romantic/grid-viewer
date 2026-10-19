@@ -115,18 +115,18 @@
         </svg>
       </button>
       <div id="searchBox" style="position:relative;display:flex;align-items:center;gap:4px">
-        <div class="dsel" id="jumpTypeBox">
+        <div class="dsel" id="jumpTypeBox" style="margin-left:-2px">
           <button type="button" id="jumpTypeBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false" style="height:32px">
             <b id="jumpTypeCur">全部</b>
             <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div class="dsel-pop" id="jumpTypePop" role="listbox" style="text-align:left">
             <div class="dsel-h">搜索类型</div>
-            <button type="button" role="option" data-v="auto" style="justify-content:flex-start"><span>全部</span></button>
-            <button type="button" role="option" data-v="cell" style="justify-content:flex-start"><span>小区名</span></button>
-            <button type="button" role="option" data-v="cgi" style="justify-content:flex-start"><span>CGI</span></button>
-            <button type="button" role="option" data-v="ll" style="justify-content:flex-start"><span>经纬度</span></button>
-            <button type="button" role="option" data-v="scene" style="justify-content:flex-start"><span>场景名称</span></button>
+            <button type="button" role="option" data-v="auto" style="justify-content:flex-start"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><span>全部</span></button>
+            <button type="button" role="option" data-v="ll" style="justify-content:flex-start"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="4"/></svg><span>经纬度</span></button>
+            <button type="button" role="option" data-v="cgi" style="justify-content:flex-start"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 9h10M7 13h6"/></svg><span>CGI</span></button>
+            <button type="button" role="option" data-v="cell" style="justify-content:flex-start"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18v-6a2 2 0 012-2h12a2 2 0 012 2v6"/><path d="M2 18h20"/></svg><span>小区名称</span></button>
+            <button type="button" role="option" data-v="scene" style="justify-content:flex-start"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><span>区域场景名称</span></button>
           </div>
         </div>
         <input type="hidden" id="jumpType" value="auto">
@@ -295,9 +295,8 @@
         </button>
         <div class="dsel-pop" id="labelPop" role="listbox">
           <div class="dsel-h">注记显示</div>
-          <button type="button" role="option" data-v="4g"><span>4G小区名</span></button>
-          <button type="button" role="option" data-v="5g"><span>5G小区名</span></button>
-          <button type="button" role="option" data-v="scene"><span>场景名称</span></button>
+          <button type="button" role="option" data-v="4g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18v-6a2 2 0 012-2h12a2 2 0 012 2v6"/><path d="M2 18h20"/></svg><span>4G小区名称</span></button>
+          <button type="button" role="option" data-v="5g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18v-6a2 2 0 012-2h12a2 2 0 012 2v6"/><path d="M2 18h20"/></svg><span>5G小区名称</span></button>
         </div>
       </div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
