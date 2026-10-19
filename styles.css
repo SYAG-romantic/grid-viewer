@@ -13,6 +13,7 @@
   --errbg:#3d1a1a; --errbd:#6e2a2a; --errfg:#f2b8b8;
   --tagGridBg:#1c2c4a; --tagGridFg:#8fb8f5;
   --tagSiteBg:#3d2a16; --tagSiteFg:#e8a866;
+  --tagVecBg:#3a2418; --tagVecFg:#ff9a5c;
   --ok:#6fd598; --warn:#d9a05a;
   --sb:#33333b;
   color-scheme:dark;
@@ -37,6 +38,7 @@ html.light{
   --errbg:#fdeaea; --errbd:#e8b4b4; --errfg:#a12626;
   --tagGridBg:#dce8fd; --tagGridFg:#1f55d6;
   --tagSiteBg:#fbe6cd; --tagSiteFg:#9a5512;
+  --tagVecBg:#ffe4d1; --tagVecFg:#c2571a;
   --ok:#187144; --warn:#9a5a0a;
   --sb:#c6c6d1;
   color-scheme:light;
@@ -230,6 +232,7 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .layer .tag{font-size:11.5px;padding:1px 5px;border-radius:4px;flex:0 0 auto}
 .tag.grid{background:var(--tagGridBg);color:var(--tagGridFg)}
 .tag.site{background:var(--tagSiteBg);color:var(--tagSiteFg)}
+.tag.vector{background:var(--tagVecBg);color:var(--tagVecFg)}
 .layer .meta{font-size:12px;color:var(--fg3);margin-top:3px;padding-left:21px}
 .layer .ops{display:flex;gap:5px;margin-top:6px;padding-left:21px}
 .layer .ops button{padding:2px 7px;font-size:12px}
