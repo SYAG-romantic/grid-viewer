@@ -580,7 +580,7 @@ html.light #btnTheme .ic-sun{display:block}
 
 /* 搜索图标按钮：默认无色，点击时变色 */
 .icon-btn {
-  width: 36px; height: 36px;
+  width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--glass);
   border: 1px solid var(--line);
