@@ -3,10 +3,42 @@
  * 输出统一格式：{ name, polygons: [ { rings: [ [[lon,lat],...], ... ], props: {...} } ] }
  */
 
+/* ---------- MapInfo .TAB 字段声明 ----------
+ * .DAT 里 "Float" 列是 8 字节 IEEE double、"Integer" 列是 4 字节 int，
+ * 全按文本读会得到一串乱码（经纬/纬度/方位角这种重灾区）。
+ * .TAB 的 Definition Table 里写着每列的真实类型，按它解才是对的：
+ *     Shape_Leng Float ;
+ *     NUMBER     Integer Index 1 ;
+ */
+function parseTabFieldTypes(tabText) {
+  var types = {};
+  if (!tabText) return types;
+  var lines = String(tabText).split(/\r?\n/);
+  var inFields = false, left = 0;
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i].trim();
+    if (!inFields) {
+      var m0 = /^Fields\s+(\d+)/i.exec(ln);
+      if (m0) { inFields = true; left = parseInt(m0[1], 10); }
+      continue;
+    }
+    if (!ln) continue;
+    if (/^begin_metadata/i.test(ln)) break;
+    var m = /^(?:"([^"]+)"|(\S+))\s+(\w+)/.exec(ln);
+    if (!m) continue;
+    var nm = (m[1] || m[2] || '').trim();
+    if (nm) types[nm] = (m[3] || '').toLowerCase();
+    if (--left <= 0) break;
+  }
+  return types;
+}
+
 /* ---------- DBF/dBase III 解析（DAT 和 DBF 共用） ---------- */
-function parseDbf(buf, encoding) {
-  var dv = new DataView(buf);
-  var u8 = new Uint8Array(buf);
+/* fieldTypes 可选：{ 字段名: 'float'|'integer'|'smallint'|'logical' }，
+ * 只有 MapInfo 的 .DAT 才需要（它把数值列按二进制写）；标准 .DBF 传 null 即可 */
+function parseDbf(buf, encoding, fieldTypes) {
+  var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
+  var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   var nRec = dv.getUint32(4, true);
   var hLen = dv.getUint16(8, true);
   var rLen = dv.getUint16(10, true);
@@ -34,10 +66,28 @@ function parseDbf(buf, encoding) {
     var rec = {};
     for (var f = 0; f < fields.length; f++) {
       var fd = fields[f];
-      var raw = u8.subarray(base + fd.off, base + fd.off + fd.len);
+      var b0 = base + fd.off, e = b0 + fd.len;
+      var ft = fieldTypes ? fieldTypes[fd.name] : null;
+      /* MapInfo .DAT 的二进制数值列：按 .TAB 声明的类型直接取值 */
+      if (ft === 'float' && fd.len === 8) { rec[fd.name] = dv.getFloat64(b0, true); continue; }
+      if (ft === 'integer' && fd.len === 4) { rec[fd.name] = dv.getInt32(b0, true); continue; }
+      if (ft === 'smallint' && fd.len === 2) { rec[fd.name] = dv.getInt16(b0, true); continue; }
+      if (ft === 'logical' && fd.len === 1) { rec[fd.name] = u8[b0] ? 'T' : 'F'; continue; }
+      /* 文本列：定长字段右侧是空格 / NUL 填充，先把有效区间夹出来再解码；
+         纯 ASCII（数字、编号）直接 fromCharCode，省掉 TextDecoder 的每次固定开销 */
+      while (e > b0 && (u8[e - 1] === 0x20 || u8[e - 1] === 0)) e--;
+      while (b0 < e && u8[b0] === 0x20) b0++;
       var s = '';
-      try { s = dec.decode(raw).trim(); } catch (e) { s = ''; }
-      rec[fd.name] = s;
+      if (e > b0) {
+        var ascii = true;
+        for (var bi = b0; bi < e; bi++) { if (u8[bi] >= 0x80) { ascii = false; break; } }
+        if (ascii) {
+          try { s = String.fromCharCode.apply(null, u8.subarray(b0, e)); } catch (er) { s = ''; }
+        } else {
+          try { s = dec.decode(u8.subarray(b0, e)); } catch (er2) { s = ''; }
+        }
+      }
+      rec[fd.name] = s.trim();
     }
     records[r] = rec;
   }
@@ -182,10 +232,14 @@ function createMapReader(mapBuf) {
     return { compressed: compressed, objMbr: objMbr, secs: secs, pts: pts, maxIdx: maxIdx };
   }
 
+  /* 环 + 经纬度包围盒。包围盒直接取各段头里的 MBR（它就是这些点的真实范围，
+   * 已由 verifyRegion 逐段校验过），不必再把每个点算一遍 —— 十万面几百万点，
+   * 逐点算墨卡托要好几秒，用段 MBR 只要 O(面数)。 */
   function readRegion(objOff) {
     var d = readRegionDetail(objOff);
     if (!d) return null;
     var rings = [];
+    var ix1 = Infinity, iy1 = Infinity, ix2 = -Infinity, iy2 = -Infinity;
     for (var si = 0; si < d.secs.length; si++) {
       var sc = d.secs[si];
       if (sc.nv < 3) continue;                      // 少于 3 个点构不成环
@@ -195,8 +249,20 @@ function createMapReader(mapBuf) {
       var ring = new Array(end - sc.voff);
       for (var k = sc.voff, j = 0; k < end; k++, j++) ring[j] = [toLon(d.pts[k][0]), toLat(d.pts[k][1])];
       rings.push(ring);
+      var m = sc.mbr;
+      if (m[0] < ix1) ix1 = m[0];
+      if (m[1] < iy1) iy1 = m[1];
+      if (m[2] > ix2) ix2 = m[2];
+      if (m[3] > iy2) iy2 = m[3];
     }
-    return rings;
+    if (!rings.length) return { rings: rings, bboxLL: null };
+    /* toLon/toLat 在象限 2/3/4 下会取反，极值要对调后再排序 */
+    var la = toLon(ix1), lb = toLon(ix2), ma = toLat(iy1), mb = toLat(iy2);
+    var bboxLL = [
+      Math.min(la, lb), Math.min(ma, mb),
+      Math.max(la, lb), Math.max(ma, mb)
+    ];
+    return { rings: rings, bboxLL: bboxLL };
   }
 
   /* 自检：段头 MBR 是文件里独立存的一份真值，
@@ -227,23 +293,35 @@ function createMapReader(mapBuf) {
   return { readRegion: readRegion, verifyRegion: verifyRegion, toLon: toLon, toLat: toLat, len: mapLen };
 }
 
-async function parseMapInfo(mapBuf, idBuf) {
+/* onProgress(done, total) 可选：按时间片回调，供界面显示进度
+ * 让出主线程按“已经算了多久”判断，不是每 N 条一次：
+ * 定时器本身有开销（浏览器里 4ms 起），十万条面按 200 条让出一次要 500 多次，
+ * 光等定时器就够把导入时间拖成十几秒。 */
+async function parseMapInfo(mapBuf, idBuf, onProgress) {
   var R = createMapReader(mapBuf);
-  var idBytes = idBuf ? ((idBuf instanceof Uint8Array) ? idBuf : new Uint8Array(idBuf)) : null;
-  if (!idBytes) return [];
+  /* 没有 .ID 就定位不到任何对象，直接说清楚，而不是当成“无多边形” */
+  if (!idBuf) throw new Error('缺少 .ID 索引文件（MapInfo 图层需要 .MAP + .ID，属性需要 .DAT）');
+  var idBytes = (idBuf instanceof Uint8Array) ? idBuf : new Uint8Array(idBuf);
+  if (idBytes.byteLength < 4) throw new Error('.ID 索引文件为空');
   var idDv = new DataView(idBytes.buffer, idBytes.byteOffset, idBytes.byteLength);
   var nId = Math.floor(idBytes.byteLength / 4);
   var polygons = [];
+  var lastYield = Date.now();
   for (var rec = 1; rec <= nId; rec++) {
     var off = idDv.getInt32((rec - 1) * 4, true);
     if (off > 0) {
       try {
-        var rings = R.readRegion(off);
-        if (rings && rings.length) polygons.push({ recNo: rec, rings: rings });
+        var rr = R.readRegion(off);
+        if (rr && rr.rings && rr.rings.length) polygons.push({ recNo: rec, rings: rr.rings, bboxLL: rr.bboxLL });
       } catch (e) { /* 单条记录异常不牵连整层 */ }
     }
-    if (rec % 200 === 0) await new Promise(function (r) { setTimeout(r, 0); });
+    if ((rec & 63) === 0 && Date.now() - lastYield >= 12) {
+      if (onProgress) onProgress(rec, nId);
+      await new Promise(function (r) { setTimeout(r, 0); });
+      lastYield = Date.now();
+    }
   }
+  if (onProgress) onProgress(nId, nId);
   return polygons;
 }
 
@@ -272,41 +350,61 @@ async function verifyMapInfo(mapBuf, idBuf) {
 }
 
 /* ---------- Shapefile .SHP 解析 ---------- */
-async function parseShp(shpBuf) {
-  var dv = new DataView(shpBuf);
+async function parseShp(shpBuf, onProgress) {
+  var bytes = (shpBuf instanceof Uint8Array) ? shpBuf : new Uint8Array(shpBuf);
+  var len = bytes.byteLength;
+  var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (len < 100 || dv.getInt32(0, false) !== 9994) throw new Error('not a Shapefile .SHP file');
   // 头 100 字节：0-3 魔数 9994 (big-endian)，32-35 shapeType (little-endian)
   var shapeType = dv.getInt32(32, true);
   var polygons = [];
   var off = 100;
   var recNo = 0;
-  while (off + 8 <= shpBuf.byteLength) {
-    if (recNo % 100 === 0) await new Promise(function (r) { setTimeout(r, 0); });
+  var lastYield = Date.now();
+  while (off + 8 <= len) {
+    if ((recNo & 63) === 0 && Date.now() - lastYield >= 12) {
+      if (onProgress) onProgress(off, len);
+      await new Promise(function (r) { setTimeout(r, 0); });
+      lastYield = Date.now();
+    }
     var contentLen = dv.getInt32(off + 4, false) * 2; // big-endian，单位 16-bit word
     recNo++;
     var roff = off + 8;
-    if (roff + 4 > shpBuf.byteLength) break;
-    var st = dv.getInt32(roff, true);
-    if (st === 5 || st === 15) { // Polygon / PolygonZ
-      var p = roff + 4 + 32; // 跳过 shape type + bbox
-      var numParts = dv.getInt32(p, true); p += 4;
-      var numPoints = dv.getInt32(p, true); p += 4;
-      var parts = new Array(numParts);
-      for (var i = 0; i < numParts; i++) { parts[i] = dv.getInt32(p, true); p += 4; }
-      var pts = new Array(numPoints);
-      for (var j = 0; j < numPoints; j++) {
-        pts[j] = [dv.getFloat64(p, true), dv.getFloat64(p + 8, true)];
-        p += 16;
+    if (roff + 4 > len || contentLen <= 0) break;
+    try {
+      var st = dv.getInt32(roff, true);
+      if (st === 5 || st === 15) { // Polygon / PolygonZ
+        /* 记录头里带了这条记录的包围盒，直接拿来当 bbox，
+           省掉 App 侧再遍历一遍所有顶点算范围（十万面百万点要好几百毫秒） */
+        var bx1 = dv.getFloat64(roff + 4, true), by1 = dv.getFloat64(roff + 12, true);
+        var bx2 = dv.getFloat64(roff + 20, true), by2 = dv.getFloat64(roff + 28, true);
+        var rbb = [Math.min(bx1, bx2), Math.min(by1, by2), Math.max(bx1, bx2), Math.max(by1, by2)];
+        if (!isFinite(rbb[0]) || !isFinite(rbb[2])) rbb = null;
+        var p = roff + 4 + 32; // 跳过 shape type + bbox
+        var numParts = dv.getInt32(p, true); p += 4;
+        var numPoints = dv.getInt32(p, true); p += 4;
+        if (numParts > 0 && numPoints > 0 && numParts <= numPoints &&
+            p + numParts * 4 + numPoints * 16 <= len) {
+          var parts = new Array(numParts);
+          for (var i = 0; i < numParts; i++) { parts[i] = dv.getInt32(p, true); p += 4; }
+          var pts = new Array(numPoints);
+          for (var j = 0; j < numPoints; j++) {
+            pts[j] = [dv.getFloat64(p, true), dv.getFloat64(p + 8, true)];
+            p += 16;
+          }
+          var rings = [];
+          for (var pi = 0; pi < numParts; pi++) {
+            var start = parts[pi];
+            var end = (pi + 1 < numParts) ? parts[pi + 1] : numPoints;
+            if (start < 0 || end > numPoints || end <= start) continue;
+            var ring = [];
+            for (var ri = start; ri < end; ri++) ring.push(pts[ri]);
+            if (ring.length >= 3) rings.push(ring);
+          }
+          if (rings.length) polygons.push({ recNo: recNo, rings: rings, bboxLL: rbb });
+        }
       }
-      var rings = [];
-      for (var pi = 0; pi < numParts; pi++) {
-        var start = parts[pi];
-        var end = (pi + 1 < numParts) ? parts[pi + 1] : numPoints;
-        var ring = [];
-        for (var ri = start; ri < end; ri++) ring.push(pts[ri]);
-        if (ring.length >= 3) rings.push(ring);
-      }
-      if (rings.length) polygons.push({ recNo: recNo, rings: rings });
-    }
+    } catch (e) { /* 单条记录坏掉不影响整层 */ }
     off = roff + contentLen;
   }
   return { polygons: polygons, shapeType: shapeType };
@@ -444,8 +542,9 @@ function parseMif(mifText, midText) {
 
 /* ---------- 统一入口 ---------- */
 // files: { tab, dat, map, id } 或 { shp, shx, dbf, prj, cpg }
+// onProgress(done, total) 可选：解析进度回调（total 可能为 0，表示未知总量）
 // 返回 { name, polygons: [{ rings, props }] }
-async function parseVectorFiles(files, baseName) {
+async function parseVectorFiles(files, baseName, onProgress) {
   var polygons, props = null, propFields = [];
   if (files.mif) {
     var mr = parseMif(files.mif, files.mid);
@@ -480,15 +579,17 @@ async function parseVectorFiles(files, baseName) {
     }
   } else if (files.map) {
     // MapInfo
-    polygons = await parseMapInfo(files.map, files.id);
+    polygons = await parseMapInfo(files.map, files.id, onProgress);
     if (files.dat) {
-      var dbf = parseDbf(files.dat, 'gbk');
+      /* 有 .TAB 就按它声明的字段类型解（Float/Integer 在 .DAT 里是二进制） */
+      var ftypes = files.tab ? parseTabFieldTypes(files.tab) : null;
+      var dbf = parseDbf(files.dat, 'gbk', ftypes);
       props = dbf.records;
       propFields = dbf.fields;
     }
   } else if (files.shp) {
     // Shapefile
-    var res = await parseShp(files.shp);
+    var res = await parseShp(files.shp, onProgress);
     polygons = res.polygons;
     if (files.dbf) {
       var enc = 'gbk';
@@ -511,7 +612,7 @@ async function parseVectorFiles(files, baseName) {
     var pg = polygons[i];
     if (!pg.rings || !pg.rings.length) continue;
     var pr = (props && pg.recNo >= 1 && pg.recNo <= props.length) ? props[pg.recNo - 1] : {};
-    out.push({ rings: pg.rings, props: pr });
+    out.push({ rings: pg.rings, props: pr, bboxLL: pg.bboxLL || null });
   }
   return { name: baseName, polygons: out, fields: propFields };
 }
