@@ -164,7 +164,7 @@ function showJumpResults(res, kw) {
   if (!res.length) {
     box.style.display = 'none';
     box.innerHTML = '';
-    if (kw.trim()) showErr('未找到匹配的小区或CGI');
+    /* auto 类型打字时不弹"未找到"，只在回车跳转失败时按具体类型提示 */
     return;
   }
   var html = '';
@@ -2905,6 +2905,19 @@ function bindUI() {
         hideJumpResults();
         return;
       }
+    }
+    if (!res.length) {
+      /* 按类型+制式给具体提示 */
+      var _jt2 = ($('jumpType') && $('jumpType').value) || 'auto';
+      var _rat2 = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
+      var _ratTxt = _rat2 === '4G' ? '4G' : (_rat2 === '5G' ? '5G' : '');
+      if (_jt2 === 'cell') showErr('没有找到' + _ratTxt + '小区名称：' + v);
+      else if (_jt2 === 'cgi') showErr('没有找到' + _ratTxt + 'CGI：' + v);
+      else if (_jt2 === 'scene') showErr('没有找到区域场景名称：' + v);
+      else if (_jt2 === 'll') showErr('经纬度格式不对，示例：87.48,43.92');
+      else showErr('没有找到匹配的小区/CGI：' + v);
+      hideJumpResults();
+      return;
     }
     showJumpResults(res, v);
   }
