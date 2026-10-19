@@ -232,6 +232,7 @@ function showJumpResults(res, kw) {
               if (r.pg._ringsMerc.length && r.pg._ringsMerc[0].length >= 3) {
                 STATE.polyPts = r.pg._ringsMerc[0].slice();
                 STATE.polyDone = true;
+                STATE.sceneSel = true;
                 STATE.selBox = null; STATE.selCircle = null;
                 try { applySelection(); } catch (e2) {}
               }
@@ -2100,8 +2101,8 @@ function drawMeasure(c, t, w, h) {
 }
 
 function drawSelection(c, t, w, h) {
-  /* 场景搜索高亮时不画虚线，只留红色边框 */
-  if (typeof STATE !== 'undefined' && STATE.hlPoly) return;
+  /* 场景搜索的选区不画虚线，只留红色边框；手动框选正常画 */
+  if (typeof STATE !== 'undefined' && STATE.sceneSel) return;
   c.save();
   c.setLineDash([6, 4]);
   c.lineWidth = 1.5;
@@ -2539,7 +2540,7 @@ function onToolClick(t, e, p) {
     return;                       /* 拾取工具连续可用，不自动退出 */
   }
   if (t === 'poly') {
-    if (STATE.polyDone) { STATE.polyPts = []; STATE.polyDone = false; STATE.selStats = null; }
+    if (STATE.polyDone) { STATE.polyPts = []; STATE.polyDone = false; STATE.selStats = null; STATE.sceneSel = false; }
     STATE.polyPts.push(p);
     STATE.polyCursor = null;
     updateToolPanel();
@@ -2920,6 +2921,7 @@ function bindUI() {
                   if (_pg._ringsMerc.length && _pg._ringsMerc[0].length >= 3) {
                     STATE.polyPts = _pg._ringsMerc[0].slice();
                     STATE.polyDone = true;
+                    STATE.sceneSel = true;
                     STATE.selBox = null;
                     STATE.selCircle = null;
                     try { applySelection(); } catch (e) {}
@@ -3019,6 +3021,7 @@ function bindUI() {
               if (_spg._ringsMerc.length && _spg._ringsMerc[0].length >= 3) {
                 STATE.polyPts = _spg._ringsMerc[0].slice();
                 STATE.polyDone = true;
+                STATE.sceneSel = true;
                 STATE.selBox = null; STATE.selCircle = null;
                 try { applySelection(); } catch (e2) {}
               }
@@ -3083,7 +3086,7 @@ function bindUI() {
     var hadHl = !!STATE.hlCell || !!STATE.hlPoly;
     var hadPin = !!STATE.pin;
     STATE.hlCell = null;
-    STATE.hlPoly = null; STATE.sceneName = null;
+    STATE.hlPoly = null; STATE.sceneName = null; STATE.sceneSel = false;
     STATE.pin = null;
     var ji = $('jump');
     if (ji) ji.value = '';
