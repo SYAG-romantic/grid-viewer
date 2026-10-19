@@ -2538,12 +2538,14 @@ function drawLabels() {
         if (!vnm) continue;
         var vpx = map.getPixelFromCoordinate([vcx, vcy]);
         if (!vpx) continue;
+        ctx.font = '14px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
         ctx.textAlign = 'center';
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 2.5;
         ctx.strokeText(vnm, vpx[0], vpx[1]);
         ctx.fillStyle = '#8e44ad';
         ctx.fillText(vnm, vpx[0], vpx[1]);
+        ctx.font = '11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
         drawn++;
       }
       continue;
