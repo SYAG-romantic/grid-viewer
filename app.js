@@ -117,7 +117,9 @@ function selectLayer(L) {
   renderLegend();
 }
 
-/* 增强搜索：小区名 + CGI（用字符串数组直读，提速） */
+/* 增强搜索：小区名 + CGI。
+   名字/小写/CGI 三个数组在 makeLayer 时一次建好，这里逐行只做 indexOf，
+   不再逐行 ds.value()（旧代码每行 splitRow 整行，33 万行要三四秒）。 */
 function searchCellsEx(keyword, limit) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
@@ -126,42 +128,23 @@ function searchCellsEx(keyword, limit) {
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
     if (!L.ok || L.kind !== 'site') continue;
-    var ds = L.ds, n = ds.n;
-    var nameCol = L.nameCol;
-    // 预取字符串数组，避免逐行 ds.value()
-    var nameArr = (nameCol && ds.str && ds.str[nameCol]) ? ds.str[nameCol] : null;
+    var n = L.ds.n;
     var lcNames = L._lcNames;
-    var useLc = !!lcNames;
-    var cgiCol = L._cgiCol;
-    if (cgiCol === undefined) {
-      cgiCol = null;
-      for (var ci = 0; ci < ds.columns.length; ci++) {
-        var cn = String(ds.columns[ci] || '').toLowerCase();
-        if (cn === 'cgi' || cn === 'ecgi') { cgiCol = ds.columns[ci]; break; }
-      }
-      L._cgiCol = cgiCol;
-    }
-    var cgiArr = (cgiCol && ds.str && ds.str[cgiCol]) ? ds.str[cgiCol] : null;
+    if (!lcNames) continue;   /* 索引没建好时跳过（与精确跳转一致） */
+    var nameArr = L._nameArr;
+    var cgiArr = L._cgiArr;
     var _layerCount = 0;
     var _perLayer = Math.ceil(_lim / 2);
     for (var i = 0; i < n; i++) {
       if (_layerCount >= _perLayer || results.length >= _lim) break;
-      var nmLc;
-      var nm;
-      if (useLc) {
-        nmLc = lcNames[i];
-        nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
-      } else {
-        nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
-        nmLc = nm.toLowerCase();
-      }
+      var nmLc = lcNames[i];
+      var nm = nameArr ? nameArr[i] : '';
       if (nmLc.indexOf(kw) >= 0) {
-        var cgi = cgiArr ? String(cgiArr[i] || '') : (cgiCol ? String(ds.value(i, cgiCol) || '') : '');
-        results.push({ L: L, i: i, name: nm, cgi: cgi }); _layerCount++;
+        results.push({ L: L, i: i, name: nm, cgi: cgiArr ? cgiArr[i] : '' }); _layerCount++;
         continue;
       }
-      if (cgiArr || cgiCol) {
-        var cg = cgiArr ? String(cgiArr[i] || '') : String(ds.value(i, cgiCol) || '');
+      if (cgiArr) {
+        var cg = cgiArr[i];
         if (cg && cg.toLowerCase().indexOf(kw) >= 0) {
           results.push({ L: L, i: i, name: nm, cgi: cg }); _layerCount++;
         }
@@ -727,6 +710,10 @@ async function doPutCache() {
   var total = 0;
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
+    /* 边界层只有几何、没有 Dataset 快照，不进缓存。
+       以前会走到 putLayerRecords 里 L.ds.n 抛异常，导致恢复条永远挂着一条
+       “部分图层未写入（Cannot read properties of undefined…）”，纯噪音 */
+    if (!L.ds) continue;
     var entry = { id: cacheLyId(i), name: L.name, kind: L.kind, ok: false, err: '', keys: [],
                   rows: L.ds ? L.ds.n : 0, cols: (L.ds && L.ds.columns) ? L.ds.columns.length : 0 };
     try {
@@ -891,99 +878,139 @@ function restoreSessionState() {
 
 /* 清空当前全部图层（「从源更新」前调用，避免叠加重复图层） */
 /* ============================ 矢量边界图层上传 ============================ */
-/* 按文件名分组（去扩展名、大小写不敏感），每组调 parseVectorFiles 建层 */
+/* 按文件名分组建层（去扩展名、大小写不敏感）。
+   与 loadFiles 保持一致的口径：同名图层替换而不是叠加、有进度条、失败逐条报；
+   解析期间置 _vecLoading 防重入（连点两次会把同一层加两遍） */
+var _vecLoading = false;
 async function loadVectorFiles(fileList) {
+  if (_vecLoading) { showErr('上一批边界文件还在解析，请稍候'); return; }
   var files = [];
   for (var i = 0; i < fileList.length; i++) files.push(fileList[i]);
   if (!files.length) return;
-  /* 分组 */
-  var groups = {};
-  var order = [];
-  for (var g = 0; g < files.length; g++) {
-    var f = files[g];
-    var nm = f.name || '';
-    var dot = nm.lastIndexOf('.');
-    var base = (dot >= 0 ? nm.slice(0, dot) : nm).toLowerCase();
-    var ext = (dot >= 0 ? nm.slice(dot + 1) : '').toLowerCase();
-    if (!base || !ext) continue;
-    if (!groups[base]) { groups[base] = { baseName: dot >= 0 ? nm.slice(0, dot) : nm, files: {} }; order.push(base); }
-    groups[base].files[ext] = f;
-  }
-  var okCount = 0, failNames = [];
-  for (var gi = 0; gi < order.length; gi++) {
-    var grp = groups[order[gi]];
-    var fmap = grp.files;
-    var hasMapInfo = !!fmap.map;
-    var hasShp = !!fmap.shp;
-    var hasGeo = !!(fmap.geojson || fmap.json);
-    var hasKml = !!fmap.kml;
-    var hasMif = !!fmap.mif;
-    if (!hasMapInfo && !hasShp && !hasGeo && !hasKml && !hasMif) {
-      failNames.push(grp.baseName + '（缺 .map/.shp/.geojson/.kml/.mif）');
-      continue;
+  _vecLoading = true;
+  var failNames = [], lastOk = null;
+  try {
+    /* 分组 */
+    var groups = {};
+    var order = [];
+    for (var g = 0; g < files.length; g++) {
+      var f = files[g];
+      var nm = f.name || '';
+      var dot = nm.lastIndexOf('.');
+      if (dot <= 0) { failNames.push(nm + '（没有扩展名）'); continue; }
+      var base = nm.slice(0, dot).toLowerCase();
+      var ext = nm.slice(dot + 1).toLowerCase();
+      if (!groups[base]) { groups[base] = { baseName: nm.slice(0, dot), files: {} }; order.push(base); }
+      groups[base].files[ext] = f;
     }
-    try {
-      /* 读文件 */
-      var bufs = {};
-      var keys = Object.keys(fmap);
-      for (var ki = 0; ki < keys.length; ki++) {
-        var _k = keys[ki];
-        if (_k === 'geojson' || _k === 'json' || _k === 'kml') {
-          bufs[_k] = await readFileAsText(fmap[_k], 'utf-8');
-        } else if (_k === 'mif' || _k === 'mid') {
-          bufs[_k] = await readFileAsText(fmap[_k], 'gbk');
-        } else {
-          bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
-        }
-      }
-      var res = await parseVectorFiles(bufs, grp.baseName);
-      if (!res.polygons || !res.polygons.length) {
-        failNames.push(grp.baseName + '（无多边形）');
+    for (var gi = 0; gi < order.length; gi++) {
+      var grp = groups[order[gi]];
+      var fmap = grp.files;
+      var hasMapInfo = !!fmap.map;
+      var hasShp = !!fmap.shp;
+      var hasGeo = !!(fmap.geojson || fmap.json);
+      var hasKml = !!fmap.kml;
+      var hasMif = !!fmap.mif;
+      if (!hasMapInfo && !hasShp && !hasGeo && !hasKml && !hasMif) {
+        failNames.push(grp.baseName + '（缺 .map/.shp/.geojson/.kml/.mif）');
         continue;
       }
-      /* 墨卡托包围盒（供 fitLayer + 视野裁剪） */
-      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (var pi = 0; pi < res.polygons.length; pi++) {
-        var pminX = Infinity, pminY = Infinity, pmaxX = -Infinity, pmaxY = -Infinity;
-        var rings = res.polygons[pi].rings;
-        for (var ri = 0; ri < rings.length; ri++) {
-          var ring = rings[ri];
-          for (var vi = 0; vi < ring.length; vi++) {
-            var mx = lonToMercX(ring[vi][0]), my = latToMercY(ring[vi][1]);
-            if (!isFinite(mx) || !isFinite(my)) continue;
-            if (mx < pminX) pminX = mx; if (mx > pmaxX) pmaxX = mx;
-            if (my < pminY) pminY = my; if (my > pmaxY) pmaxY = my;
+      busy('正在读取边界：' + grp.baseName);
+      await yieldFrame();
+      try {
+        /* 只读用得上的扩展名。.tab 也要读：它声明了各字段的真实类型，
+           缺了它 .DAT 里的 Float/Integer 列会被当成文本读成乱码 */
+        var bufs = {};
+        var need = ['map', 'id', 'dat', 'tab', 'shp', 'shx', 'dbf', 'prj', 'cpg', 'geojson', 'json', 'kml', 'mif', 'mid'];
+        for (var ni = 0; ni < need.length; ni++) {
+          var _k = need[ni];
+          if (!fmap[_k]) continue;
+          if (_k === 'geojson' || _k === 'json' || _k === 'kml') {
+            bufs[_k] = await readFileAsText(fmap[_k], 'utf-8');
+          } else if (_k === 'mif' || _k === 'mid' || _k === 'tab') {
+            bufs[_k] = await readFileAsText(fmap[_k], 'gbk');
+          } else {
+            bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
           }
         }
-        if (pminX <= pmaxX) {
-          res.polygons[pi]._bbox = [pminX, pminY, pmaxX, pmaxY];
-          if (pminX < minX) minX = pminX; if (pmaxX > maxX) maxX = pmaxX;
-          if (pminY < minY) minY = pminY; if (pmaxY > maxY) maxY = pmaxY;
+        busyPhase('正在解析边界：' + grp.baseName);
+        var busyEl = document.getElementById('busyS');
+        var res = await parseVectorFiles(bufs, grp.baseName, function (done, total) {
+          if (!busyEl) return;
+          busyEl.textContent = total
+            ? '已解析 ' + done.toLocaleString() + ' / ' + total.toLocaleString() + ' 个对象'
+            : '已解析 ' + done.toLocaleString() + ' 个对象';
+          document.getElementById('busyBar').style.width =
+            (total ? Math.min(96, done / total * 100) : 50).toFixed(1) + '%';
+        });
+        if (!res || !res.polygons || !res.polygons.length) {
+          failNames.push(grp.baseName + '（无多边形）');
+          continue;
         }
+        /* 同名图层替换：重复导入同一份边界 = 更新，而不是叠两层 */
+        for (var d = layers.length - 1; d >= 0; d--) {
+          if (layers[d].name === grp.baseName) removeLayer(layers[d]);
+        }
+        /* 墨卡托包围盒（供 fitLayer + 视野裁剪）。
+           MapInfo 图层直接用解析时从段头 MBR 得到的经纬度包围盒，只转 4 个角；
+           十万面几百万点逐点算墨卡托要好几年（实测 8s → 50ms 级别） */
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (var pi = 0; pi < res.polygons.length; pi++) {
+          var pgI = res.polygons[pi];
+          var pminX = Infinity, pminY = Infinity, pmaxX = -Infinity, pmaxY = -Infinity;
+          if (pgI.bboxLL) {
+            var bb = pgI.bboxLL;
+            var ax = lonToMercX(bb[0]), bx = lonToMercX(bb[2]);
+            var ay = latToMercY(bb[1]), by = latToMercY(bb[3]);
+            if (isFinite(ax) && isFinite(bx) && isFinite(ay) && isFinite(by)) {
+              pminX = Math.min(ax, bx); pmaxX = Math.max(ax, bx);
+              pminY = Math.min(ay, by); pmaxY = Math.max(ay, by);
+            }
+          } else {
+            var rings = pgI.rings;
+            for (var ri = 0; ri < rings.length; ri++) {
+              var ring = rings[ri];
+              for (var vi = 0; vi < ring.length; vi++) {
+                var mx = lonToMercX(ring[vi][0]), my = latToMercY(ring[vi][1]);
+                if (!isFinite(mx) || !isFinite(my)) continue;
+                if (mx < pminX) pminX = mx; if (mx > pmaxX) pmaxX = mx;
+                if (my < pminY) pminY = my; if (my > pmaxY) pmaxY = my;
+              }
+            }
+          }
+          if (pminX <= pmaxX) {
+            pgI._bbox = [pminX, pminY, pmaxX, pmaxY];
+            if (pminX < minX) minX = pminX; if (pmaxX > maxX) maxX = pmaxX;
+            if (pminY < minY) minY = pminY; if (pmaxY > maxY) maxY = pmaxY;
+          }
+        }
+        var L = {
+          id: 'L' + (layerSeq++),
+          kind: 'vector',
+          name: grp.baseName,
+          polygons: res.polygons,
+          fields: res.fields || [],
+          visible: true,
+          ok: true,
+          bbox: (minX <= maxX) ? [minX, minY, maxX, maxY] : null
+        };
+        layers.push(L);
+        selectLayer(L);
+        lastOk = L;
+      } catch (e) {
+        failNames.push(grp.baseName + '（' + (e && e.message ? e.message : '解析失败') + '）');
       }
-      var L = {
-        id: 'L' + (layerSeq++),
-        kind: 'vector',
-        name: grp.baseName,
-        polygons: res.polygons,
-        fields: res.fields || [],
-        visible: true,
-        ok: true,
-        bbox: (minX <= maxX) ? [minX, minY, maxX, maxY] : null
-      };
-      layers.push(L);
-      selected = L;
-      okCount++;
-    } catch (e) {
-      failNames.push(grp.baseName + '（' + (e && e.message ? e.message : '解析失败') + '）');
+      await yieldFrame();
     }
+    renderLayerList(); renderLegend(); saveViewState();
+    /* 只定位到“最后一个真正加载成功的边界层”，不要拿 layers 末位凑数 */
+    if (lastOk && map) fitLayer(lastOk);
+    scheduleDraw();
+    if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
+  } finally {
+    _vecLoading = false;
+    busyOff();
   }
-  renderLayerList(); renderLegend(); scheduleDraw(); saveViewState();
-  if (okCount > 0) {
-    var last = layers[layers.length - 1];
-    if (last && last.kind === 'vector') fitLayer(last);
-  }
-  if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
 }
 
 function readFileAsText(f, encoding) {
@@ -992,14 +1019,15 @@ function readFileAsText(f, encoding) {
     r.onload = function () {
       var buf = r.result;
       // 文本文件：按指定编码解码（默认 utf-8，mif/mid 用 gbk）
+      // 解码失败要报出来，不能静默给空串（否则上游只会看到“无多边形”）
       try {
         var dec = new TextDecoder(encoding || 'utf-8');
         resolve(dec.decode(buf));
       } catch (e) {
-        resolve('');
+        reject(new Error('文本解码失败（' + (encoding || 'utf-8') + '）'));
       }
     };
-    r.onerror = reject;
+    r.onerror = function () { reject(new Error('读取失败：' + (f && f.name ? f.name : ''))); };
     r.readAsArrayBuffer(f);
   });
 }
@@ -2615,7 +2643,20 @@ function bindUI() {
   $('pickDir').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
   $('pickFiles').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
   $('btnVector').onclick = function () { $('pickVector').click(); };
-  $('pickVector').onchange = function (e) { loadVectorFiles(e.target.files); e.target.value = ''; };
+  $('pickVector').onchange = function (e) {
+    /* 必须先把 FileList 拷成真数组再清空 input：
+       e.target.value = '' 会把 input.files 置空，而 FileList 是“活的”，
+       先清空后读取就一个文件都拿不到 —— 表现就是“选了文件但没任何反应” */
+    var picked = [];
+    var fl = e.target.files;
+    if (fl) for (var fi = 0; fi < fl.length; fi++) picked.push(fl[fi]);
+    e.target.value = '';   /* 清空后允许再次选择同一批文件 */
+    if (!picked.length) { showErr('没有选中任何文件'); return; }
+    loadVectorFiles(picked).catch(function (er) {
+      showErr('边界导入失败：' + (er && er.message ? er.message : er));
+      busyOff();
+    });
+  };
 
   $('btnRestore').onclick = function () {
     /* 从源更新 = 替换：先清掉当前图层，避免与缓存恢复的图层叠加重复 */
