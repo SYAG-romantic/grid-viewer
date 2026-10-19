@@ -589,8 +589,9 @@ html.light #btnTheme .ic-sun{display:block}
   cursor: pointer;
   padding: 0;
 }
-.icon-btn:hover { color: var(--fg); border-color: var(--accent); }
+.icon-btn { transition: transform .12s ease; }
+.icon-btn:hover { transform: scale(1.12); color: var(--fg); }
 .icon-btn:active, .icon-btn.on {
+  transform: scale(0.94);
   color: var(--accent2);
-  border-color: var(--accent2);
 }
