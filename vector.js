@@ -174,7 +174,7 @@ async function parseMapInfo(mapBuf, idBuf) {
 }
 
 /* ---------- Shapefile .SHP 解析 ---------- */
-function parseShp(shpBuf) {
+async function parseShp(shpBuf) {
   var dv = new DataView(shpBuf);
   // 头 100 字节：0-3 魔数 9994 (big-endian)，32-35 shapeType (little-endian)
   var shapeType = dv.getInt32(32, true);
@@ -182,6 +182,7 @@ function parseShp(shpBuf) {
   var off = 100;
   var recNo = 0;
   while (off + 8 <= shpBuf.byteLength) {
+    if (recNo % 100 === 0) await new Promise(function (r) { setTimeout(r, 0); });
     var contentLen = dv.getInt32(off + 4, false) * 2; // big-endian，单位 16-bit word
     recNo++;
     var roff = off + 8;
@@ -395,7 +396,7 @@ async function parseVectorFiles(files, baseName) {
     }
   } else if (files.shp) {
     // Shapefile
-    var res = parseShp(files.shp);
+    var res = await parseShp(files.shp);
     polygons = res.polygons;
     if (files.dbf) {
       var enc = 'gbk';
