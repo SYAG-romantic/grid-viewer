@@ -1596,8 +1596,8 @@ function drawVector(c, L, t, w, h, box) {
   var scale = Math.abs(t0) || 0;                /* px / 墨卡托单位 */
   var minSpan = scale > 0 ? 1 / scale : 0;      /* 1px 对应多少墨卡托单位 */
   c.save();
-  c.strokeStyle = '#ff6b35';
-  c.lineWidth = 1.5;
+  c.strokeStyle = '#9b59b6';
+  c.lineWidth = 2.5;
   c.lineJoin = 'round';
   c.lineCap = 'round';
   c.beginPath();
@@ -2451,7 +2451,7 @@ function renderLegend() {
   if (L && L.kind === 'vector') {
     /* 边界图层：以前落到下面的公共分支，选中的是边界却在显示 RSRP 档位图例 */
     title.textContent = '边界';
-    html += '<div class="li"><i style="background:#ff6b35;border-radius:0"></i><span>多边形边界（描边）</span></div>';
+    html += '<div class="li"><i style="background:#9b59b6;border-radius:0"></i><span>多边形边界（描边）</span></div>';
     body.innerHTML = html;
     sub.textContent = L.polygons ? (L.polygons.length.toLocaleString() + ' 个多边形') : '';
     return;
