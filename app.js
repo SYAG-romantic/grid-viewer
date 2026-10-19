@@ -936,7 +936,7 @@ async function loadVectorFiles(fileList) {
           bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
         }
       }
-      var res = parseVectorFiles(bufs, grp.baseName);
+      var res = await parseVectorFiles(bufs, grp.baseName);
       if (!res.polygons || !res.polygons.length) {
         failNames.push(grp.baseName + '（无多边形）');
         continue;
