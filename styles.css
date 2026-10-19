@@ -389,7 +389,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .icobtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
 border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--fg2);cursor:pointer;
 transition:all .22s cubic-bezier(.4,0,.2,1)}
-.icobtn:hover{background:var(--glass);border-color:var(--line);transform:scale(1.08);
+.icobtn:hover{background:var(--soft);border-color:var(--line);transform:scale(1.08);
 box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .icobtn:active{transform:scale(.78);color:var(--accent)}
 .dsel-btn:hover,.themebtn:hover{transform:scale(1.06)!important;background:var(--glass)!important;border-color:var(--line)!important;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
