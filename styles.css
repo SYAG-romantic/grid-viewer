@@ -222,7 +222,7 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 
 /* ---------- 图层列表 ---------- */
 #layerList{margin-top:4px}
-.layer{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin-bottom:6px}
+.layer{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin-bottom:6px}
 .layer.sel{border-color:var(--accent)}
 .layer .lt{display:flex;align-items:center;gap:7px}
 .layer .lt input{accent-color:var(--accent);margin:0;cursor:pointer}
