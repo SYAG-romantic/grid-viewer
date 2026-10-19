@@ -125,13 +125,8 @@ function searchCellsEx(keyword) {
     var nameCol = L.nameCol;
     // 预取字符串数组，避免逐行 ds.value()
     var nameArr = (nameCol && ds.str && ds.str[nameCol]) ? ds.str[nameCol] : null;
-    /* 缓存小写名字数组，避免每次搜索重复 toLowerCase */
-    if (nameCol && !L._lcNames && nameArr) {
-      var _lc = new Array(n);
-      for (var _li = 0; _li < n; _li++) _lc[_li] = String(nameArr[_li] || '').toLowerCase();
-      L._lcNames = _lc;
-    }
     var lcNames = L._lcNames;
+    var useLc = !!lcNames;
     var cgiCol = L._cgiCol;
     if (cgiCol === undefined) {
       cgiCol = null;
@@ -145,9 +140,15 @@ function searchCellsEx(keyword) {
     var _layerCount = 0;
     for (var i = 0; i < n; i++) {
       if (_layerCount >= 60 || results.length >= 120) break;
-      var nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
-      var nmLc = lcNames ? lcNames[i] : nm.toLowerCase();
+      var nmLc;
+      if (useLc) {
+        nmLc = lcNames[i];
+      } else {
+        var _nm = nameArr ? nameArr[i] : null;
+        nmLc = String(_nm || '').toLowerCase();
+      }
       if (nmLc.indexOf(kw) >= 0) {
+        var nm = nameArr ? String(nameArr[i] || '') : '';
         var cgi = cgiArr ? String(cgiArr[i] || '') : (cgiCol ? String(ds.value(i, cgiCol) || '') : '');
         results.push({ L: L, i: i, name: nm, cgi: cgi }); _layerCount++;
         continue;
