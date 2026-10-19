@@ -135,18 +135,19 @@ function searchCellsEx(keyword) {
       L._cgiCol = cgiCol;
     }
     var cgiArr = (cgiCol && ds.str && ds.str[cgiCol]) ? ds.str[cgiCol] : null;
+    var _layerCount = 0;
     for (var i = 0; i < n; i++) {
-      if (results.length >= 200) break;
+      if (_layerCount >= 60 || results.length >= 120) break;
       var nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
       if (nm.toLowerCase().indexOf(kw) >= 0) {
         var cgi = cgiArr ? String(cgiArr[i] || '') : (cgiCol ? String(ds.value(i, cgiCol) || '') : '');
-        results.push({ L: L, i: i, name: nm, cgi: cgi });
+        results.push({ L: L, i: i, name: nm, cgi: cgi }); _layerCount++;
         continue;
       }
       if (cgiArr || cgiCol) {
         var cg = cgiArr ? String(cgiArr[i] || '') : String(ds.value(i, cgiCol) || '');
         if (cg && cg.toLowerCase().indexOf(kw) >= 0) {
-          results.push({ L: L, i: i, name: nm, cgi: cg });
+          results.push({ L: L, i: i, name: nm, cgi: cg }); _layerCount++;
         }
       }
     }
@@ -2576,7 +2577,7 @@ function bindUI() {
         setPin(lon, lat);
         map.getView().animate({
           center: [lonToMercX(lon), latToMercY(lat)],
-          zoom: Math.max(map.getView().getZoom(), 16),
+          zoom: Math.max(map.getView().getZoom(), 14.5),
           duration: 320
         });
         hideJumpResults();
@@ -2599,7 +2600,7 @@ function bindUI() {
       if (isFinite(x0) && isFinite(y0)) {
         STATE.hlCell = { L: r0.L, i: r0.i };
         try {
-          map.getView().animate({ center: [x0, y0], zoom: 16, duration: 400 });
+          map.getView().animate({ center: [x0, y0], zoom: 14.5, duration: 400 });
         } catch (e) {}
         hideJumpResults();
         return;
