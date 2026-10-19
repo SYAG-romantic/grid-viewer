@@ -168,6 +168,27 @@ function zoomToCity() {
     if (b[0] < x0) x0 = b[0]; if (b[2] > x1) x1 = b[2];
     if (b[1] < y0) y0 = b[1]; if (b[3] > y1) y1 = b[3];
   }
+  /* 边界层：按 citySel 过滤多边形算范围 */
+  var cityName = CITY_NAMES[v] || v;
+  for (var vi = 0; vi < layers.length; vi++) {
+    var vL = layers[vi];
+    if (!vL.visible || !vL.ok || vL.kind !== 'vector' || !vL.polygons) continue;
+    for (var pi = 0; pi < vL.polygons.length; pi++) {
+      var pg = vL.polygons[pi];
+      var props = pg.props || {};
+      var hit = false;
+      for (var pk in props) {
+        if (String(props[pk]).indexOf(cityName) >= 0) { hit = true; break; }
+      }
+      if (!hit) continue;
+      var bb = pg._bbox;
+      if (bb) {
+        found = true;
+        if (bb[0] < x0) x0 = bb[0]; if (bb[2] > x1) x1 = bb[2];
+        if (bb[1] < y0) y0 = bb[1]; if (bb[3] > y1) y1 = bb[3];
+      }
+    }
+  }
   if (!found) return;
   var pad = Math.max(x1 - x0, y1 - y0) * 0.08 + 1000;
   try {
