@@ -46,7 +46,7 @@ function parseTabFieldTypes(tabText) {
 }
 
 /* ---------- DBF/dBase III 解析（DAT 和 DBF 共用） ---------- */
-/* fieldTypes 可选：{ 字段名: 'float'|'integer'|'smallint'|'logical' }，
+/* fieldTypes 可选：{ 字段名: 'float'|'largeint'|'integer'|'smallint'|'logical' }，
  * 只有 MapInfo 的 .DAT 才需要（它把数值列按二进制写）；标准 .DBF 传 null 即可 */
 function parseDbf(buf, encoding, fieldTypes) {
   var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
@@ -82,6 +82,10 @@ function parseDbf(buf, encoding, fieldTypes) {
       var ft = fieldTypes ? fieldTypes[fd.name] : null;
       /* MapInfo .DAT 的二进制数值列：按 .TAB 声明的类型直接取值 */
       if (ft === 'float' && fd.len === 8) { rec[fd.name] = dv.getFloat64(b0, true); continue; }
+      if ((ft === 'largeint' || ft === 'bigint') && fd.len === 8) {
+        try { rec[fd.name] = String(dv.getBigInt64(b0, true)); } catch (e) { rec[fd.name] = ''; }
+        continue;
+      }
       if (ft === 'integer' && fd.len === 4) { rec[fd.name] = dv.getInt32(b0, true); continue; }
       if (ft === 'smallint' && fd.len === 2) { rec[fd.name] = dv.getInt16(b0, true); continue; }
       if (ft === 'logical' && fd.len === 1) { rec[fd.name] = u8[b0] ? 'T' : 'F'; continue; }
