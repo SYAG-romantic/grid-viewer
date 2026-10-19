@@ -2593,10 +2593,26 @@ function bindUI() {
         return;
       }
     }
-    // 2. 搜索小区名 / CGI
-    var res = searchCellsEx(v);
-    // 精确唯一命中直接飞，不用弹窗确认
+    // 2. 先查精确匹配（哈希表，毫秒级）
     var kwLow = v.toLowerCase();
+    for (var li = 0; li < layers.length; li++) {
+      var L = layers[li];
+      if (!L.ok || L.kind !== 'site' || !L._nameMap) continue;
+      var _idx = L._nameMap[kwLow];
+      if (_idx !== undefined) {
+        var x0 = L.mx[_idx], y0 = L.my[_idx];
+        if (isFinite(x0) && isFinite(y0)) {
+          STATE.hlCell = { L: L, i: _idx };
+          try {
+            map.getView().animate({ center: [x0, y0], zoom: 17, duration: 400 });
+          } catch (e) {}
+          hideJumpResults();
+          return;
+        }
+      }
+    }
+    // 3. 模糊搜索
+    var res = searchCellsEx(v);
     var exact = [];
     for (var ei = 0; ei < res.length; ei++) {
       var rn = String(res[ei].name || '').toLowerCase();
@@ -2619,6 +2635,17 @@ function bindUI() {
   }
   $('btnJump').onclick = doJump;
   $('jump').onkeydown = function (e) { if (e.key === 'Enter') doJump(); };
+  /* 输入时防抖模糊搜索（不点搜索也出下拉） */
+  var _jumpDeb = null;
+  $('jump').oninput = function () {
+    if (_jumpDeb) clearTimeout(_jumpDeb);
+    var v = $('jump').value.trim();
+    if (v.length < 2) { hideJumpResults(); return; }
+    _jumpDeb = setTimeout(function () {
+      var res = searchCellsEx(v);
+      showJumpResults(res, v);
+    }, 350);
+  };
   /* 点击空白处关闭搜索结果下拉 */
   document.addEventListener('click', function (e) {
     var box = document.getElementById('jumpResults');
