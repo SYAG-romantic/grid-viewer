@@ -170,21 +170,32 @@ function zoomToCity() {
     if (b[0] < x0) x0 = b[0]; if (b[2] > x1) x1 = b[2];
     if (b[1] < y0) y0 = b[1]; if (b[3] > y1) y1 = b[3];
   }
-  /* 边界层：按 citySel 过滤多边形算范围（名称+代码） */
+  /* 边界层：按 citySel 过滤多边形算范围（CITYID优先） */
   var cityName = CITY_NAMES[v] || v;
+  function _zCityMatch(_props) {
+    var hasId = false, idMatch = false;
+    for (var _k in _props) {
+      if (/cityid/i.test(_k)) {
+        hasId = true;
+        if (String(_props[_k] || '') === String(v)) idMatch = true;
+      }
+    }
+    if (hasId) return idMatch;
+    for (var _k2 in _props) {
+      var _kl = _k2.toLowerCase();
+      if (_kl === 'f' || _kl === 'city' || _kl === 'cityname' || _kl.indexOf('city') === 0) {
+        var _vv = String(_props[_k2] || '');
+        if (_vv === cityName || _vv.indexOf(cityName) === 0) return true;
+      }
+    }
+    return false;
+  }
   for (var vi = 0; vi < layers.length; vi++) {
     var vL = layers[vi];
     if (!vL.visible || !vL.ok || vL.kind !== 'vector' || !vL.polygons) continue;
     for (var pi = 0; pi < vL.polygons.length; pi++) {
       var pg = vL.polygons[pi];
-      var props = pg.props || {};
-      var hit = false;
-      for (var pk in props) {
-        var _pv2 = String(props[pk] || '');
-        if (_pv2.indexOf(cityName) >= 0) { hit = true; break; }
-        if (/cityid/i.test(pk) && _pv2 === String(v)) { hit = true; break; }
-      }
-      if (!hit) continue;
+      if (!_zCityMatch(pg.props || {})) continue;
       var bb = pg._bbox;
       if (bb) {
         found = true;
