@@ -710,9 +710,23 @@ async function doPutCache() {
   var total = 0;
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
-    /* 边界层只有几何、没有 Dataset 快照，不进缓存。
-       以前会走到 putLayerRecords 里 L.ds.n 抛异常，导致恢复条永远挂着一条
-       “部分图层未写入（Cannot read properties of undefined…）”，纯噪音 */
+    /* 边界层：序列化 polygons 存 JSON */
+    if (L.kind === 'vector') {
+      var ventry = { id: cacheLyId(i), name: L.name, kind: 'vector', ok: false, err: '', keys: [],
+                     rows: L.polygons ? L.polygons.length : 0, cols: 0 };
+      try {
+        var vkey = cacheLyId(i) + '/vec';
+        // 只存 rings 和 props，去掉 _bbox（恢复时重算）
+        var vdata = L.polygons.map(function (pg) { return { rings: pg.rings, props: pg.props }; });
+        await idbGuard(idbSet(vkey, JSON.stringify(vdata), IDB_CACHE), 120000, '写入边界层');
+        ventry.keys = [vkey]; ventry.ok = true;
+        ventry.mb = Math.round(JSON.stringify(vdata).length / 1048576);
+      } catch (e) {
+        ventry.err = (e && e.message) ? e.message : String(e);
+      }
+      manifest.layers.push(ventry);
+      continue;
+    }
     if (!L.ds) continue;
     var entry = { id: cacheLyId(i), name: L.name, kind: L.kind, ok: false, err: '', keys: [],
                   rows: L.ds ? L.ds.n : 0, cols: (L.ds && L.ds.columns) ? L.ds.columns.length : 0 };
@@ -1062,6 +1076,52 @@ async function restoreFromCache(cache) {
         await yieldFrame();
         if (!e.ok) { failed.push((e.name || '图层').slice(0, 16)); continue; }
         try {
+          /* 边界层：从 JSON 恢复 */
+          if (e.kind === 'vector') {
+            var vjson = await idbGet(e.id + '/vec', IDB_CACHE);
+            if (vjson) {
+              var vdata = JSON.parse(vjson);
+              // 重算 bbox
+              for (var vi = 0; vi < vdata.length; vi++) {
+                var pg = vdata[vi];
+                var pminX = Infinity, pminY = Infinity, pmaxX = -Infinity, pmaxY = -Infinity;
+                for (var vri = 0; vri < pg.rings.length; vri++) {
+                  var ring = pg.rings[vri];
+                  for (var vvi = 0; vvi < ring.length; vvi++) {
+                    var mx = lonToMercX(ring[vvi][0]), my = latToMercY(ring[vvi][1]);
+                    if (!isFinite(mx) || !isFinite(my)) continue;
+                    if (mx < pminX) pminX = mx; if (mx > pmaxX) pmaxX = mx;
+                    if (my < pminY) pminY = my; if (my > pmaxY) pmaxY = my;
+                  }
+                }
+                if (pminX <= pmaxX) pg._bbox = [pminX, pminY, pmaxX, pmaxY];
+              }
+              var vminX = Infinity, vminY = Infinity, vmaxX = -Infinity, vmaxY = -Infinity;
+              for (var vj = 0; vj < vdata.length; vj++) {
+                var vb = vdata[vj]._bbox;
+                if (vb) {
+                  if (vb[0] < vminX) vminX = vb[0]; if (vb[2] > vmaxX) vmaxX = vb[2];
+                  if (vb[1] < vminY) vminY = vb[1]; if (vb[3] > vmaxY) vmaxY = vb[3];
+                }
+              }
+              var vL = {
+                id: 'L' + (layerSeq++),
+                kind: 'vector',
+                name: e.name,
+                polygons: vdata,
+                fields: [],
+                visible: true,
+                ok: true,
+                bbox: (vminX <= vmaxX) ? [vminX, vminY, vmaxX, vmaxY] : null
+              };
+              layers.push(vL);
+              if (!selected) selectLayer(vL);
+              restoredNames.push((e.name || '边界').slice(0, 16) + '（' + vdata.length.toLocaleString() + ' 个多边形）');
+            } else {
+              failed.push((e.name || '边界').slice(0, 16) + '（缓存数据丢失）');
+            }
+            continue;
+          }
           var meta = await idbGet(e.id + '/meta', IDB_CACHE);
           var ds = new Dataset(meta.name);
           ds.n = meta.n; ds.columns = meta.columns;
