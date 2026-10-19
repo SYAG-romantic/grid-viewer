@@ -281,7 +281,8 @@ button.tbtn{width:34px;height:34px;padding:0;display:flex;align-items:center;jus
   transition:transform .24s cubic-bezier(.34,1.56,.64,1),
              color .16s ease, background-color .16s ease,
              border-color .16s ease, box-shadow .24s ease}
-button.tbtn:hover{color:var(--fg)}
+button.tbtn:hover{transform:scale(1.06)}
+button.tbtn:active{transform:scale(.96)}
 /* 选中只换配色，不改尺寸——否则选中的那个会比别的按钮大一圈，看着不齐 */
 button.tbtn.on{color:var(--accent2);background:var(--glass);border-color:var(--accent2)}
 /* 悬停项明显放大、相邻项轻微放大 —— 模仿 Dock 的距离衰减，但只用类切换、不逐帧计算 */
@@ -384,8 +385,9 @@ transition:all .22s cubic-bezier(.4,0,.2,1)}
 .icobtn:hover{background:var(--hover);border-color:var(--hoverbd);color:var(--accent);transform:translateY(-1px);
 box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .icobtn:active{transform:translateY(0) scale(.96);box-shadow:0 1px 4px rgba(0,0,0,.15)}
-.dsel-btn:hover,.themebtn:hover{box-shadow:0 4px 14px rgba(0,0,0,.16);transform:translateY(-1px)}
-.dsel-btn:active,.themebtn:active{transform:translateY(0) scale(.97)}
+.dsel-btn:hover,.themebtn:hover{transform:scale(1.06)}
+.dsel-btn:active,.themebtn:active{transform:scale(.96)}
+
 .dsel-pop button{transition:background .18s,transform .15s;text-shadow:0 1px 3px rgba(0,0,0,.25)}
 .dsel-pop button:hover{transform:translateX(2px)}
 #legend{border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.22);transition:box-shadow .3s}
