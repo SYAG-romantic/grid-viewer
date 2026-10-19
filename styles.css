@@ -592,7 +592,7 @@ html.light #btnTheme .ic-sun{display:block}
   padding: 0;
 }
 .icon-btn { transition: transform .12s ease; }
-.icon-btn:hover { transform: scale(1.12)!important; background:transparent!important; color:inherit!important; }
+.icon-btn:hover { transform: scale(1.12)!important; background:var(--glass)!important; color:var(--fg)!important; }
 .icon-btn:active, .icon-btn.on {
   transform: scale(0.94);
   color: var(--accent2);
