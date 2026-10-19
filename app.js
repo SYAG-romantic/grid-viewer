@@ -915,16 +915,22 @@ async function loadVectorFiles(fileList) {
     var fmap = grp.files;
     var hasMapInfo = !!fmap.map;
     var hasShp = !!fmap.shp;
-    if (!hasMapInfo && !hasShp) {
-      failNames.push(grp.baseName + '（缺 .map/.shp）');
+    var hasGeo = !!(fmap.geojson || fmap.json);
+    if (!hasMapInfo && !hasShp && !hasGeo) {
+      failNames.push(grp.baseName + '（缺 .map/.shp/.geojson）');
       continue;
     }
     try {
-      /* 读 ArrayBuffer */
+      /* 读文件 */
       var bufs = {};
       var keys = Object.keys(fmap);
       for (var ki = 0; ki < keys.length; ki++) {
-        bufs[keys[ki]] = await readFileAsArrayBuffer(fmap[keys[ki]]);
+        var _k = keys[ki];
+        if (_k === 'geojson' || _k === 'json') {
+          bufs.geojson = await readFileAsText(fmap[_k]);
+        } else {
+          bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
+        }
       }
       var res = parseVectorFiles(bufs, grp.baseName);
       if (!res.polygons || !res.polygons.length) {
@@ -976,6 +982,14 @@ async function loadVectorFiles(fileList) {
   if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
 }
 
+function readFileAsText(f) {
+  return new Promise(function (resolve, reject) {
+    var r = new FileReader();
+    r.onload = function () { resolve(r.result); };
+    r.onerror = reject;
+    r.readAsText(f, 'utf-8');
+  });
+}
 function readFileAsArrayBuffer(file) {
   return new Promise(function (resolve, reject) {
     var rd = new FileReader();
