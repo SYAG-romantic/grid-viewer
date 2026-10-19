@@ -215,7 +215,7 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-            STATE.hlPoly = { L: r.L, pg: r.pg }; STATE.sceneName = String(r.name || '');
+            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = String(_rp.name || _rp.NAME || _rp.Name || r.name || '');
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
@@ -2928,7 +2928,15 @@ function bindUI() {
                     });
                   }
                   if (_pg._ringsMerc.length && _pg._ringsMerc[0].length >= 3) {
-                    STATE.polyPts = _pg._ringsMerc[0].slice();
+                    var _ring = _pg._ringsMerc[0];
+                    /* 简化：超过 20 个点时抽稀，拖动不卡 */
+                    if (_ring.length > 20) {
+                      var _step = Math.ceil(_ring.length / 20);
+                      var _simp = [];
+                      for (var _si = 0; _si < _ring.length; _si += _step) _simp.push(_ring[_si]);
+                      _ring = _simp;
+                    }
+                    STATE.polyPts = _ring;
                     STATE.polyDone = true;
                     STATE.sceneSel = true;
                     STATE.selBox = null;
@@ -3015,7 +3023,7 @@ function bindUI() {
           var _sb = _spg._bbox;
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
-            STATE.hlPoly = { L: _sL, pg: _spg }; STATE.sceneName = String(_sres[0].name || '');
+            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = String(_sp.name || _sp.NAME || _sp.Name || _sres[0].name || '');
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             var _hg = false;
             for (var _hgi = 0; _hgi < layers.length; _hgi++) {
