@@ -141,7 +141,8 @@ function applyToolbarCity() {
 /* 缩放到指定地市：汇总所有可见图层在该地市的数据范围 */
 function zoomToCity() {
   var v = STATE.cityFilter;
-  if (!v || v === '*' || !map) return;
+  if (!v || !map) return;
+  if (v === '*') { try { zoomToAll(); } catch (e) {} return; }
   var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   var found = false;
   for (var i = 0; i < layers.length; i++) {
