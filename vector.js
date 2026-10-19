@@ -195,7 +195,28 @@ function parseShp(shpBuf) {
 // 返回 { name, polygons: [{ rings, props }] }
 function parseVectorFiles(files, baseName) {
   var polygons, props = null, propFields = [];
-  if (files.map) {
+  if (files.geojson) {
+    // GeoJSON FeatureCollection
+    var gj = JSON.parse(files.geojson);
+    polygons = [];
+    var feats = gj.features || [];
+    for (var fi = 0; fi < feats.length; fi++) {
+      var g = feats[fi].geometry;
+      if (!g) continue;
+      var rings = [];
+      if (g.type === 'Polygon') {
+        for (var ri = 0; ri < g.coordinates.length; ri++) rings.push(g.coordinates[ri]);
+      } else if (g.type === 'MultiPolygon') {
+        for (var pi = 0; pi < g.coordinates.length; pi++)
+          for (var rj = 0; rj < g.coordinates[pi].length; rj++) rings.push(g.coordinates[pi][rj]);
+      }
+      if (rings.length) polygons.push({ recNo: fi + 1, rings: rings });
+    }
+    if (feats.length) {
+      props = feats.map(function (f) { return f.properties || {}; });
+      propFields = Object.keys(props[0] || {});
+    }
+  } else if (files.map) {
     // MapInfo
     polygons = parseMapInfo(files.map, files.id);
     if (files.dat) {
