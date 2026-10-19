@@ -1596,18 +1596,6 @@ function makeSelTest(sel) {
 function currentSel() {
   if (STATE.selCircle) return { type: 'circle', c: STATE.selCircle.c, r: STATE.selCircle.r };
   if (STATE.polyDone && STATE.polyPts.length >= 3) {
-    /* 场景选区拖动时用包围盒（快），停下后用多边形（准） */
-    if (STATE.sceneSel && STATE._dragging) {
-      var _bx0 = Infinity, _by0 = Infinity, _bx1 = -Infinity, _by1 = -Infinity;
-      for (var _bi = 0; _bi < STATE.polyPts.length; _bi++) {
-        var _bp = STATE.polyPts[_bi];
-        if (_bp[0] < _bx0) _bx0 = _bp[0];
-        if (_bp[0] > _bx1) _bx1 = _bp[0];
-        if (_bp[1] < _by0) _by0 = _bp[1];
-        if (_bp[1] > _by1) _by1 = _bp[1];
-      }
-      return { type: 'rect', b: [_bx0, _by0, _bx1, _by1] };
-    }
     return { type: 'poly', pts: STATE.polyPts.map(function (p) { return [p[0], p[1]]; }) };
   }
   if (STATE.selBox) return { type: 'rect', b: STATE.selBox.slice() };
