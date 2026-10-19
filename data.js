@@ -635,7 +635,12 @@ function makeLayer(ds, kind, skipCity) {
         function _chunk() {
           try {
             var _end = Math.min(_i + 20000, _n);
-            for (; _i < _end; _i++) _lc[_i] = String(_arr[_i] || '').toLowerCase();
+            for (; _i < _end; _i++) {
+              var _nm = String(_arr[_i] || '').toLowerCase();
+              _lc[_i] = _nm;
+              if (_nm && !_L._nameMap) _L._nameMap = {};
+              if (_nm) _L._nameMap[_nm] = _i;
+            }
             if (_i < _n) {
               setTimeout(_chunk, 0);
             } else {
