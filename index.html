@@ -115,13 +115,21 @@
         </svg>
       </button>
       <div id="searchBox" style="position:relative;display:flex;align-items:center;gap:4px">
-        <select id="jumpType" title="搜索类型" style="height:32px;border-radius:8px;background:var(--glass);border:1px solid var(--line);color:var(--fg);font-size:11px;padding:0 2px;max-width:64px">
-          <option value="auto">全部</option>
-          <option value="cell">小区名</option>
-          <option value="cgi">CGI</option>
-          <option value="ll">经纬度</option>
-          <option value="scene">场景名称</option>
-        </select>
+        <div class="dsel" id="jumpTypeBox">
+          <button type="button" id="jumpTypeBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false" style="height:32px">
+            <b id="jumpTypeCur">全部</b>
+            <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="dsel-pop" id="jumpTypePop" role="listbox" style="display:none">
+            <div class="dsel-h">搜索类型</div>
+            <button type="button" role="option" data-v="auto"><span>全部</span></button>
+            <button type="button" role="option" data-v="cell"><span>小区名</span></button>
+            <button type="button" role="option" data-v="cgi"><span>CGI</span></button>
+            <button type="button" role="option" data-v="ll"><span>经纬度</span></button>
+            <button type="button" role="option" data-v="scene"><span>场景名称</span></button>
+          </div>
+        </div>
+        <input type="hidden" id="jumpType" value="auto">
         <input type="text" id="jump" placeholder="" title="输入小区名、CGI 或经纬度" style="width:90px;height:32px;font-size:12px">
         <button id="btnJump" class="icon-btn" title="搜索">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
