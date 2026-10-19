@@ -229,7 +229,10 @@ function zoomToAll() {
     if (b[0] < x0) x0 = b[0]; if (b[2] > x1) x1 = b[2];
     if (b[1] < y0) y0 = b[1]; if (b[3] > y1) y1 = b[3];
   }
-  if (!found) return;
+  if (!found) {
+    try { map.getView().fit([8100000, 4000000, 10700000, 6200000], { duration: 400 }); } catch (e) {}
+    return;
+  }
   var pad = Math.max(x1 - x0, y1 - y0) * 0.08 + 1000;
   try {
     map.getView().fit([x0 - pad, y0 - pad, x1 + pad, y1 + pad], { duration: 400, maxZoom: 12 });
