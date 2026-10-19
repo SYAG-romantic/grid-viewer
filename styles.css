@@ -183,7 +183,7 @@ button.panbtn:active,button.lvbtn:active,.eye:active,
 /* 图标按钮统一的手感（与工具条一致）：悬停轻微放大 + 按下回弹。
    用 .hov 类而非 :hover —— 便于自动化测试验证，与工具条的类机制一致 */
 .ol-control button.hov{transform:scale(1.08)}
-.ol-control button:active,.ol-control button:focus,.ol-control button:focus-visible{transform:scale(.78)!important;color:var(--accent)!important;outline:none!important;box-shadow:none!important;border-color:var(--line)!important}
+.ol-control button:active,.ol-control button:focus,.ol-control button:focus-visible{transform:scale(.78);color:var(--accent);outline:none;box-shadow:none;border-color:var(--line)}
 
 /* 面板开合按钮与主题按钮（同为独立图标按钮），统一放大手感 */
 #btnFold,#btnTheme{
