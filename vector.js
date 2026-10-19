@@ -45,7 +45,7 @@ function parseDbf(buf, encoding) {
 }
 
 /* ---------- MapInfo .MAP 解析 ---------- */
-function parseMapInfo(mapBuf, idBuf) {
+async function parseMapInfo(mapBuf, idBuf) {
   var dv = new DataView(mapBuf);
   var i32 = function (o) { return dv.getInt32(o, true); };
   var i16 = function (o) { return dv.getInt16(o, true); };
@@ -167,6 +167,7 @@ function parseMapInfo(mapBuf, idBuf) {
           if (rings.length) polygons.push({ recNo: rec, rings: rings });
         } catch (e) {}
       }
+      if (rec % 50 === 0) await new Promise(function (r) { setTimeout(r, 0); });
     }
   }
   return polygons;
@@ -351,7 +352,7 @@ function parseMif(mifText, midText) {
 /* ---------- 统一入口 ---------- */
 // files: { tab, dat, map, id } 或 { shp, shx, dbf, prj, cpg }
 // 返回 { name, polygons: [{ rings, props }] }
-function parseVectorFiles(files, baseName) {
+async function parseVectorFiles(files, baseName) {
   var polygons, props = null, propFields = [];
   if (files.mif) {
     var mr = parseMif(files.mif, files.mid);
@@ -386,7 +387,7 @@ function parseVectorFiles(files, baseName) {
     }
   } else if (files.map) {
     // MapInfo
-    polygons = parseMapInfo(files.map, files.id);
+    polygons = await parseMapInfo(files.map, files.id);
     if (files.dat) {
       var dbf = parseDbf(files.dat, 'gbk');
       props = dbf.records;
