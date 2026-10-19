@@ -149,8 +149,8 @@ button{font:inherit;font-size:12.5px;border-radius:6px;border:1px solid var(--li
 button:hover{background:var(--hover);border-color:var(--hoverbd)}
 button:active{transform:scale(.955);background:var(--active);border-color:var(--activebd);transition-duration:.07s}
 /* 用 accent2 作底：白字在 #3b82f6 上仅 3.55:1，换 #1d4ed8 后 6.66:1 */
-button.pri{background:var(--accent2);border-color:var(--accent2);color:#fff}
-button.pri:hover{background:var(--accent);border-color:var(--accent);filter:brightness(1.06)}
+button.pri{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:var(--line);color:var(--accent2)}
+button.pri:hover{border-color:var(--accent2);filter:brightness(1.1)}
 button.dim{color:var(--fg2)}
 button.wide{width:100%}
 button:disabled{opacity:.45;cursor:not-allowed;transform:none}
