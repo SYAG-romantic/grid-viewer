@@ -33,15 +33,11 @@ function initJumpTypeDropdown() {
   function close() {
     box.classList.remove('open');
     btn.setAttribute('aria-expanded', 'false');
-    var pop = document.getElementById('jumpTypePop');
-    if (pop) pop.style.display = 'none';
   }
   btn.onclick = function (e) {
     e.stopPropagation();
-    var pop = document.getElementById('jumpTypePop');
     var open = box.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (pop) pop.style.display = open ? '' : 'none';
   };
   Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
     b.onclick = function (e) {
