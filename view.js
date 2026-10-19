@@ -124,8 +124,9 @@ function applyToolbarCity() {
       /* 地市筛选走 shader u_citySel，不重建缓冲（快） */
       setLayerCity(L, v === '*' ? null : v);
     } else if (L.kind === 'vector') {
-      /* 边界层：存 citySel，绘制时按属性过滤 */
+      /* 边界层：存 citySel（名称）和 cityCode（代码），绘制时按属性过滤 */
       L.citySel = (v === '*') ? '*' : (CITY_NAMES[v] || v);
+      L.cityCode = (v === '*') ? '*' : v;
     }
   }
   if (v && v !== '*') zoomToCity();
@@ -168,7 +169,7 @@ function zoomToCity() {
     if (b[0] < x0) x0 = b[0]; if (b[2] > x1) x1 = b[2];
     if (b[1] < y0) y0 = b[1]; if (b[3] > y1) y1 = b[3];
   }
-  /* 边界层：按 citySel 过滤多边形算范围 */
+  /* 边界层：按 citySel 过滤多边形算范围（名称+代码） */
   var cityName = CITY_NAMES[v] || v;
   for (var vi = 0; vi < layers.length; vi++) {
     var vL = layers[vi];
@@ -178,7 +179,9 @@ function zoomToCity() {
       var props = pg.props || {};
       var hit = false;
       for (var pk in props) {
-        if (String(props[pk]).indexOf(cityName) >= 0) { hit = true; break; }
+        var _pv2 = String(props[pk] || '');
+        if (_pv2.indexOf(cityName) >= 0) { hit = true; break; }
+        if (/cityid/i.test(pk) && _pv2 === String(v)) { hit = true; break; }
       }
       if (!hit) continue;
       var bb = pg._bbox;
@@ -1602,30 +1605,33 @@ function drawVector(c, L, t, w, h, box) {
   c.lineJoin = 'round';
   c.lineCap = 'round';
   c.beginPath();
-  /* 地市过滤：先统计匹配数，一个都匹配不上就不过滤 */
+  /* 地市过滤：支持城市代码（CITYID）和名称，一个都匹配不上就不过滤 */
   var cityF = L.citySel;
+  var cityC = L.cityCode;
   var cityOn = cityF && cityF !== '*';
+  function _cityMatch(_props) {
+    if (!cityOn) return true;
+    for (var _pk in _props) {
+      var _pv = String(_props[_pk] || '');
+      /* 名称匹配 */
+      if (_pv.indexOf(cityF) >= 0) return true;
+      /* 代码匹配：CITYID / cityid 等字段 */
+      if (cityC && cityC !== '*' && /cityid/i.test(_pk)) {
+        if (_pv === String(cityC)) return true;
+      }
+    }
+    return false;
+  }
   var matchCount = 0;
   if (cityOn) {
     for (var _pi = 0; _pi < polys.length; _pi++) {
-      var _pg = polys[_pi];
-      var _props = _pg.props || {};
-      for (var _pk in _props) {
-        if (String(_props[_pk]).indexOf(cityF) >= 0) { matchCount++; break; }
-      }
+      if (_cityMatch(polys[_pi].props || {})) { matchCount++; break; }
     }
     if (matchCount === 0) cityOn = false;
   }
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
-    if (cityOn) {
-      var props = pg.props || {};
-      var hit = false;
-      for (var pk in props) {
-        if (String(props[pk]).indexOf(cityF) >= 0) { hit = true; break; }
-      }
-      if (!hit) continue;
-    }
+    if (cityOn && !_cityMatch(pg.props || {})) continue;
     var pb = pg._bbox;
     if (pb === undefined) pb = polyBBoxMerc(pg);
     if (pb) {
