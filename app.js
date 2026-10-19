@@ -146,7 +146,7 @@ function searchCellsEx(keyword, limit) {
       var nm;
       if (useLc) {
         nmLc = lcNames[i];
-        nm = nameArr ? String(nameArr[i] || '') : '';
+        nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
       } else {
         nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
         nmLc = nm.toLowerCase();
