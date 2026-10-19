@@ -1612,13 +1612,21 @@ function drawVector(c, L, t, w, h, box) {
   var cityOn = cityF && cityF !== '*';
   function _cityMatch(_props) {
     if (!cityOn) return true;
+    /* 优先用 CITYID 精确匹配代码 */
+    var hasCityId = false, cityIdMatch = false;
     for (var _pk in _props) {
-      var _pv = String(_props[_pk] || '');
-      /* 名称匹配 */
-      if (_pv.indexOf(cityF) >= 0) return true;
-      /* 代码匹配：CITYID / cityid 等字段 */
-      if (cityC && cityC !== '*' && /cityid/i.test(_pk)) {
-        if (_pv === String(cityC)) return true;
+      if (/cityid/i.test(_pk)) {
+        hasCityId = true;
+        if (cityC && cityC !== '*' && String(_props[_pk] || '') === String(cityC)) cityIdMatch = true;
+      }
+    }
+    if (hasCityId) return cityIdMatch;
+    /* 无 CITYID 时，只查城市名字段（F/CITY），不查 AREANAME 这类描述字段 */
+    for (var _pk2 in _props) {
+      var _kl = _pk2.toLowerCase();
+      if (_kl === 'f' || _kl === 'city' || _kl === 'cityname' || _kl.indexOf('city') === 0) {
+        var _pv2 = String(_props[_pk2] || '');
+        if (_pv2 === cityF || _pv2.indexOf(cityF) === 0) return true;
       }
     }
     return false;
