@@ -2602,8 +2602,8 @@ function drawLabels() {
           if (!found) continue;
         }
         var vprops = vpg.props || {};
-        var vnm = vprops.name || vprops.NAME || '';
-        if (!vnm) { for (var vk in vprops) { vnm = vprops[vk]; break; } }
+        var vnm = vprops.AREANAME || vprops.Areaname || vprops.areaname || vprops.name || vprops.NAME || vprops.Name || '';
+        if (!vnm) { for (var vk in vprops) { var _vv = String(vprops[vk]||''); if (_vv && _vv.indexOf('\uFFFD')<0) { vnm = _vv; break; } } }
         vnm = String(vnm || '').trim();
         if (!vnm) continue;
         var vpx = map.getPixelFromCoordinate([vcx, vcy]);
