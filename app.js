@@ -2814,8 +2814,32 @@ function bindUI() {
   function doJump() {
     var v = $('jump').value.trim();
     if (!v) return;
-    // 1. 尝试经纬度
-    var m = v.match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
+    var jtype = ($('jumpType') && $('jumpType').value) || 'auto';
+    // 场景名称：搜边界层多边形属性
+    if (jtype === 'scene') {
+      var kw = v.toLowerCase();
+      for (var vi = 0; vi < layers.length; vi++) {
+        var vL = layers[vi];
+        if (vL.kind !== 'vector' || !vL.visible || !vL.polygons) continue;
+        for (var pi = 0; pi < vL.polygons.length; pi++) {
+          var props = vL.polygons[pi].props || {};
+          for (var pk in props) {
+            if (String(props[pk]).toLowerCase().indexOf(kw) >= 0) {
+              var vb = vL.polygons[pi]._bbox;
+              if (vb) {
+                var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
+                map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
+                return;
+              }
+            }
+          }
+        }
+      }
+      showErr('未找到场景：' + v);
+      return;
+    }
+    // 1. 尝试经纬度（auto 或 ll）
+    var m = (jtype === 'auto' || jtype === 'll') ? v.match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/) : null;
     if (m) {
       var lon = parseFloat(m[1]), lat = parseFloat(m[2]);
       if (lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
