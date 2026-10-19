@@ -1572,10 +1572,29 @@ function makeSelTest(sel) {
 function currentSel() {
   if (STATE.selCircle) return { type: 'circle', c: STATE.selCircle.c, r: STATE.selCircle.r };
   if (STATE.polyDone && STATE.polyPts.length >= 3) {
+    /* 场景选区：着色器用包围盒矩形（快），统计用完整多边形 */
+    if (STATE.sceneSel) {
+      var _bx0 = Infinity, _by0 = Infinity, _bx1 = -Infinity, _by1 = -Infinity;
+      for (var _bi = 0; _bi < STATE.polyPts.length; _bi++) {
+        var _bp = STATE.polyPts[_bi];
+        if (_bp[0] < _bx0) _bx0 = _bp[0];
+        if (_bp[0] > _bx1) _bx1 = _bp[0];
+        if (_bp[1] < _by0) _by0 = _bp[1];
+        if (_bp[1] > _by1) _by1 = _bp[1];
+      }
+      return { type: 'rect', b: [_bx0, _by0, _bx1, _by1] };
+    }
     return { type: 'poly', pts: STATE.polyPts.map(function (p) { return [p[0], p[1]]; }) };
   }
   if (STATE.selBox) return { type: 'rect', b: STATE.selBox.slice() };
   return null;
+}
+/* 统计用的完整选区（场景用多边形） */
+function currentSelFull() {
+  if (STATE.sceneSel && STATE.polyDone && STATE.polyPts.length >= 3) {
+    return { type: 'poly', pts: STATE.polyPts.map(function (p) { return [p[0], p[1]]; }) };
+  }
+  return currentSel();
 }
 
 /* 切换子工具。同组内换子工具要清掉上一项的绘制状态 */
@@ -1678,7 +1697,7 @@ function finishPoly() {
 
 /* 选区统计：遍历各栅格图层的生效点数（与画面所见一致） */
 function applySelection() {
-  var sel = currentSel();
+  var sel = currentSelFull();
   var test = makeSelTest(sel);
   if (!test) { STATE.selStats = null; updateToolPanel(); return; }
   var counts = [0, 0, 0, 0, 0, 0, 0], total = 0, rsum = 0, rn = 0, ssum = 0, sn = 0;
