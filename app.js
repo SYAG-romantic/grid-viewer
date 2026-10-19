@@ -928,8 +928,10 @@ async function loadVectorFiles(fileList) {
       var keys = Object.keys(fmap);
       for (var ki = 0; ki < keys.length; ki++) {
         var _k = keys[ki];
-        if (_k === 'geojson' || _k === 'json' || _k === 'kml' || _k === 'mif' || _k === 'mid') {
-          bufs[_k] = await readFileAsText(fmap[_k]);
+        if (_k === 'geojson' || _k === 'json' || _k === 'kml') {
+          bufs[_k] = await readFileAsText(fmap[_k], 'utf-8');
+        } else if (_k === 'mif' || _k === 'mid') {
+          bufs[_k] = await readFileAsText(fmap[_k], 'gbk');
         } else {
           bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
         }
@@ -984,12 +986,21 @@ async function loadVectorFiles(fileList) {
   if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
 }
 
-function readFileAsText(f) {
+function readFileAsText(f, encoding) {
   return new Promise(function (resolve, reject) {
     var r = new FileReader();
-    r.onload = function () { resolve(r.result); };
+    r.onload = function () {
+      var buf = r.result;
+      // 文本文件：按指定编码解码（默认 utf-8，mif/mid 用 gbk）
+      try {
+        var dec = new TextDecoder(encoding || 'utf-8');
+        resolve(dec.decode(buf));
+      } catch (e) {
+        resolve('');
+      }
+    };
     r.onerror = reject;
-    r.readAsText(f, 'utf-8');
+    r.readAsArrayBuffer(f);
   });
 }
 function readFileAsArrayBuffer(file) {
