@@ -412,30 +412,39 @@ async function parseVectorFiles(files, baseName) {
   } else {
     throw new Error('缺少 .MAP 或 .SHP 文件');
   }
-  // 合并属性 + 多边形级 bbox 过滤（去掉跨全球的坏多边形）
+  // 合并属性 + 离群点过滤（去掉偏离主体的坏点，保留多边形主体）
   var out = [];
   for (var i = 0; i < polygons.length; i++) {
     var pg = polygons[i];
-    // 算 bbox
-    var minLon = 180, maxLon = -180, minLat = 90, maxLat = -90;
-    var ptCount = 0;
+    // 收集所有点算中位数
+    var lons = [], lats = [];
     for (var ri = 0; ri < pg.rings.length; ri++) {
       var ring = pg.rings[ri];
       for (var vi = 0; vi < ring.length; vi++) {
-        var lon = ring[vi][0], lat = ring[vi][1];
-        if (lon < minLon) minLon = lon;
-        if (lon > maxLon) maxLon = lon;
-        if (lat < minLat) minLat = lat;
-        if (lat > maxLat) maxLat = lat;
-        ptCount++;
+        lons.push(ring[vi][0]); lats.push(ring[vi][1]);
       }
     }
-    if (!ptCount) continue;
-    var spanLon = maxLon - minLon, spanLat = maxLat - minLat;
-    // 坏多边形：跨度超过 30 度（正常县级边界跨度几度）
-    if (spanLon > 30 || spanLat > 30) continue;
+    if (!lons.length) continue;
+    lons.sort(function (a, b) { return a - b; });
+    lats.sort(function (a, b) { return a - b; });
+    var medLon = lons[Math.floor(lons.length / 2)];
+    var medLat = lats[Math.floor(lats.length / 2)];
+    // 过滤偏离中位数超过 10 度的点
+    var cleanRings = [];
+    for (var rj = 0; rj < pg.rings.length; rj++) {
+      var oring = pg.rings[rj];
+      var cring = [];
+      for (var vk = 0; vk < oring.length; vk++) {
+        var lo = oring[vk][0], la = oring[vk][1];
+        if (Math.abs(lo - medLon) <= 10 && Math.abs(la - medLat) <= 10) {
+          cring.push(oring[vk]);
+        }
+      }
+      if (cring.length >= 3) cleanRings.push(cring);
+    }
+    if (!cleanRings.length) continue;
     var pr = (props && pg.recNo >= 1 && pg.recNo <= props.length) ? props[pg.recNo - 1] : {};
-    out.push({ rings: pg.rings, props: pr });
+    out.push({ rings: cleanRings, props: pr });
   }
   return { name: baseName, polygons: out, fields: propFields };
 }
