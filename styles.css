@@ -153,7 +153,7 @@ button:active{transform:scale(.955);background:var(--active);border-color:var(--
 /* 用 accent2 作底：白字在 #3b82f6 上仅 3.55:1，换 #1d4ed8 后 6.66:1 */
 button.pri{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:var(--line);color:var(--fg)}
 #btnFiles,#btnVector,#btnForget,#btnClearCache{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-#btnRestore,#btnForget,#btnClearCache{border-radius:10px;padding:7px 12px;transition:transform .12s ease}
+#btnRestore,#btnForget,#btnClearCache{border-radius:10px;padding:7px 12px;transition:transform .12s ease;background:transparent}
 #btnRestore:hover,#btnForget:hover,#btnClearCache:hover{transform:scale(1.08);border-color:var(--line)}
 #btnRestore:active,#btnForget:active,#btnClearCache:active{transform:scale(.9);color:var(--accent)}
 button.pri:hover{border-color:var(--accent2);filter:brightness(1.1)}
@@ -389,9 +389,9 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .icobtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
 border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--fg2);cursor:pointer;
 transition:all .22s cubic-bezier(.4,0,.2,1)}
-.icobtn:hover{background:var(--hover);border-color:var(--hoverbd);color:var(--accent);transform:translateY(-1px);
+.icobtn:hover{background:var(--glass);border-color:var(--line);transform:scale(1.08);
 box-shadow:0 3px 10px rgba(0,0,0,.18)}
-.icobtn:active{transform:translateY(0) scale(.96);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.icobtn:active{transform:scale(.78);color:var(--accent)}
 .dsel-btn:hover,.themebtn:hover{transform:scale(1.06)!important;background:var(--glass)!important;border-color:var(--line)!important;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
 .dsel-btn:active,.themebtn:active{transform:scale(.96)}
 
