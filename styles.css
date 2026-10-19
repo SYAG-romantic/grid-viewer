@@ -153,6 +153,7 @@ button:active{transform:scale(.955);background:var(--active);border-color:var(--
 /* 用 accent2 作底：白字在 #3b82f6 上仅 3.55:1，换 #1d4ed8 后 6.66:1 */
 button.pri{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:var(--line);color:var(--fg)}
 #btnFiles,#btnVector,#btnForget,#btnClearCache{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#btnRestore,#btnForget,#btnClearCache{border-radius:10px;padding:7px 12px}
 button.pri:hover{border-color:var(--accent2);filter:brightness(1.1)}
 button.dim{color:var(--fg2)}
 button.wide{width:100%}
