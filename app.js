@@ -2835,7 +2835,9 @@ function bindUI() {
               var vb = vL.polygons[pi]._bbox;
               if (vb) {
                 var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
+                STATE.hlPoly = { L: vL, pg: vL.polygons[pi] };
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
+                scheduleDraw();
                 return;
               }
             }
@@ -2933,6 +2935,7 @@ function bindUI() {
     var hadHl = !!STATE.hlCell;
     var hadPin = !!STATE.pin;
     STATE.hlCell = null;
+    STATE.hlPoly = null;
     STATE.pin = null;
     // 直接清 2D 覆盖层并重绘，不依赖重型 drawAll
     try {
