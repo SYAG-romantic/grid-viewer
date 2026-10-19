@@ -629,12 +629,14 @@ function makeLayer(ds, kind, skipCity) {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
     /* 同步建精确匹配索引（加载多1-2秒，换搜索毫秒级） */
-    if (L.nameCol && ds.str && ds.str[L.nameCol]) {
+    if (L.nameCol) {
       try {
-        var _arr2 = ds.str[L.nameCol], _n2 = ds.n;
+        var _n2 = ds.n;
         var _map = {}, _lc2 = new Array(_n2);
+        var _arr2 = (ds.str && ds.str[L.nameCol]) ? ds.str[L.nameCol] : null;
         for (var _j = 0; _j < _n2; _j++) {
-          var _nm2 = String(_arr2[_j] || '').toLowerCase();
+          var _raw = _arr2 ? _arr2[_j] : ds.value(_j, L.nameCol);
+          var _nm2 = String(_raw || '').toLowerCase();
           _lc2[_j] = _nm2;
           if (_nm2) _map[_nm2] = _j;
         }
