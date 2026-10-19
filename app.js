@@ -1021,6 +1021,8 @@ async function loadVectorFiles(fileList) {
     if (lastOk && map) fitLayer(lastOk);
     scheduleDraw();
     if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
+    /* 边界层导入后写入缓存，下次刷新自动恢复 */
+    refreshSessionCache();
   } finally {
     _vecLoading = false;
     busyOff();
