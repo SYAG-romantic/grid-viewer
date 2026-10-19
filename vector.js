@@ -440,6 +440,16 @@ async function parseVectorFiles(files, baseName) {
         if (la < minLa) minLa = la; if (la > maxLa) maxLa = la;
       }
     }
+    // 算 bbox，跨度超过 5 度的整个丢掉（县级边界不可能这么大）
+    var minLo = 180, maxLo = -180, minLa = 90, maxLa = -90;
+    for (var rj = 0; rj < pg.rings.length; rj++) {
+      var oring = pg.rings[rj];
+      for (var vk = 0; vk < oring.length; vk++) {
+        var lo = oring[vk][0], la = oring[vk][1];
+        if (lo < minLo) minLo = lo; if (lo > maxLo) maxLo = lo;
+        if (la < minLa) minLa = la; if (la > maxLa) maxLa = la;
+      }
+    }
     if (maxLo - minLo > 5 || maxLa - minLa > 5) continue;
     var cleanRings = pg.rings;
     var pr = (props && pg.recNo >= 1 && pg.recNo <= props.length) ? props[pg.recNo - 1] : {};
