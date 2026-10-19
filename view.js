@@ -2051,8 +2051,8 @@ function initPopupDrag() {
 /* 边界多边形弹窗：显示属性表 */
 function showVectorPopup(L, pg, pixel) {
   var props = pg.props || {};
-  /* 标题优先用名称类字段 */
-  var title = props.AREANAME || props.Areaname || props.areaname || props.name || props.NAME || props.Name || L.name;
+  /* 标题自适应取名称 */
+  var title = getSceneName(props) || L.name;
   if (!title) {
     title = L.name;
     for (var k in props) {
@@ -2542,6 +2542,30 @@ function renderLegend() {
 
 /* ============================ 小区注记 ============================ */
 /* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
+/* 自适应取场景名称：找字段名含 name/名称 的，找不到用第一个像名称的字符串 */
+function getSceneName(props) {
+  if (!props) return '';
+  var keys = Object.keys(props);
+  var i, k, kl;
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i]; kl = k.toLowerCase();
+    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0) {
+      var v = String(props[k] || '').trim();
+      if (v && v.indexOf('\uFFFD') < 0) return v;
+    }
+  }
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i];
+    var v2 = String(props[k] || '').trim();
+    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
+    if (/^[\d\-\.]+$/.test(v2)) continue;
+    if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
+    if (v2.length > 60) continue;
+    return v2;
+  }
+  return '';
+}
+
 var LABEL_4G = false;
 var LABEL_5G = false;
 var LABEL_SCENE = false;
@@ -2602,8 +2626,7 @@ function drawLabels() {
           if (!found) continue;
         }
         var vprops = vpg.props || {};
-        var vnm = vprops.AREANAME || vprops.Areaname || vprops.areaname || vprops.name || vprops.NAME || vprops.Name || '';
-        if (!vnm) { for (var vk in vprops) { var _vv = String(vprops[vk]||''); if (_vv && _vv.indexOf('\uFFFD')<0) { vnm = _vv; break; } } }
+        var vnm = getSceneName(vprops);
         vnm = String(vnm || '').trim();
         if (!vnm) continue;
         var vpx = map.getPixelFromCoordinate([vcx, vcy]);
