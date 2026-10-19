@@ -1448,6 +1448,9 @@ function glDrawSites(L, t, w, h, box, dpr) {
 
 function glDrawGrid(L, t, w, h, box, dpr, clear) {
   if (!L.glOk) return false;
+  /* 多边形选区 WebGL 不支持压暗，走 Canvas（Canvas 的 makeSelTest 支持多边形） */
+  var _sel = (typeof currentSel === 'function') ? currentSel() : null;
+  if (_sel && _sel.type === 'poly') return false;
   /* 多栅格层共存时只清一次屏，否则后画的层会擦掉先画的层 */
   if (clear && !glClearFrame(w, h, dpr)) return false;
   var gl = GLR.gl, loc = GLR.loc;
