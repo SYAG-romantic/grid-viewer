@@ -577,6 +577,9 @@ function drawAll() {
       if (glDrawSites(L, t, w, h, box, dpr)) siteGlUsed = true;
       else drawSites(ctx, L, t, w, h, box);
     }
+    else if (L.kind === 'vector') {
+      drawVector(ctx, L, t, w, h, box);
+    }
   }
   /* 本帧没有任何可见栅格层走 WebGL 时补一次清屏：
      #glpts 是共享画布，不清的话取消勾选/移除图层后上一帧的采样点会残留 */
@@ -1496,6 +1499,37 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
 
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, L.glCount);
   return true;
+}
+
+/* 矢量边界图层：多边形描边（视野外裁剪） */
+function drawVector(c, L, t, w, h, box) {
+  var polys = L.polygons;
+  if (!polys || !polys.length) return;
+  var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
+  var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
+  c.strokeStyle = '#ff6b35';
+  c.lineWidth = 1.5;
+  c.beginPath();
+  for (var pi = 0; pi < polys.length; pi++) {
+    var pg = polys[pi];
+    var pb = pg._bbox;
+    if (pb && (pb[2] < b0 || pb[0] > b2 || pb[3] < b1 || pb[1] > b3)) continue;
+    var rings = pg.rings;
+    for (var ri = 0; ri < rings.length; ri++) {
+      var ring = rings[ri];
+      var n = ring.length;
+      if (n < 2) continue;
+      for (var vi = 0; vi < n; vi++) {
+        var mx = lonToMercX(ring[vi][0]), my = latToMercY(ring[vi][1]);
+        if (!isFinite(mx) || !isFinite(my)) continue;
+        var px = t0 * mx + t2 * my + t4;
+        var py = t1 * mx + t3 * my + t5;
+        if (vi === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+    }
+  }
+  c.stroke();
 }
 
 function drawSites(c, L, t, w, h, box) {
