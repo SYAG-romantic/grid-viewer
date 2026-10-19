@@ -2496,7 +2496,9 @@ function renderLegend() {
 
 /* ============================ 小区注记 ============================ */
 /* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
-var LABEL_ON = false;
+var LABEL_4G = false;
+var LABEL_5G = false;
+var LABEL_SCENE = false;
 var LABEL_MIN_ZOOM = 14;
 var LABEL_MAX = 3000;
 function drawLabels() {
@@ -2508,7 +2510,7 @@ function drawLabels() {
   if (cv.height !== H) cv.height = H;
   var ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, W, H);
-  if (!LABEL_ON || !map) return;
+  if ((!LABEL_4G && !LABEL_5G && !LABEL_SCENE) || !map) return;
   var zoom = map.getView().getZoom();
   if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
@@ -2520,7 +2522,39 @@ function drawLabels() {
   var res = map.getView().getResolution() || 1; // 米/像素
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
-    if (!L.visible || !L.ok || L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
+    if (!L.visible || !L.ok) continue;
+    /* 场景名称：边界层多边形 */
+    if (L.kind === 'vector' && LABEL_SCENE && L.polygons) {
+      for (var vpi = 0; vpi < L.polygons.length && drawn < LABEL_MAX; vpi++) {
+        var vpg = L.polygons[vpi];
+        var vbb = vpg._bbox;
+        if (!vbb) continue;
+        var vcx = (vbb[0] + vbb[2]) / 2, vcy = (vbb[1] + vbb[3]) / 2;
+        if (vcx < extent[0] || vcx > extent[2] || vcy < extent[1] || vcy > extent[3]) continue;
+        var vprops = vpg.props || {};
+        var vnm = vprops.name || vprops.NAME || '';
+        if (!vnm) { for (var vk in vprops) { vnm = vprops[vk]; break; } }
+        vnm = String(vnm || '').trim();
+        if (!vnm) continue;
+        var vpx = map.getPixelFromCoordinate([vcx, vcy]);
+        if (!vpx) continue;
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 2.2;
+        ctx.strokeText(vnm, vpx[0], vpx[1]);
+        ctx.fillStyle = '#8e44ad';
+        ctx.fillText(vnm, vpx[0], vpx[1]);
+        drawn++;
+      }
+      continue;
+    }
+    if (L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
+    /* 4G/5G 注记开关 */
+    if (L.rat === '4G' && !LABEL_4G) continue;
+    if (L.rat === '5G' && !LABEL_5G) continue;
+    if (L.rat !== '4G' && L.rat !== '5G') {
+      if (!LABEL_4G && !LABEL_5G) continue;
+    }
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
     var azArr = L.azCol ? L.ds.num[L.azCol] : null;
@@ -2593,22 +2627,59 @@ function scheduleLabels() {
   if (_labelTimer) clearTimeout(_labelTimer);
   _labelTimer = setTimeout(drawLabels, 200);
 }
-function bindLabelToggle() {
+/* 注记下拉：4G/5G/场景多选，单击切换 */
+function initLabelDropdown() {
+  var box = document.getElementById('labelBox');
   var btn = document.getElementById('btnLabel');
-  if (!btn) return;
-  btn.onclick = function () {
-    LABEL_ON = !LABEL_ON;
-    btn.classList.toggle('on', LABEL_ON);
-    drawLabels();
+  if (!box || !btn) return;
+  function syncBtn() {
+    var on = LABEL_4G || LABEL_5G || LABEL_SCENE;
+    btn.classList.toggle('on', on);
+  }
+  function close() {
+    box.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+  btn.onclick = function (e) {
+    e.stopPropagation();
+    var open = box.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   };
+  Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      var v = b.getAttribute('data-v');
+      if (v === '4g') LABEL_4G = !LABEL_4G;
+      else if (v === '5g') LABEL_5G = !LABEL_5G;
+      else if (v === 'scene') LABEL_SCENE = !LABEL_SCENE;
+      b.classList.toggle('on',
+        (v === '4g' && LABEL_4G) || (v === '5g' && LABEL_5G) || (v === 'scene' && LABEL_SCENE));
+      syncBtn();
+      drawLabels();
+    };
+    b.ondblclick = function (e) {
+      e.stopPropagation();
+      var v = b.getAttribute('data-v');
+      if (v === '4g') LABEL_4G = false;
+      else if (v === '5g') LABEL_5G = false;
+      else if (v === 'scene') LABEL_SCENE = false;
+      b.classList.remove('on');
+      syncBtn();
+      drawLabels();
+    };
+  });
+  document.addEventListener('click', function () {
+    if (box.classList.contains('open')) close();
+  });
   if (map) {
     map.on('moveend', scheduleLabels);
-    // 拖动开始时清空注记，避免残影和卡顿
     map.on('movestart', function () {
-      if (!LABEL_ON) return;
+      if (!LABEL_4G && !LABEL_5G && !LABEL_SCENE) return;
       var cv = document.getElementById('labelCanvas');
       if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
-      if (_labelTimer) clearTimeout(_labelTimer);
+      if (typeof _labelTimer !== 'undefined' && _labelTimer) clearTimeout(_labelTimer);
     });
   }
 }
+/* 兼容旧调用 */
+function bindLabelToggle() { initLabelDropdown(); }
