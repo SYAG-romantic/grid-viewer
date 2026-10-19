@@ -120,6 +120,29 @@ function selectLayer(L) {
 /* 增强搜索：小区名 + CGI。
    名字/小写/CGI 三个数组在 makeLayer 时一次建好，这里逐行只做 indexOf，
    不再逐行 ds.value()（旧代码每行 splitRow 整行，33 万行要三四秒）。 */
+/* 场景名称模糊搜索 */
+function searchScenes(keyword, limit) {
+  var kw = String(keyword || '').trim().toLowerCase();
+  if (!kw) return [];
+  var _lim = limit || 20;
+  var results = [];
+  for (var li = 0; li < layers.length; li++) {
+    var L = layers[li];
+    if (!L.ok || L.kind !== 'vector' || !L.visible || !L.polygons) continue;
+    for (var pi = 0; pi < L.polygons.length && results.length < _lim; pi++) {
+      var props = L.polygons[pi].props || {};
+      for (var pk in props) {
+        var pv = String(props[pk] || '');
+        if (pv.toLowerCase().indexOf(kw) >= 0) {
+          results.push({ L: L, pg: L.polygons[pi], name: pv });
+          break;
+        }
+      }
+    }
+  }
+  return results;
+}
+
 function searchCellsEx(keyword, limit, jtype) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
@@ -187,6 +210,20 @@ function showJumpResults(res, kw) {
       el.onclick = function () {
         var r = box._res[parseInt(el.getAttribute('data-k'), 10)];
         if (!r) return;
+        /* 场景：跳到多边形中心并高亮 */
+        if (r.scene && r.pg) {
+          var vb = r.pg._bbox;
+          if (vb) {
+            var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
+            STATE.hlPoly = { L: r.L, pg: r.pg };
+            try {
+              map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
+            } catch (e) {}
+            scheduleDraw();
+          }
+          box.style.display = 'none';
+          return;
+        }
         var x = r.L.mx[r.i], y = r.L.my[r.i];
         if (!isFinite(x) || !isFinite(y)) return;
         STATE.hlCell = { L: r.L, i: r.i };
@@ -2930,9 +2967,16 @@ function bindUI() {
     var v = $('jump').value.trim();
     if (v.length < 2) { hideJumpResults(); return; }
     var jt = ($('jumpType') && $('jumpType').value) || 'auto';
-    if (jt === 'll' || jt === 'scene') { hideJumpResults(); return; }
+    if (jt === 'll') { hideJumpResults(); return; }
     _jumpDeb = setTimeout(function () {
-      var res = searchCellsEx(v, 20, jt);
+      var res;
+      if (jt === 'scene') {
+        res = searchScenes(v, 20).map(function (r) {
+          return { scene: true, L: r.L, pg: r.pg, name: r.name };
+        });
+      } else {
+        res = searchCellsEx(v, 20, jt);
+      }
       showJumpResults(res, v);
     }, 350);
   };
