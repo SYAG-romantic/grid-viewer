@@ -10,6 +10,18 @@
  *     Shape_Leng Float ;
  *     NUMBER     Integer Index 1 ;
  */
+/* 从 .TAB 头解析 Charset，返回 TextDecoder 可用的编码名 */
+function parseTabCharset(tabText) {
+  if (!tabText) return null;
+  var m = /Charset\s+"([^"]+)"/i.exec(String(tabText));
+  if (!m) return null;
+  var cs = m[1].toLowerCase();
+  if (cs.indexOf('utf-8') >= 0 || cs.indexOf('utf8') >= 0) return 'utf-8';
+  if (cs.indexOf('big5') >= 0 || cs.indexOf('traditional') >= 0) return 'big5';
+  /* WindowsSimpChinese / gbk / gb2312 / ansi 等都按 gbk 解 */
+  return 'gbk';
+}
+
 function parseTabFieldTypes(tabText) {
   var types = {};
   if (!tabText) return types;
@@ -85,6 +97,14 @@ function parseDbf(buf, encoding, fieldTypes) {
           try { s = String.fromCharCode.apply(null, u8.subarray(b0, e)); } catch (er) { s = ''; }
         } else {
           try { s = dec.decode(u8.subarray(b0, e)); } catch (er2) { s = ''; }
+          /* 有乱码（�）时换另一种编码重试 */
+          if (s.indexOf('\uFFFD') >= 0) {
+            try {
+              var dec2 = new TextDecoder(encoding === 'utf-8' ? 'gbk' : 'utf-8');
+              var s2 = dec2.decode(u8.subarray(b0, e));
+              if (s2.indexOf('\uFFFD') < 0) s = s2;
+            } catch (er3) {}
+          }
         }
       }
       rec[fd.name] = s.trim();
@@ -596,7 +616,8 @@ async function parseVectorFiles(files, baseName, onProgress) {
     if (files.dat) {
       /* 有 .TAB 就按它声明的字段类型解（Float/Integer 在 .DAT 里是二进制） */
       var ftypes = files.tab ? parseTabFieldTypes(files.tab) : null;
-      var dbf = parseDbf(files.dat, 'gbk', ftypes);
+      var tabEnc = files.tab ? parseTabCharset(files.tab) : null;
+      var dbf = parseDbf(files.dat, tabEnc || 'gbk', ftypes);
       props = dbf.records;
       propFields = dbf.fields;
     }
