@@ -2998,6 +2998,15 @@ function boot() {
   rebuildBase();
   map.getView().setCenter([lonToMercX(87.6), latToMercY(43.8)]);
   map.getView().setZoom(6);
+  /* 兜底：确保边界按钮绑定 */
+  try {
+    var bv = document.getElementById('btnVector');
+    var pv = document.getElementById('pickVector');
+    if (bv && pv && !bv._vbound) {
+      bv._vbound = true;
+      bv.addEventListener('click', function () { pv.click(); });
+    }
+  } catch (e) {}
 
   if (!STATE.tk) {
     setTimeout(function () {
