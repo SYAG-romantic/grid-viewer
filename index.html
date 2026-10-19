@@ -71,8 +71,12 @@
             <button id="btnDir" class="pri">选择数据文件夹</button>
             <button id="btnFiles">选择文件</button>
           </div>
+          <div style="margin-bottom:7px">
+            <button id="btnVector" style="width:100%">添加边界图层</button>
+          </div>
           <input type="file" id="pickDir" webkitdirectory directory multiple hidden>
           <input type="file" id="pickFiles" multiple hidden accept=".csv,.txt,.tsv,.json,.geojson,.xlsx,.xls">
+          <input type="file" id="pickVector" multiple hidden accept=".tab,.dat,.map,.id,.shp,.shx,.dbf,.prj,.cpg">
           <div id="restoreBar" class="restore" style="display:none">
             <div class="restore-t">已记住数据源：<b id="srcName">—</b></div>
             <div class="mini">
@@ -85,6 +89,7 @@
           <div style="font-size:11.5px;color:var(--fg3);line-height:1.5">
             也可把文件直接拖到右侧地图。支持 csv / txt / geojson / xlsx。
             文件名含「工参/小区/基站」按工参图层加载，含「栅格」按栅格图层加载，其余自动判别。
+            边界图层：一次选中同名 .tab/.dat/.map/.id（MapInfo）或 .shp/.dbf/.prj（Shapefile）。
           </div>
 
       <button id="btnExportSel" style="width:100%;padding:7px;margin:2px 0 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);cursor:pointer;font-size:12.5px;">导出框选小区 (Excel)</button>
@@ -395,6 +400,7 @@
 <script src="https://cdn.jsdelivr.net/npm/ol@10/dist/ol.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="data.js"></script>
+<script src="vector.js"></script>
 <script src="view.js"></script>
 <script src="app.js"></script>
 </body>
