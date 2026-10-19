@@ -430,25 +430,18 @@ async function parseVectorFiles(files, baseName) {
     lats.sort(function (a, b) { return a - b; });
     var medLon = lons[Math.floor(lons.length / 2)];
     var medLat = lats[Math.floor(lats.length / 2)];
-    // 过滤：去掉与前后点距离都超过 0.5 度的离群点
-    var cleanRings = [];
+    // 算 bbox，跨度超过 5 度的整个丢掉（县级边界不可能这么大）
+    var minLo = 180, maxLo = -180, minLa = 90, maxLa = -90;
     for (var rj = 0; rj < pg.rings.length; rj++) {
       var oring = pg.rings[rj];
-      var cring = [];
       for (var vk = 0; vk < oring.length; vk++) {
         var lo = oring[vk][0], la = oring[vk][1];
-        var prev = oring[(vk - 1 + oring.length) % oring.length];
-        var next = oring[(vk + 1) % oring.length];
-        var dPrev = Math.max(Math.abs(lo - prev[0]), Math.abs(la - prev[1]));
-        var dNext = Math.max(Math.abs(lo - next[0]), Math.abs(la - next[1]));
-        // 保留：与任一邻居距离在 0.5 度内
-        if (dPrev <= 0.5 || dNext <= 0.5) {
-          cring.push(oring[vk]);
-        }
+        if (lo < minLo) minLo = lo; if (lo > maxLo) maxLo = lo;
+        if (la < minLa) minLa = la; if (la > maxLa) maxLa = la;
       }
-      if (cring.length >= 3) cleanRings.push(cring);
     }
-    if (!cleanRings.length) continue;
+    if (maxLo - minLo > 5 || maxLa - minLa > 5) continue;
+    var cleanRings = pg.rings;
     var pr = (props && pg.recNo >= 1 && pg.recNo <= props.length) ? props[pg.recNo - 1] : {};
     out.push({ rings: cleanRings, props: pr });
   }
