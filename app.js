@@ -114,9 +114,10 @@ function selectLayer(L) {
 }
 
 /* 增强搜索：小区名 + CGI（用字符串数组直读，提速） */
-function searchCellsEx(keyword) {
+function searchCellsEx(keyword, limit) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
+  var _lim = limit || 120;
   var results = [];
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
@@ -138,8 +139,9 @@ function searchCellsEx(keyword) {
     }
     var cgiArr = (cgiCol && ds.str && ds.str[cgiCol]) ? ds.str[cgiCol] : null;
     var _layerCount = 0;
+    var _perLayer = Math.ceil(_lim / 2);
     for (var i = 0; i < n; i++) {
-      if (_layerCount >= 60 || results.length >= 120) break;
+      if (_layerCount >= _perLayer || results.length >= _lim) break;
       var nmLc;
       var nm;
       if (useLc) {
@@ -162,7 +164,7 @@ function searchCellsEx(keyword) {
       }
     }
   }
-  return results.slice(0, 100);
+  return results.slice(0, _lim);
 }
 function showJumpResults(res, kw) {
   var box = document.getElementById('jumpResults');
@@ -2646,7 +2648,7 @@ function bindUI() {
     var v = $('jump').value.trim();
     if (v.length < 2) { hideJumpResults(); return; }
     _jumpDeb = setTimeout(function () {
-      var res = searchCellsEx(v);
+      var res = searchCellsEx(v, 20);
       showJumpResults(res, v);
     }, 350);
   };
