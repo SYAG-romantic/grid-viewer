@@ -23,6 +23,43 @@ function syncBaseDropdown() {
   });
 }
 
+/* ---- 搜索类型下拉 ---- */
+function initJumpTypeDropdown() {
+  var box = document.getElementById('jumpTypeBox');
+  var btn = document.getElementById('jumpTypeBtn');
+  if (!box || !btn) return;
+  var cur = document.getElementById('jumpTypeCur');
+  var hidden = document.getElementById('jumpType');
+  function close() {
+    box.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+    var pop = document.getElementById('jumpTypePop');
+    if (pop) pop.style.display = 'none';
+  }
+  btn.onclick = function (e) {
+    e.stopPropagation();
+    var pop = document.getElementById('jumpTypePop');
+    var open = box.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (pop) pop.style.display = open ? '' : 'none';
+  };
+  Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      var v = b.getAttribute('data-v');
+      if (hidden) hidden.value = v;
+      if (cur) cur.textContent = b.textContent.trim();
+      Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+      close();
+    };
+  });
+  document.addEventListener('click', function () {
+    if (box.classList.contains('open')) close();
+  });
+}
+
 function initBaseDropdown() {
   var box = document.getElementById('baseBox');
   var btn = document.getElementById('baseBtn');
