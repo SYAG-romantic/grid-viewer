@@ -1647,6 +1647,35 @@ function drawVector(c, L, t, w, h, box) {
   }
   c.stroke();
   c.restore();
+  /* 搜索高亮：深红色边框 */
+  if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L) {
+    var hpg = STATE.hlPoly.pg;
+    var hbb = hpg._bbox;
+    if (hbb && !(hbb[2] < b0 || hbb[0] > b2 || hbb[3] < b1 || hbb[1] > b3)) {
+      c.save();
+      c.strokeStyle = '#8b0000';
+      c.lineWidth = 3;
+      c.beginPath();
+      var hrings = hpg._ringsMerc;
+      if (!hrings) {
+        hrings = hpg.rings.map(function (ring) {
+          return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+        });
+      }
+      for (var hri = 0; hri < hrings.length; hri++) {
+        var hring = hrings[hri];
+        for (var hvi = 0; hvi < hring.length; hvi++) {
+          var hpx = t0 * hring[hvi][0] + t2 * hring[hvi][1] + t4;
+          var hpy = t1 * hring[hvi][0] + t3 * hring[hvi][1] + t5;
+          if (hvi === 0) c.moveTo(hpx, hpy);
+          else c.lineTo(hpx, hpy);
+        }
+        c.closePath();
+      }
+      c.stroke();
+      c.restore();
+    }
+  }
 }
 
 function drawSites(c, L, t, w, h, box) {
