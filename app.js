@@ -120,14 +120,19 @@ function selectLayer(L) {
 /* 增强搜索：小区名 + CGI。
    名字/小写/CGI 三个数组在 makeLayer 时一次建好，这里逐行只做 indexOf，
    不再逐行 ds.value()（旧代码每行 splitRow 整行，33 万行要三四秒）。 */
-function searchCellsEx(keyword, limit) {
+function searchCellsEx(keyword, limit, jtype) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
   var _lim = limit || 120;
+  var jt = jtype || 'auto';
+  var ratFilter = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
   var results = [];
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
     if (!L.ok || L.kind !== 'site') continue;
+    /* 制式过滤：4G 只搜 4G 层，5G 只搜 5G 层 */
+    if (ratFilter === '4G' && L.rat !== '4G') continue;
+    if (ratFilter === '5G' && L.rat !== '5G') continue;
     var n = L.ds.n;
     var lcNames = L._lcNames;
     if (!lcNames) continue;   /* 索引没建好时跳过（与精确跳转一致） */
@@ -139,11 +144,11 @@ function searchCellsEx(keyword, limit) {
       if (_layerCount >= _perLayer || results.length >= _lim) break;
       var nmLc = lcNames[i];
       var nm = nameArr ? nameArr[i] : '';
-      if (nmLc.indexOf(kw) >= 0) {
+      if ((jt === 'auto' || jt === 'cell') && nmLc.indexOf(kw) >= 0) {
         results.push({ L: L, i: i, name: nm, cgi: cgiArr ? cgiArr[i] : '' }); _layerCount++;
         continue;
       }
-      if (cgiArr) {
+      if ((jt === 'auto' || jt === 'cgi') && cgiArr) {
         var cg = cgiArr[i];
         if (cg && cg.toLowerCase().indexOf(kw) >= 0) {
           results.push({ L: L, i: i, name: nm, cgi: cg }); _layerCount++;
@@ -2858,9 +2863,12 @@ function bindUI() {
     // 2. 先查精确匹配（哈希表，毫秒级；未建好时跳过走模糊）
     var kwLow = v.toLowerCase();
     var _foundExact = false;
+    var _ratF = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
       if (!L.ok || L.kind !== 'site' || !L._nameMap) continue;
+      if (_ratF === '4G' && L.rat !== '4G') continue;
+      if (_ratF === '5G' && L.rat !== '5G') continue;
       var _idx = L._nameMap[kwLow];
       if (_idx !== undefined) {
         var x0 = L.mx[_idx], y0 = L.my[_idx];
@@ -2906,8 +2914,10 @@ function bindUI() {
     if (_jumpDeb) clearTimeout(_jumpDeb);
     var v = $('jump').value.trim();
     if (v.length < 2) { hideJumpResults(); return; }
+    var jt = ($('jumpType') && $('jumpType').value) || 'auto';
+    if (jt === 'll' || jt === 'scene') { hideJumpResults(); return; }
     _jumpDeb = setTimeout(function () {
-      var res = searchCellsEx(v, 20);
+      var res = searchCellsEx(v, 20, jt);
       showJumpResults(res, v);
     }, 350);
   };
