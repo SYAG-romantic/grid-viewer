@@ -2065,8 +2065,6 @@ function showVectorPopup(L, pg, pixel) {
   var html = '';
   for (var k2 in props) {
     var v2 = String(props[k2] == null ? '' : props[k2]).trim();
-    /* 跳过乱码字段 */
-    if (v2.indexOf('\uFFFD') >= 0) continue;
     html += '<tr><td>' + esc(k2) + '</td><td>' + esc(v2) + '</td></tr>';
   }
   if (!html) html = '<tr><td colspan="2">无属性</td></tr>';
