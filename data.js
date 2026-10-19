@@ -628,6 +628,18 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
+    /* 后台预建搜索小写索引，不阻塞 */
+    if (L.nameCol && ds.str && ds.str[L.nameCol]) {
+      (function (_L, _arr) {
+        setTimeout(function () {
+          try {
+            var _n = _L.ds.n, _lc = new Array(_n);
+            for (var _i = 0; _i < _n; _i++) _lc[_i] = String(_arr[_i] || '').toLowerCase();
+            _L._lcNames = _lc;
+          } catch (e) {}
+        }, 100);
+      })(L, ds.str[L.nameCol]);
+    }
     L.bandCol = pickColumn(ds.columns, ALIAS.band);
     L.tiltCol = pickColumn(ds.columns, ALIAS.tilt);
     L.hgtCol = pickColumn(ds.columns, ALIAS.hgt);
