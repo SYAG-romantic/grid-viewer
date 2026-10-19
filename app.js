@@ -2905,7 +2905,16 @@ function bindUI() {
                 var _pg = vL.polygons[pi];
                 STATE.hlPoly = { L: vL, pg: _pg };
                 var _pprops = _pg.props || {};
-                STATE.sceneName = String(_pprops.name || _pprops.NAME || props[pk] || '');
+                /* 优先用 name/NAME 字段，否则用匹配到的值 */
+                var _sn = _pprops.name || _pprops.NAME || _pprops.Name;
+                if (!_sn) {
+                  /* 找第一个像名称的字段（非纯数字、非ID） */
+                  for (var _sk in _pprops) {
+                    var _sv = String(_pprops[_sk] || '');
+                    if (_sv && !/^[\d\-\.]+$/.test(_sv) && _sv.length < 50) { _sn = _sv; break; }
+                  }
+                }
+                STATE.sceneName = String(_sn || props[pk] || '');
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
                 /* 栅格层开着：自动用场景边界创建选区并统计 */
                 var _hasGrid = false;
