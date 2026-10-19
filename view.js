@@ -936,7 +936,19 @@ function glrInit() {
       'uniform float u_alpha;\n' +
       'uniform vec3 u_colors[7];\n' +
       'uniform vec4 u_sel;\n' + /* rect: minx,miny,maxx,maxy；circle: cx,cy,r,0 */
-      'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆（多边形选区不支持压暗） */
+      'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆 3 多边形 */
+      'uniform vec2 u_poly[24];\n' +
+      'uniform int u_polyN;\n' +
+      'bool _inPoly(vec2 p) {\n' +
+      '  bool ins = false;\n' +
+      '  for (int i = 0, j = 23; i < 24; i++) {\n' +
+      '    if (i >= u_polyN) break;\n' +
+      '    int jj = (i == 0) ? (u_polyN - 1) : (i - 1);\n' +
+      '    vec2 a = u_poly[i], b = u_poly[jj];\n' +
+      '    if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) ins = !ins;\n' +
+      '  }\n' +
+      '  return ins;\n' +
+      '}\n'
       'out vec4 v_color;\n' +
       'void main() {\n' +
       '  float px = u_t0.x * a_pos.x + u_t0.z * a_pos.y + u_t1.x + a_corner.x * u_half.x;\n' +
@@ -948,6 +960,8 @@ function glrInit() {
       '  } else if (u_selType == 2) {\n' +
       '    vec2 d = a_pos - u_sel.xy;\n' +
       '    if (dot(d, d) > u_sel.z * u_sel.z) dim = 0.22;\n' +
+      '  } else if (u_selType == 3) {\n' +
+      '    if (!_inPoly(a_pos)) dim = 0.22;\n' +
       '  }\n' +
       '  v_color = vec4(u_colors[int(a_band + 0.5)], u_alpha * dim);\n' +
       '}\n';
@@ -969,7 +983,7 @@ function glrInit() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
 
     var loc = {};
-    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType'];
+    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType', 'u_poly', 'u_polyN'];
     for (var ui = 0; ui < unames.length; ui++) loc[unames[ui]] = gl.getUniformLocation(prog, unames[ui]);
     loc.a_pos = gl.getAttribLocation(prog, 'a_pos');
     loc.a_band = gl.getAttribLocation(prog, 'a_band');
@@ -1512,7 +1526,7 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   if (!L.glOk) return false;
   /* 多边形选区 WebGL 不支持压暗，走 Canvas（Canvas 的 makeSelTest 支持多边形） */
   var _sel = (typeof currentSel === 'function') ? currentSel() : null;
-  if (_sel && _sel.type === 'poly') return false;
+  /* 多边形已在着色器支持，不再回退 */
   /* 多栅格层共存时只清一次屏，否则后画的层会擦掉先画的层 */
   if (clear && !glClearFrame(w, h, dpr)) return false;
   var gl = GLR.gl, loc = GLR.loc;
@@ -1548,7 +1562,7 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   gl.uniform2f(loc.u_half, cellW * 0.5, cellH * 0.5);
   gl.uniform1f(loc.u_alpha, GRID_ALPHA);
   gl.uniform3fv(loc.u_colors, gridBandRgb(L));
-  /* 选区压暗：矩形/圆形在着色器里判，拖拽选区零重建成本；多边形选区不支持压暗 */
+  /* 选区压暗：矩形/圆形/多边形在着色器里判，拖拽选区零重建成本 */
   var sel = currentSel(), st = 0, sx = 0, sy = 0, sz = 0, sw = 0;
   /* 选区判交在着色器里用实例坐标做，实例坐标已减参考点，选区同步偏移 */
   var rX2 = L.glRefX || 0, rY2 = L.glRefY || 0;
@@ -1558,6 +1572,17 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
     sz = Math.max(sel.b[0], sel.b[2]) - rX2; sw = Math.max(sel.b[1], sel.b[3]) - rY2;
   } else if (sel && sel.type === 'circle' && sel.c) {
     st = 2; sx = sel.c[0] - rX2; sy = sel.c[1] - rY2; sz = sel.r;
+  } else if (sel && sel.type === 'poly' && sel.pts && sel.pts.length >= 3) {
+    st = 3;
+    /* 多边形点同步偏移参考点，最多 24 个 */
+    var _pn = Math.min(sel.pts.length, 24);
+    var _parr = new Float32Array(48);
+    for (var _pi2 = 0; _pi2 < _pn; _pi2++) {
+      _parr[_pi2 * 2] = sel.pts[_pi2][0] - rX2;
+      _parr[_pi2 * 2 + 1] = sel.pts[_pi2][1] - rY2;
+    }
+    gl.uniform2fv(loc.u_poly, _parr);
+    gl.uniform1i(loc.u_polyN, _pn);
   }
   gl.uniform4f(loc.u_sel, sx, sy, sz, sw);
   gl.uniform1i(loc.u_selType, st);
