@@ -123,6 +123,9 @@ function applyToolbarCity() {
     } else if (L.kind === 'site') {
       /* 地市筛选走 shader u_citySel，不重建缓冲（快） */
       setLayerCity(L, v === '*' ? null : v);
+    } else if (L.kind === 'vector') {
+      /* 边界层：存 citySel，绘制时按属性过滤 */
+      L.citySel = (v === '*') ? '*' : (CITY_NAMES[v] || v);
     }
   }
   if (v && v !== '*') zoomToCity();
@@ -1577,8 +1580,19 @@ function drawVector(c, L, t, w, h, box) {
   c.lineJoin = 'round';
   c.lineCap = 'round';
   c.beginPath();
+  /* 地市过滤 */
+  var cityF = L.citySel;
+  var cityOn = cityF && cityF !== '*';
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
+    if (cityOn) {
+      var props = pg.props || {};
+      var hit = false;
+      for (var pk in props) {
+        if (String(props[pk]).indexOf(cityF) >= 0) { hit = true; break; }
+      }
+      if (!hit) continue;
+    }
     var pb = pg._bbox;
     if (pb === undefined) pb = polyBBoxMerc(pg);
     if (pb) {
