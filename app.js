@@ -2932,12 +2932,12 @@ function bindUI() {
     box.style.display = 'none';
   });
   $('btnPinClear').onclick = function () {
-    var hadHl = !!STATE.hlCell;
+    var hadHl = !!STATE.hlCell || !!STATE.hlPoly;
     var hadPin = !!STATE.pin;
     STATE.hlCell = null;
     STATE.hlPoly = null;
     STATE.pin = null;
-    // 直接清 2D 覆盖层并重绘，不依赖重型 drawAll
+    // 直接清 2D 覆盖层并重绘
     try {
       var _cv = document.getElementById('pts');
       if (_cv) {
@@ -2946,10 +2946,8 @@ function bindUI() {
         _cx.clearRect(0, 0, _cv.width, _cv.height);
       }
     } catch (e) {}
-    if (typeof drawAll === 'function') {
-      try { drawAll(); } catch (e) {}
-    }
     if (!hadPin && !hadHl) showErr('当前地图上没有定位标记');
+    // 只重绘，不调 drawAll（drawAll 会重建图层状态）
     scheduleDraw();
   };
   /* 报错弹窗的关闭 X */
