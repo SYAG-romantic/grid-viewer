@@ -67,65 +67,90 @@ function parseMapInfo(mapBuf, idBuf) {
   var idDv = idBuf ? new DataView(idBuf) : null;
   var nId = idBuf ? Math.floor(idBuf.byteLength / 4) : 0;
 
+  /* 坐标块游标：处理 512 字节块边界 */
+  function CoordCursor(buf, start) {
+    this.buf = buf; this.pos = start;
+    this.dv = new DataView(buf);
+  }
+  CoordCursor.prototype.ensure = function () {
+    var bs = 512;
+    var blockStart = Math.floor(this.pos / bs) * bs;
+    if (blockStart + 8 > this.buf.byteLength) return;
+    if (this.dv.getUint16(blockStart, true) !== 3) return;
+    var dataStart = blockStart + 8;
+    var dataLen = this.dv.getUint16(blockStart + 2, true);
+    var dataEnd = dataStart + dataLen;
+    if (this.pos < dataStart) { this.pos = dataStart; return; }
+    if (this.pos < dataEnd) return;
+    var next = this.dv.getInt32(blockStart + 4, true);
+    if (next <= 0 || next + 8 > this.buf.byteLength) throw new Error('coord block chain end');
+    this.pos = next + 8;
+  };
+  CoordCursor.prototype.u16 = function () { this.ensure(); var v = this.dv.getUint16(this.pos, true); this.pos += 2; return v; };
+  CoordCursor.prototype.i16 = function () { this.ensure(); var v = this.dv.getInt16(this.pos, true); this.pos += 2; return v; };
+  CoordCursor.prototype.i32 = function () { this.ensure(); var v = this.dv.getInt32(this.pos, true); this.pos += 4; return v; };
+
+  function readMapIntCoord(cur, compressed, orgX, orgY) {
+    var x, y;
+    if (compressed) { x = cur.i16() + orgX; y = cur.i16() + orgY; }
+    else { x = cur.i32(); y = cur.i32(); }
+    return [x, y];
+  }
+
   function readRegion(objOff) {
     var type = dv.getUint8(objOff);
-    var compressed = (type === 0x0d || type === 0x2e || type === 0x2f);
+    var compressed = (type === 0x0d);
+    if (!compressed && type !== 0x0e) return [];
     var p = objOff + 5;
     var cptr = i32(p); p += 4;
-    var csize = i32(p); p += 4;
-    csize &= 0x7FFFFFFF;
-    var nsec, secSize;
-    if (type >= 0x2e) { nsec = i32(p); p += 4 + 33; secSize = 28; }
-    else { nsec = i16(p); p += 2; secSize = 24; }
+    var csize = i32(p) & 0x7FFFFFFF; p += 4;
+    var nsec = i16(p); p += 2;
+    if (cptr <= 0 || csize <= 0 || nsec <= 0 || nsec > 10000) return [];
     var orgX = 0, orgY = 0;
     if (compressed) {
-      p += 4;
+      p += 4; // label
       orgX = i32(p); orgY = i32(p + 4); p += 8;
-      p += 8;
+      p += 8; // MBR
     } else {
       p += 8 + 16;
     }
-    p += 2; // penId, brushId
+    p += 2; // pen, brush
 
-    var cdata = (cptr % 512 === 0) ? cptr + 8 : cptr;
-    var hdrSize = secSize * nsec;
+    var cur = new CoordCursor(mapBuf, cptr);
+    var secSize = 24;
+    var totalHdr = secSize * nsec;
     var secs = [];
-    var maxV = 0;
+    var totalV = 0;
     for (var s = 0; s < nsec; s++) {
-      var b = cdata + s * secSize;
-      var nv = (type >= 0x2e) ? i32(b) : i16(b);
-      var doff = i32(b + secSize - 4);
-      var voff = Math.floor((doff - hdrSize) / (compressed ? 4 : 8));
-      if (nv > 0 && voff >= 0) {
-        secs.push({ nv: nv, voff: voff });
-        if (voff + nv > maxV) maxV = voff + nv;
-      }
+      var nv = cur.u16();
+      cur.u16(); // numHoles
+      readMapIntCoord(cur, compressed, orgX, orgY); // xmin,ymin
+      readMapIntCoord(cur, compressed, orgX, orgY); // xmax,ymax
+      var doff = cur.i32();
+      if (nv < 4 || doff < totalHdr) return [];
+      var voff = Math.floor((doff - totalHdr) / 8);
+      secs.push({ nv: nv, voff: voff });
+      totalV += nv;
+      if (totalV > 1000000) return [];
     }
-    var totalV = maxV;
-    var vbase = cdata + hdrSize;
-    var xs = new Int32Array(totalV), ys = new Int32Array(totalV);
+    var coords = [];
     for (var k = 0; k < totalV; k++) {
-      if (compressed) {
-        xs[k] = dv.getInt16(vbase + k * 4, true) + orgX;
-        ys[k] = dv.getInt16(vbase + k * 4 + 2, true) + orgY;
-      } else {
-        xs[k] = i32(vbase + k * 8);
-        ys[k] = i32(vbase + k * 8 + 4);
-      }
+      var xy = readMapIntCoord(cur, compressed, orgX, orgY);
+      coords.push([toLon(xy[0]), toLat(xy[1])]);
     }
     var rings = [];
     for (var si = 0; si < secs.length; si++) {
       var sc = secs[si];
-      var ring = [];
-      for (var vi = 0; vi < sc.nv; vi++) {
-        var idx = sc.voff + vi;
-        if (idx < 0 || idx >= totalV) continue;
-        var lon = toLon(xs[idx]), lat = toLat(ys[idx]);
-        if (!isFinite(lon) || !isFinite(lat)) continue;
-        if (lon < -180 || lon > 180 || lat < -90 || lat > 90) continue;
-        ring.push([lon, lat]);
+      var ring = coords.slice(sc.voff, sc.voff + sc.nv);
+      // 过滤非法点
+      var fring = [];
+      for (var vi = 0; vi < ring.length; vi++) {
+        var lon = ring[vi][0], lat = ring[vi][1];
+        if (isFinite(lon) && isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
+          fring.push(ring[vi]);
+        }
       }
-      if (ring.length >= 3) rings.push(ring);
+      if (fring.length >= 3) rings.push(fring);
     }
     return rings;
   }
