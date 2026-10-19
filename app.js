@@ -1960,18 +1960,22 @@ function updateToolPanel() {
   } else if (STATE.selStats) {
     if (STATE.sceneName) {
       title = STATE.sceneName;
-      html = '<div style="font-size:11px;color:var(--fg3);margin:-4px 0 6px">选区统计</div>' + statTableHtml();
     } else {
       title = '选区统计';
-      html = statTableHtml();
     }
+    html = statTableHtml();
   } else if (STATE.measPts.length && STATE.measKind) {
     title = TOOLS[STATE.measKind].label;
     html = measureHtml();
   }
   if (!html) { p.classList.remove('show'); return; }
   var wasHidden = !p.classList.contains('show');
-  document.getElementById('tpTitle').textContent = title;
+  var _tpT = document.getElementById('tpTitle');
+  if (STATE.sceneName && STATE.selStats) {
+    _tpT.innerHTML = esc(title) + '<div style="font-size:11px;font-weight:400;color:var(--fg3);margin-top:2px">选区统计</div>';
+  } else {
+    _tpT.textContent = title;
+  }
   document.getElementById('tpBody').innerHTML = html;
   p.classList.add('show');
   if (wasHidden && p.__clamp) p.__clamp();
@@ -2898,7 +2902,9 @@ function bindUI() {
               if (vb) {
                 var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
                 var _pg = vL.polygons[pi];
-                STATE.hlPoly = { L: vL, pg: _pg }; STATE.sceneName = String(props[pk] || '');
+                STATE.hlPoly = { L: vL, pg: _pg };
+                var _pprops = _pg.props || {};
+                STATE.sceneName = String(_pprops.name || _pprops.NAME || props[pk] || '');
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
                 /* 栅格层开着：自动用场景边界创建选区并统计 */
                 var _hasGrid = false;
