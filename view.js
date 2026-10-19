@@ -1501,35 +1501,81 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   return true;
 }
 
-/* 矢量边界图层：多边形描边（视野外裁剪） */
+/* 面的墨卡托包围盒（loadVectorFiles 会预先算好放进 _bbox；
+ * 合成/恢复出来的图层没有就现算一次并缓存，保证裁剪和 LOD 始终有效） */
+function polyBBoxMerc(pg) {
+  var rings = pg.rings || [];
+  var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (var i = 0; i < rings.length; i++) {
+    var ring = rings[i];
+    for (var k = 0; k < ring.length; k++) {
+      var x = lonToMercX(ring[k][0]), y = latToMercY(ring[k][1]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      if (x < x1) x1 = x; if (x > x2) x2 = x;
+      if (y < y1) y1 = y; if (y > y2) y2 = y;
+    }
+  }
+  pg._bbox = (x1 <= x2) ? [x1, y1, x2, y2] : null;
+  return pg._bbox;
+}
+
+/* 矢量边界图层：多边形描边（视野外裁剪 + 亚像素面塌点）
+ * 三个坑：
+ * 1) 每个环都必须以 moveTo 起笔。环首点若是非法值（NaN/Inf），旧写法直接 continue，
+ *    接下来的 lineTo 会从上一个环的落笔处连过来 —— 画出来就是横穿全图的一条长线，
+ *    和 TAB 解析出来的蜘蛛网长得一模一样，但锅在绘制端。
+ * 2) 整个面在当前缩放下不足约 1px 时，不再逐顶点描边，塌成一个点：
+ *    十万级的 POI/工参小面每帧全量描一遍，缩到全省视野时一帧要 8 秒，直接卡死；
+ *    塌点只看 bbox，两次 canvas 调用，密度观感还在。
+ * 3) 描边样式要 save/restore，别把 lineWidth/lineJoin 漏给后面的图层。 */
 function drawVector(c, L, t, w, h, box) {
   var polys = L.polygons;
   if (!polys || !polys.length) return;
   var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
+  var scale = Math.abs(t0) || 0;                /* px / 墨卡托单位 */
+  var minSpan = scale > 0 ? 1 / scale : 0;      /* 1px 对应多少墨卡托单位 */
+  c.save();
   c.strokeStyle = '#ff6b35';
   c.lineWidth = 1.5;
+  c.lineJoin = 'round';
+  c.lineCap = 'round';
   c.beginPath();
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
     var pb = pg._bbox;
-    if (pb && (pb[2] < b0 || pb[0] > b2 || pb[3] < b1 || pb[1] > b3)) continue;
+    if (pb === undefined) pb = polyBBoxMerc(pg);
+    if (pb) {
+      if (pb[2] < b0 || pb[0] > b2 || pb[3] < b1 || pb[1] > b3) continue;
+      if (minSpan > 0 && (pb[2] - pb[0]) < minSpan && (pb[3] - pb[1]) < minSpan) {
+        var cxm = (pb[0] + pb[2]) * 0.5, cym = (pb[1] + pb[3]) * 0.5;
+        var cpx = t0 * cxm + t2 * cym + t4;
+        var cpy = t1 * cxm + t3 * cym + t5;
+        c.moveTo(cpx, cpy);
+        c.lineTo(cpx + 0.01, cpy);
+        continue;
+      }
+    }
     var rings = pg.rings;
     for (var ri = 0; ri < rings.length; ri++) {
       var ring = rings[ri];
       var n = ring.length;
       if (n < 2) continue;
+      var started = false;
       for (var vi = 0; vi < n; vi++) {
-        var mx = lonToMercX(ring[vi][0]), my = latToMercY(ring[vi][1]);
-        if (!isFinite(mx) || !isFinite(my)) continue;
-        var px = t0 * mx + t2 * my + t4;
-        var py = t1 * mx + t3 * my + t5;
-        if (vi === 0) c.moveTo(px, py); else c.lineTo(px, py);
+        var pt = ring[vi];
+        var mxv = lonToMercX(pt[0]), myv = latToMercY(pt[1]);
+        if (!isFinite(mxv) || !isFinite(myv)) { started = false; continue; }
+        var px = t0 * mxv + t2 * myv + t4;
+        var py = t1 * mxv + t3 * myv + t5;
+        if (!started) { c.moveTo(px, py); started = true; }
+        else c.lineTo(px, py);
       }
-      c.closePath();
+      if (started) c.closePath();
     }
   }
   c.stroke();
+  c.restore();
 }
 
 function drawSites(c, L, t, w, h, box) {
@@ -2262,6 +2308,14 @@ function renderLegend() {
   var L = selected;
 
   var html = '';
+  if (L && L.kind === 'vector') {
+    /* 边界图层：以前落到下面的公共分支，选中的是边界却在显示 RSRP 档位图例 */
+    title.textContent = '边界';
+    html += '<div class="li"><i style="background:#ff6b35;border-radius:0"></i><span>多边形边界（描边）</span></div>';
+    body.innerHTML = html;
+    sub.textContent = L.polygons ? (L.polygons.length.toLocaleString() + ' 个多边形') : '';
+    return;
+  }
   if (L && L.kind === 'site') {
     /* 工参图层：显示制式色 + 形状说明（圆=室分，扇区=宏站） */
     title.textContent = '工参';
