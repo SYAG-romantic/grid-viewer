@@ -2944,6 +2944,23 @@ function bindUI() {
       }
     }
     if (!res.length) {
+      /* auto 类型：再试场景 */
+      var _jtTmp = ($('jumpType') && $('jumpType').value) || 'auto';
+      if (_jtTmp === 'auto') {
+        var _sres = searchScenes(v, 5);
+        if (_sres.length) {
+          var _spg = _sres[0].pg, _sL = _sres[0].L;
+          var _sb = _spg._bbox;
+          if (_sb) {
+            var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
+            STATE.hlPoly = { L: _sL, pg: _spg };
+            try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
+            scheduleDraw();
+            hideJumpResults();
+            return;
+          }
+        }
+      }
       /* 按类型+制式给具体提示 */
       var _jt2 = ($('jumpType') && $('jumpType').value) || 'auto';
       var _rat2 = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
@@ -2974,6 +2991,12 @@ function bindUI() {
         res = searchScenes(v, 20).map(function (r) {
           return { scene: true, L: r.L, pg: r.pg, name: r.name };
         });
+      } else if (jt === 'auto') {
+        res = searchCellsEx(v, 15, jt);
+        var sres = searchScenes(v, 5).map(function (r) {
+          return { scene: true, L: r.L, pg: r.pg, name: r.name };
+        });
+        res = res.concat(sres);
       } else {
         res = searchCellsEx(v, 20, jt);
       }
