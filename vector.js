@@ -121,6 +121,7 @@ function parseMapInfo(mapBuf, idBuf) {
         var idx = sc.voff + vi;
         if (idx < 0 || idx >= totalV) continue;
         var lon = toLon(xs[idx]), lat = toLat(ys[idx]);
+        if (!isFinite(lon) || !isFinite(lat)) continue;
         if (lon < -180 || lon > 180 || lat < -90 || lat > 90) continue;
         ring.push([lon, lat]);
       }
@@ -135,7 +136,7 @@ function parseMapInfo(mapBuf, idBuf) {
       var off = idDv.getInt32((rec - 1) * 4, true);
       if (!off) continue;
       var t = dv.getUint8(off);
-      if (t === 0x0d || t === 0x2e || t === 0x2f) {
+      if (t === 0x0d || t === 0x0e || t === 0x2e || t === 0x2f) {
         try {
           var rings = readRegion(off);
           if (rings.length) polygons.push({ recNo: rec, rings: rings });
@@ -239,12 +240,100 @@ function parseKml(kmlText) {
   return { polygons: polygons, props: props, fields: fields };
 }
 
+/* ---------- MIF/MID 解析（文本格式） ---------- */
+function parseMif(mifText, midText) {
+  var polygons = [];
+  var props = [];
+  var fields = [];
+  // 解析 MID 属性（CSV 风格）
+  var midRows = [];
+  if (midText) {
+    var lines = midText.split(/\r?\n/);
+    for (var li = 0; li < lines.length; li++) {
+      var ln = lines[li].trim();
+      if (!ln) continue;
+      // 简单 CSV 解析（处理引号）
+      var row = [], cur = '', inQ = false;
+      for (var ci = 0; ci < ln.length; ci++) {
+        var ch = ln[ci];
+        if (ch === '"') inQ = !inQ;
+        else if (ch === ',' && !inQ) { row.push(cur); cur = ''; }
+        else cur += ch;
+      }
+      row.push(cur);
+      midRows.push(row);
+    }
+  }
+  // 解析 MIF 几何
+  var mifLines = mifText.split(/\r?\n/);
+  var columns = [];
+  var inData = false;
+  var curPoly = null, curRings = null, curRing = null, ptsLeft = 0;
+  var featIdx = 0;
+  for (var mi = 0; mi < mifLines.length; mi++) {
+    var l = mifLines[mi].trim();
+    if (!l) continue;
+    var ul = l.toUpperCase();
+    if (ul.indexOf('COLUMNS') === 0) {
+      var nc = parseInt(l.split(/\s+/)[1], 10);
+      for (var fi = 0; fi < nc && mi + 1 < mifLines.length; fi++) {
+        mi++;
+        var colLine = mifLines[mi].trim();
+        var cname = colLine.split(/\s+/)[0];
+        columns.push(cname);
+      }
+      fields = columns.slice();
+      continue;
+    }
+    if (ul === 'DATA') { inData = true; continue; }
+    if (!inData) continue;
+    if (ul.indexOf('REGION') === 0) {
+      var nsec = parseInt(l.split(/\s+/)[1] || '1', 10);
+      curRings = []; curRing = null; ptsLeft = 0;
+      curPoly = { nsec: nsec, rings: curRings };
+      continue;
+    }
+    if (curPoly) {
+      var parts = l.split(/\s+/);
+      if (ptsLeft === 0 && parts.length === 1) {
+        // 新环的点数
+        ptsLeft = parseInt(parts[0], 10);
+        curRing = [];
+        curRings.push(curRing);
+      } else if (parts.length >= 2) {
+        var lon = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+        if (isFinite(lon) && isFinite(lat)) curRing.push([lon, lat]);
+        ptsLeft--;
+        if (ptsLeft <= 0 && curRings.length >= curPoly.nsec) {
+          // 完成一个多边形
+          var pr = {};
+          if (featIdx < midRows.length) {
+            for (var cfi = 0; cfi < columns.length && cfi < midRows[featIdx].length; cfi++) {
+              pr[columns[cfi]] = midRows[featIdx][cfi];
+            }
+          }
+          polygons.push({ recNo: featIdx + 1, rings: curRings });
+          props.push(pr);
+          featIdx++;
+          curPoly = null;
+        }
+      }
+    }
+  }
+  return { polygons: polygons, props: props, fields: fields };
+}
+
 /* ---------- 统一入口 ---------- */
 // files: { tab, dat, map, id } 或 { shp, shx, dbf, prj, cpg }
 // 返回 { name, polygons: [{ rings, props }] }
 function parseVectorFiles(files, baseName) {
   var polygons, props = null, propFields = [];
-  if (files.kml) {
+  if (files.mif) {
+    var mr = parseMif(files.mif, files.mid);
+    polygons = mr.polygons;
+    props = mr.props;
+    propFields = mr.fields;
+  } else if (files.kml) {
     var kr = parseKml(files.kml);
     polygons = kr.polygons;
     props = kr.props;
