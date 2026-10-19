@@ -121,6 +121,30 @@ function selectLayer(L) {
    名字/小写/CGI 三个数组在 makeLayer 时一次建好，这里逐行只做 indexOf，
    不再逐行 ds.value()（旧代码每行 splitRow 整行，33 万行要三四秒）。 */
 /* 场景名称模糊搜索 */
+/* 自适应取场景名称 */
+function getSceneName(props) {
+  if (!props) return '';
+  var keys = Object.keys(props);
+  var i, k, kl;
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i]; kl = k.toLowerCase();
+    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0) {
+      var v = String(props[k] || '').trim();
+      if (v && v.indexOf('\uFFFD') < 0) return v;
+    }
+  }
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i];
+    var v2 = String(props[k] || '').trim();
+    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
+    if (/^[\d\-\.]+$/.test(v2)) continue;
+    if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
+    if (v2.length > 60) continue;
+    return v2;
+  }
+  return '';
+}
+
 function searchScenes(keyword, limit) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
@@ -215,7 +239,7 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = String(_rp.name || _rp.NAME || _rp.Name || _rp.AREANAME || _rp.Areaname || r.name || '');
+            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = getSceneName(_rp) || String(r.name || '');
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
@@ -2925,7 +2949,7 @@ function bindUI() {
                 STATE.hlPoly = { L: vL, pg: _pg };
                 var _pprops = _pg.props || {};
                 /* 优先用 name/NAME 字段，否则用匹配到的值 */
-                var _sn = _pprops.name || _pprops.NAME || _pprops.Name || _pprops.AREANAME || _pprops.Areaname || _pprops.areaname;
+                var _sn = getSceneName(_pprops);
                 if (!_sn) {
                   /* 找第一个像名称的字段（非纯数字、非ID） */
                   for (var _sk in _pprops) {
@@ -3042,7 +3066,7 @@ function bindUI() {
           var _sb = _spg._bbox;
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
-            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = String(_sp.name || _sp.NAME || _sp.Name || _sp.AREANAME || _sp.Areaname || _sres[0].name || '');
+            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = getSceneName(_sp) || String(_sres[0].name || '');
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             var _hg = false;
             for (var _hgi = 0; _hgi < layers.length; _hgi++) {
