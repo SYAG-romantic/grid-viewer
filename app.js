@@ -219,6 +219,23 @@ function showJumpResults(res, kw) {
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
+            var _cg = false;
+            for (var _cgi = 0; _cgi < layers.length; _cgi++) {
+              if (layers[_cgi].kind === 'grid' && layers[_cgi].visible && layers[_cgi].ok) { _cg = true; break; }
+            }
+            if (_cg) {
+              if (!r.pg._ringsMerc) {
+                r.pg._ringsMerc = r.pg.rings.map(function (ring) {
+                  return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+                });
+              }
+              if (r.pg._ringsMerc.length && r.pg._ringsMerc[0].length >= 3) {
+                STATE.polyPts = r.pg._ringsMerc[0].slice();
+                STATE.polyDone = true;
+                STATE.selBox = null; STATE.selCircle = null;
+                try { applySelection(); } catch (e2) {}
+              }
+            }
             scheduleDraw();
           }
           box.style.display = 'none';
@@ -2872,8 +2889,28 @@ function bindUI() {
               var vb = vL.polygons[pi]._bbox;
               if (vb) {
                 var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-                STATE.hlPoly = { L: vL, pg: vL.polygons[pi] };
+                var _pg = vL.polygons[pi];
+                STATE.hlPoly = { L: vL, pg: _pg };
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
+                /* 栅格层开着：自动用场景边界创建选区并统计 */
+                var _hasGrid = false;
+                for (var _gi = 0; _gi < layers.length; _gi++) {
+                  if (layers[_gi].kind === 'grid' && layers[_gi].visible && layers[_gi].ok) { _hasGrid = true; break; }
+                }
+                if (_hasGrid) {
+                  if (!_pg._ringsMerc) {
+                    _pg._ringsMerc = _pg.rings.map(function (ring) {
+                      return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+                    });
+                  }
+                  if (_pg._ringsMerc.length && _pg._ringsMerc[0].length >= 3) {
+                    STATE.polyPts = _pg._ringsMerc[0].slice();
+                    STATE.polyDone = true;
+                    STATE.selBox = null;
+                    STATE.selCircle = null;
+                    try { applySelection(); } catch (e) {}
+                  }
+                }
                 scheduleDraw();
                 return;
               }
@@ -2955,6 +2992,23 @@ function bindUI() {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
             STATE.hlPoly = { L: _sL, pg: _spg };
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
+            var _hg = false;
+            for (var _hgi = 0; _hgi < layers.length; _hgi++) {
+              if (layers[_hgi].kind === 'grid' && layers[_hgi].visible && layers[_hgi].ok) { _hg = true; break; }
+            }
+            if (_hg) {
+              if (!_spg._ringsMerc) {
+                _spg._ringsMerc = _spg.rings.map(function (ring) {
+                  return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+                });
+              }
+              if (_spg._ringsMerc.length && _spg._ringsMerc[0].length >= 3) {
+                STATE.polyPts = _spg._ringsMerc[0].slice();
+                STATE.polyDone = true;
+                STATE.selBox = null; STATE.selCircle = null;
+                try { applySelection(); } catch (e2) {}
+              }
+            }
             scheduleDraw();
             hideJumpResults();
             return;
