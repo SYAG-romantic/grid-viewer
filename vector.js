@@ -429,6 +429,19 @@ function parseKml(kmlText) {
       var k = sd.getAttribute('name');
       if (k) pr[k] = sd.textContent.trim();
     }
+    // 属性：description 里的 HTML 表格
+    var descEl = pm.getElementsByTagName('description')[0];
+    if (descEl) {
+      var dhtml = descEl.textContent || '';
+      // 解析 <tr><td>key</td><td>value</td></tr>
+      var trRe = /<tr[^>]*>\s*<td[^>]*>(.*?)<\/td>\s*<td[^>]*>(.*?)<\/td>\s*<\/tr>/gi;
+      var m;
+      while ((m = trRe.exec(dhtml)) !== null) {
+        var dk = m[1].replace(/<[^>]+>/g, '').trim();
+        var dv = m[2].replace(/<[^>]+>/g, '').trim();
+        if (dk && !(dk in pr)) pr[dk] = dv;
+      }
+    }
     // 几何：Polygon / MultiGeometry
     var rings = [];
     var polys = pm.getElementsByTagName('Polygon');
