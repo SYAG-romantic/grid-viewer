@@ -1633,7 +1633,9 @@ function pickSiteSector(L, pixel, t, res) {
   var _is5g = (L.rat === '5G');
   var _sectorM = _is5g ? 60 : 80;
   var _beamW = _is5g ? 45 : 35;
+  var _indoorM = _is5g ? 25 : 30;
   var Rpx = _sectorM / (res || 1) * _dpr3;
+  var RpxIndoor = _indoorM / (res || 1) * _dpr3;
   var half = _beamW * Math.PI / 360;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var n = L.ds.n, mx = L.mx, my = L.my;
@@ -1648,8 +1650,13 @@ function pickSiteSector(L, pixel, t, res) {
     if (d2 > Rpx * Rpx) continue;
     var az = azArr ? azArr[i] : NaN;
     var indoor = L.isIndoor && L.isIndoor[i];
-    if (indoor || !isFinite(az)) {
-      /* 室分/无方位角：按圆处理，直接命中 */
+    if (indoor) {
+      /* 室分：按圆处理，半径 4G 30米 / 5G 25米 */
+      if (d2 <= RpxIndoor * RpxIndoor) hits.push({ i: i, d2: d2 });
+      continue;
+    }
+    if (!isFinite(az)) {
+      /* 无方位角：按圆处理 */
       hits.push({ i: i, d2: d2 });
       continue;
     }
