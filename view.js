@@ -300,7 +300,7 @@ function applyGridColorMode(mode) {
   /* 选区还开着时重算统计（档位分布要跟新指标走） */
   if (currentSel()) applySelection();
   renderLegend();
-  scheduleDraw();
+  /* 重绘等异步 GL 重建完成后统一触发，避免中间黑闪 */
   saveViewState();
   /* 两端 UI 同步：侧栏下拉 + 顶部按钮 */
   var sidebar = document.getElementById('gridColor');
