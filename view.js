@@ -1788,6 +1788,22 @@ function pickSiteSector(L, pixel, t, res) {
   return hits.map(function (h) { return h.i; });
 }
 
+/* 点是否在多边形内（射线法），坐标系需一致 */
+function ptInPoly(px, py, rings) {
+  var inside = false;
+  for (var ri = 0; ri < rings.length; ri++) {
+    var ring = rings[ri];
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var xi = ring[i][0], yi = ring[i][1];
+      var xj = ring[j][0], yj = ring[j][1];
+      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+  }
+  return inside;
+}
+
 function pickAt(pixel) {
   var t = transformOf(map, map.getSize());
   if (!t) return;
@@ -1813,6 +1829,23 @@ function pickAt(pixel) {
         var idx = L.buckets[b];
         for (var k = 0; k < idx.length; k++) consider(L, idx[k]);
       }
+    } else if (L.kind === 'vector' && L.polygons) {
+      var coord = map.getCoordinateFromPixel(pixel);
+      if (coord) {
+        var mxx = coord[0], myy = coord[1];
+        for (var pi = 0; pi < L.polygons.length; pi++) {
+          var pg = L.polygons[pi];
+          var bb = pg._bbox;
+          if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
+          if (!pg._ringsMerc) {
+            pg._ringsMerc = pg.rings.map(function (ring) {
+              return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+            });
+          }
+          if (ptInPoly(mxx, myy, pg._ringsMerc)) { best = { L: L, poly: pg }; break; }
+        }
+        if (best && best.poly) break;
+      }
     } else if (L.kind === 'site') {
       /* 先试扇形命中：点击落在 80 米扇区内则选中该扇区（可能多个重叠） */
       var secHits = pickSiteSector(L, pixel, t, res);
@@ -1825,6 +1858,7 @@ function pickAt(pixel) {
   }
 
   if (!best) { hidePopup(); return; }
+  if (best.poly) { showVectorPopup(best.L, best.poly, pixel); return; }
   if (best.rows && best.rows.length > 1) showMultiSectorPopup(best.L, best.rows, pixel);
   else showPopup(best.L, best.i, pixel);
 }
@@ -1938,6 +1972,41 @@ function initPopupDrag() {
 
 /* 采样点弹窗（点栅格）：头部数值 + 下方小色条都跟随当前着色模式。
    RSRP 6 档 / SINR 7 档 / 覆盖率 5 档，当前值所在档位高亮描边 */
+/* 边界多边形弹窗：显示属性表 */
+function showVectorPopup(L, pg, pixel) {
+  var props = pg.props || {};
+  var title = L.name;
+  // 标题用第一个非空属性值
+  for (var k in props) {
+    var vv = String(props[k] || '').trim();
+    if (vv) { title = vv; break; }
+  }
+  var html = '';
+  for (var k2 in props) {
+    var v2 = String(props[k2] == null ? '' : props[k2]).trim();
+    html += '<tr><td>' + esc(k2) + '</td><td>' + esc(v2) + '</td></tr>';
+  }
+  if (!html) html = '<tr><td colspan="2">无属性</td></tr>';
+  document.getElementById('popTitle').textContent = title;
+  document.getElementById('popTable').innerHTML = html;
+  var subEl = document.getElementById('popSub');
+  if (subEl) subEl.textContent = L.name;
+  var el = document.getElementById('popup');
+  el.style.maxWidth = '';
+  el.classList.add('show');
+  var wrap = document.getElementById('mapwrap');
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  var pw = el.offsetWidth, ph = el.offsetHeight;
+  var x = (pixel ? pixel[0] : W / 2) + 14;
+  var y = (pixel ? pixel[1] : H / 2) - 12;
+  if (x + pw > W - 8) x = (pixel ? pixel[0] : W / 2) - pw - 14;
+  if (x < 8) x = 8;
+  if (y + ph > H - 8) y = H - ph - 8;
+  if (y < 8) y = 8;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
+
 function showPopup(L, i, pixel) {
   var ds = L.ds;
   var cells = ds.cells(i);
