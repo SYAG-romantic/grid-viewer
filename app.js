@@ -2671,6 +2671,8 @@ function bindUI() {
 
   /* 底图切换（自定义下拉，带展开过渡） */
   initBaseDropdown();
+  /* 搜索类型下拉 */
+  if (typeof initJumpTypeDropdown === 'function') initJumpTypeDropdown();
   /* 顶部城市筛选 + 栅格着色（与侧栏设置双向同步） */
   initCityDropdown();
   initColorModeDropdown();
