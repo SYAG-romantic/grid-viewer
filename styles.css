@@ -388,7 +388,7 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .dsel-pop button:hover{transform:translateX(2px)}
 #legend{border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.22);transition:box-shadow .3s}
 #legend:hover{box-shadow:0 12px 36px rgba(0,0,0,.3)}
-.dsel-pop{z-index:10;backdrop-filter:blur(10px) saturate(1.4);-webkit-backdrop-filter:blur(10px) saturate(1.4);position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
+.dsel-pop{z-index:10;position:absolute;top:calc(100% + 7px);left:0;min-width:158px;padding:5px;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 30px rgba(0,0,0,.45);
   opacity:0;transform:translateY(-8px) scale(.96);transform-origin:top left;
