@@ -178,9 +178,11 @@ function showJumpResults(res, kw) {
   var html = '';
   for (var k = 0; k < res.length; k++) {
     var r = res[k];
+    var _display = r.name || r.cgi || '';
+    var _sub = r.name ? r.cgi : '';
     html += '<div class="cs-item" data-k="' + k + '" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);font-size:12.5px;">' +
-      '<span style="color:var(--fg)">' + esc(r.name) + '</span>' +
-      (r.cgi ? '<span style="color:var(--fg3);font-size:11px;margin-left:8px;">' + esc(r.cgi) + '</span>' : '') +
+      '<span style="color:var(--fg)">' + esc(_display) + '</span>' +
+      (_sub ? '<span style="color:var(--fg3);font-size:11px;margin-left:8px;">' + esc(_sub) + '</span>' : '') +
       '<span style="color:var(--fg3);font-size:11px;margin-left:8px;">' + esc(r.L.name) + '</span></div>';
   }
   box.innerHTML = html;
