@@ -916,8 +916,9 @@ async function loadVectorFiles(fileList) {
     var hasMapInfo = !!fmap.map;
     var hasShp = !!fmap.shp;
     var hasGeo = !!(fmap.geojson || fmap.json);
-    if (!hasMapInfo && !hasShp && !hasGeo) {
-      failNames.push(grp.baseName + '（缺 .map/.shp/.geojson）');
+    var hasKml = !!fmap.kml;
+    if (!hasMapInfo && !hasShp && !hasGeo && !hasKml) {
+      failNames.push(grp.baseName + '（缺 .map/.shp/.geojson/.kml）');
       continue;
     }
     try {
@@ -926,8 +927,8 @@ async function loadVectorFiles(fileList) {
       var keys = Object.keys(fmap);
       for (var ki = 0; ki < keys.length; ki++) {
         var _k = keys[ki];
-        if (_k === 'geojson' || _k === 'json') {
-          bufs.geojson = await readFileAsText(fmap[_k]);
+        if (_k === 'geojson' || _k === 'json' || _k === 'kml') {
+          bufs[_k === 'kml' ? 'kml' : 'geojson'] = await readFileAsText(fmap[_k]);
         } else {
           bufs[_k] = await readFileAsArrayBuffer(fmap[_k]);
         }
