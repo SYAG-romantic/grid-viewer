@@ -628,16 +628,22 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
-    /* 后台预建搜索小写索引，不阻塞 */
+    /* 后台分块预建搜索小写索引，不阻塞 */
     if (L.nameCol && ds.str && ds.str[L.nameCol]) {
       (function (_L, _arr) {
-        setTimeout(function () {
+        var _n = _L.ds.n, _lc = new Array(_n), _i = 0;
+        function _chunk() {
           try {
-            var _n = _L.ds.n, _lc = new Array(_n);
-            for (var _i = 0; _i < _n; _i++) _lc[_i] = String(_arr[_i] || '').toLowerCase();
-            _L._lcNames = _lc;
+            var _end = Math.min(_i + 20000, _n);
+            for (; _i < _end; _i++) _lc[_i] = String(_arr[_i] || '').toLowerCase();
+            if (_i < _n) {
+              setTimeout(_chunk, 0);
+            } else {
+              _L._lcNames = _lc;
+            }
           } catch (e) {}
-        }, 100);
+        }
+        setTimeout(_chunk, 100);
       })(L, ds.str[L.nameCol]);
     }
     L.bandCol = pickColumn(ds.columns, ALIAS.band);
