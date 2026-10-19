@@ -1601,9 +1601,20 @@ function drawVector(c, L, t, w, h, box) {
   c.lineJoin = 'round';
   c.lineCap = 'round';
   c.beginPath();
-  /* 地市过滤 */
+  /* 地市过滤：先统计匹配数，一个都匹配不上就不过滤 */
   var cityF = L.citySel;
   var cityOn = cityF && cityF !== '*';
+  var matchCount = 0;
+  if (cityOn) {
+    for (var _pi = 0; _pi < polys.length; _pi++) {
+      var _pg = polys[_pi];
+      var _props = _pg.props || {};
+      for (var _pk in _props) {
+        if (String(_props[_pk]).indexOf(cityF) >= 0) { matchCount++; break; }
+      }
+    }
+    if (matchCount === 0) cityOn = false;
+  }
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
     if (cityOn) {
