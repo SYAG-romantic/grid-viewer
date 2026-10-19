@@ -2950,7 +2950,8 @@ function bindUI() {
       }
     } catch (e) {}
     if (!hadPin && !hadHl) showErr('当前地图上没有定位标记');
-    // 只重绘，不调 drawAll（drawAll 会重建图层状态）
+    // 强制完整重绘，确保高亮清除后图层正常显示
+    try { drawAll(); } catch (e) {}
     scheduleDraw();
   };
   /* 报错弹窗的关闭 X */
