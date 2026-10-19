@@ -115,14 +115,14 @@
         </svg>
       </button>
       <div id="searchBox" style="position:relative;display:flex;align-items:center;gap:4px">
-        <select id="jumpType" title="搜索类型" style="height:36px;border-radius:10px;background:var(--glass);border:1px solid var(--line);color:var(--fg);font-size:12px;padding:0 4px">
+        <select id="jumpType" title="搜索类型" style="height:32px;border-radius:8px;background:var(--glass);border:1px solid var(--line);color:var(--fg);font-size:11px;padding:0 2px;max-width:64px">
           <option value="auto">全部</option>
           <option value="cell">小区名</option>
           <option value="cgi">CGI</option>
           <option value="ll">经纬度</option>
           <option value="scene">场景名称</option>
         </select>
-        <input type="text" id="jump" placeholder="搜索小区名/CGI/经度,纬度" title="输入小区名、CGI 或经纬度（如 87.4807,43.9161）" style="width:120px">
+        <input type="text" id="jump" placeholder="" title="输入小区名、CGI 或经纬度" style="width:90px;height:32px;font-size:12px">
         <button id="btnJump" class="icon-btn" title="搜索">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
