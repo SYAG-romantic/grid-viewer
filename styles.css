@@ -89,7 +89,7 @@ body{font:12.5px/1.5 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:
   box-shadow:0 12px 32px rgba(0,0,0,.45);overflow:hidden;display:none}
 #tkPop.show{display:block;animation:tpIn .22s cubic-bezier(.34,1.2,.5,1)}
 #tkPop .tp-h b{flex:1;font-weight:500}
-#tkPop .tk-stat{font-size:11px;color:var(--fg3);white-space:nowrap;max-width:180px;
+#tkPop .tk-stat{font-size:11.5px;color:var(--fg3);white-space:nowrap;max-width:180px;
   overflow:hidden;text-overflow:ellipsis}
 #tkPop .tk-stat.ok{color:var(--ok)}
 #tkPop .tk-stat.warn{color:var(--warn)}
@@ -131,7 +131,7 @@ label.row:hover{color:var(--fg)}
 label.row b{color:var(--fg);font-weight:400}
 
 .fld{margin:7px 0}
-.fld>span{display:block;font-size:11.5px;color:var(--fg3);margin-bottom:4px}
+.fld>span{display:block;font-size:12px;color:var(--fg3);margin-bottom:4px}
 input[type=text],input[type=number],select{width:100%;background:var(--panel2);border:1px solid var(--line);
   color:var(--fg);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px;outline:none}
 input[type=text]:focus,input[type=number]:focus,select:focus{border-color:var(--accent)}
@@ -209,16 +209,16 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .eye .slash{display:none}
 .eye.on .slash{display:block}
 .eye.on .open{opacity:.32}
-.secStat{color:var(--fg3);font-weight:400;font-size:11.5px;margin-left:auto;white-space:nowrap}
+.secStat{color:var(--fg3);font-weight:400;font-size:12px;margin-left:auto;white-space:nowrap}
 .secStat.ok{color:var(--ok)}
 .secStat.warn{color:var(--warn)}
 .mini{display:flex;gap:6px}
 .mini button{flex:0 0 auto;padding:5px 9px;font-size:12.5px}
 .restore{margin-bottom:9px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
-.restore-t{font-size:11.5px;color:var(--fg2);margin-bottom:6px;
+.restore-t{font-size:12px;color:var(--fg2);margin-bottom:6px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .restore-t b{color:var(--fg);font-weight:400}
-.restore-h{font-size:11.5px;color:var(--fg3);margin-top:5px;line-height:1.5}
+.restore-h{font-size:12px;color:var(--fg3);margin-top:5px;line-height:1.5}
 
 /* ---------- 图层列表 ---------- */
 #layerList{margin-top:4px}
@@ -230,15 +230,15 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .layer .tag{font-size:11.5px;padding:1px 5px;border-radius:4px;flex:0 0 auto}
 .tag.grid{background:var(--tagGridBg);color:var(--tagGridFg)}
 .tag.site{background:var(--tagSiteBg);color:var(--tagSiteFg)}
-.layer .meta{font-size:11.5px;color:var(--fg3);margin-top:3px;padding-left:21px}
+.layer .meta{font-size:12px;color:var(--fg3);margin-top:3px;padding-left:21px}
 .layer .ops{display:flex;gap:5px;margin-top:6px;padding-left:21px}
-.layer .ops button{padding:2px 7px;font-size:11.5px}
+.layer .ops button{padding:2px 7px;font-size:12px}
 .empty{color:var(--fg3);font-size:12.5px;padding:8px 0;text-align:center}
 
 /* ---------- 条件筛选 ---------- */
 #conds{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
 .cond{display:flex;gap:4px;align-items:center;background:var(--panel2);border:1px solid var(--line);
-      border-radius:6px;padding:4px 6px;font-size:11.5px}
+      border-radius:6px;padding:4px 6px;font-size:12px}
 .cond .c1{color:#8ec5ff;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cond .c2{color:var(--fg3)}
 .cond .c3{flex:1;min-width:0;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -246,7 +246,7 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .cond button:hover{color:var(--danger);background:none}
 
 /* ---------- 统计表 ---------- */
-table.stat{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px}
+table.stat{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
 table.stat td{padding:3px 4px;border-bottom:1px solid var(--line);color:var(--fg2)}
 table.stat td.sw{width:16px}
 table.stat td.sw i{display:block;width:14px;height:11px;border-radius:2px}
@@ -363,7 +363,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
   background:var(--glass);
   border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.4);
   color:var(--fg);font-size:12.5px;white-space:nowrap}
-.dsel-btn>span{color:var(--fg3);font-size:11.5px}
+.dsel-btn>span{color:var(--fg3);font-size:12px}
 .dsel-btn>b{font-weight:400}
 .dsel-btn .chev{color:var(--fg3);margin-left:1px;
   transition:transform .26s cubic-bezier(.22,.61,.36,1)}
@@ -394,7 +394,7 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
   pointer-events:none;
   transition:opacity .18s ease, transform .26s cubic-bezier(.22,.61,.36,1)}
 .dsel.open .dsel-pop{opacity:1;transform:none;pointer-events:auto}
-.dsel-h{font-size:11.5px;color:var(--fg3);padding:4px 10px 3px;white-space:nowrap}
+.dsel-h{font-size:12px;color:var(--fg3);padding:4px 10px 3px;white-space:nowrap}
 .dsel-pop button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
   padding:6px 10px;border:none;background:none;border-radius:7px;color:var(--fg);font-size:12.5px}
 .dsel-pop button svg{width:16px;height:16px;flex:0 0 16px;color:var(--fg3)}
@@ -429,7 +429,7 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
   background:var(--soft2);cursor:move;user-select:none;
   font-size:calc(12.5px * var(--ls));font-weight:600;flex:0 0 auto;touch-action:none}
 #legend header .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#legend .sub{color:var(--fg3);font-weight:400;font-size:calc(11.5px * var(--ls))}
+#legend .sub{color:var(--fg3);font-weight:400;font-size:calc(12px * var(--ls))}
 button.lvbtn{width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
   background:none;border:none;color:var(--fg3);cursor:pointer;border-radius:6px;flex:0 0 20px}
 button.lvbtn:hover{color:var(--fg);background:var(--soft)}
@@ -489,9 +489,9 @@ button.lvbtn:hover{color:var(--fg);background:var(--soft)}
   padding:9px 8px 9px 12px;background:var(--soft2);border-bottom:1px solid var(--line);
   cursor:move;user-select:none;touch-action:none}
 #popup .ph .pt{flex:1 1 auto;min-width:0}
-#popup .ph b{display:block;font-size:12.5px;font-weight:600;line-height:1.35;
+#popup .ph b{display:block;font-size:12.5px;font-weight:600;line-height:1.4;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#popup .ph .sub{display:block;font-size:11.5px;line-height:1.35;color:var(--fg3);
+#popup .ph .sub{display:block;font-size:12px;line-height:1.4;color:var(--fg3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 #popup .ph button{flex:0 0 auto;margin-left:auto;width:24px;height:24px;padding:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;border:none;background:none;
@@ -521,7 +521,7 @@ html.light #popup td.hl:last-child{color:var(--accent2)}
 #popup .sw{display:inline-block;width:11px;height:11px;border-radius:3px;
   margin-left:7px;vertical-align:-1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
 /* 页脚：经度/纬度分列，文件名挪到头部副标题 */
-#popup .pfoot{padding:7px 12px;font-size:11.5px;color:var(--fg3);
+#popup .pfoot{padding:7px 12px;font-size:12px;color:var(--fg3);
   border-top:1px solid var(--line);background:var(--soft2);
   display:flex;gap:14px;white-space:nowrap;overflow:hidden}
 #popup .pfoot span{overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
@@ -535,7 +535,7 @@ html.light #popup td.hl:last-child{color:var(--accent2)}
 #busy .t{font-size:12.5px;margin-bottom:11px}
 #busy .bar{height:5px;background:var(--hover);border-radius:3px;overflow:hidden}
 #busy .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s}
-#busy .s{font-size:11.5px;color:var(--fg3);margin-top:8px;font-variant-numeric:tabular-nums}
+#busy .s{font-size:12px;color:var(--fg3);margin-top:8px;font-variant-numeric:tabular-nums}
 
 .ol-zoom{top:auto!important;bottom:26px!important;left:calc(var(--mleft) + 12px)!important;
   transition:left .3s cubic-bezier(.22,.61,.36,1);z-index:10}
