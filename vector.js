@@ -105,6 +105,16 @@ function parseDbf(buf, encoding, fieldTypes) {
               if (s2.indexOf('\uFFFD') < 0) s = s2;
             } catch (er3) {}
           }
+          /* 两种编码都有乱码：可能是二进制数字，按长度试读 */
+          if (s.indexOf('\uFFFD') >= 0) {
+            var _blen = e - b0;
+            var _dv2 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+            try {
+              if (_blen === 8) { var _fv = _dv2.getFloat64(b0, true); if (isFinite(_fv)) s = String(_fv); }
+              else if (_blen === 4) { var _iv = _dv2.getInt32(b0, true); s = String(_iv); }
+              else if (_blen === 2) { var _sv2 = _dv2.getInt16(b0, true); s = String(_sv2); }
+            } catch (er4) {}
+          }
         }
       }
       rec[fd.name] = s.trim();
