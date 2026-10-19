@@ -217,7 +217,7 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .secStat.warn{color:var(--warn)}
 .mini{display:flex;gap:6px}
 .mini button{flex:0 0 auto;padding:5px 9px;font-size:12.5px}
-.restore{margin-bottom:9px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.restore{margin-bottom:9px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .restore-t{font-size:12px;color:var(--fg2);margin-bottom:6px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .restore-t b{color:var(--fg);font-weight:400}
