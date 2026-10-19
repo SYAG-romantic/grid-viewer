@@ -13,9 +13,12 @@ function renderLayerList() {
     var L = layers[i];
     var tag = L.kind === 'grid' ? '<span class="tag grid">栅格</span>'
       : L.kind === 'site' ? '<span class="tag site">工参</span>'
+      : L.kind === 'vector' ? '<span class="tag vector">边界</span>'
         : '<span class="tag site">未识别</span>';
     var meta = L.ok
-      ? L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列'
+      ? (L.kind === 'vector'
+          ? (L.polygons ? L.polygons.length.toLocaleString() : 0) + ' 个多边形'
+          : L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列')
       : (L.error || '无法解析');
     html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
       '<div class="lt">' +
@@ -75,6 +78,7 @@ function fitToBox(b, duration, heavy) {
 }
 
 function fitLayer(L, duration) {
+  if (L && L.kind === 'vector') { fitToBox(L.bbox, duration, false); return; }
   fitToBox(layerBox(L), duration, L.ds && L.ds.n > SITE_FAST_LIMIT);
 }
 
@@ -886,6 +890,101 @@ function restoreSessionState() {
 }
 
 /* 清空当前全部图层（「从源更新」前调用，避免叠加重复图层） */
+/* ============================ 矢量边界图层上传 ============================ */
+/* 按文件名分组（去扩展名、大小写不敏感），每组调 parseVectorFiles 建层 */
+async function loadVectorFiles(fileList) {
+  var files = [];
+  for (var i = 0; i < fileList.length; i++) files.push(fileList[i]);
+  if (!files.length) return;
+  /* 分组 */
+  var groups = {};
+  var order = [];
+  for (var g = 0; g < files.length; g++) {
+    var f = files[g];
+    var nm = f.name || '';
+    var dot = nm.lastIndexOf('.');
+    var base = (dot >= 0 ? nm.slice(0, dot) : nm).toLowerCase();
+    var ext = (dot >= 0 ? nm.slice(dot + 1) : '').toLowerCase();
+    if (!base || !ext) continue;
+    if (!groups[base]) { groups[base] = { baseName: dot >= 0 ? nm.slice(0, dot) : nm, files: {} }; order.push(base); }
+    groups[base].files[ext] = f;
+  }
+  var okCount = 0, failNames = [];
+  for (var gi = 0; gi < order.length; gi++) {
+    var grp = groups[order[gi]];
+    var fmap = grp.files;
+    var hasMapInfo = !!fmap.map;
+    var hasShp = !!fmap.shp;
+    if (!hasMapInfo && !hasShp) {
+      failNames.push(grp.baseName + '（缺 .map/.shp）');
+      continue;
+    }
+    try {
+      /* 读 ArrayBuffer */
+      var bufs = {};
+      var keys = Object.keys(fmap);
+      for (var ki = 0; ki < keys.length; ki++) {
+        bufs[keys[ki]] = await readFileAsArrayBuffer(fmap[keys[ki]]);
+      }
+      var res = parseVectorFiles(bufs, grp.baseName);
+      if (!res.polygons || !res.polygons.length) {
+        failNames.push(grp.baseName + '（无多边形）');
+        continue;
+      }
+      /* 墨卡托包围盒（供 fitLayer + 视野裁剪） */
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (var pi = 0; pi < res.polygons.length; pi++) {
+        var pminX = Infinity, pminY = Infinity, pmaxX = -Infinity, pmaxY = -Infinity;
+        var rings = res.polygons[pi].rings;
+        for (var ri = 0; ri < rings.length; ri++) {
+          var ring = rings[ri];
+          for (var vi = 0; vi < ring.length; vi++) {
+            var mx = lonToMercX(ring[vi][0]), my = latToMercY(ring[vi][1]);
+            if (!isFinite(mx) || !isFinite(my)) continue;
+            if (mx < pminX) pminX = mx; if (mx > pmaxX) pmaxX = mx;
+            if (my < pminY) pminY = my; if (my > pmaxY) pmaxY = my;
+          }
+        }
+        if (pminX <= pmaxX) {
+          res.polygons[pi]._bbox = [pminX, pminY, pmaxX, pmaxY];
+          if (pminX < minX) minX = pminX; if (pmaxX > maxX) maxX = pmaxX;
+          if (pminY < minY) minY = pminY; if (pmaxY > maxY) maxY = pmaxY;
+        }
+      }
+      var L = {
+        id: 'L' + (layerSeq++),
+        kind: 'vector',
+        name: grp.baseName,
+        polygons: res.polygons,
+        fields: res.fields || [],
+        visible: true,
+        ok: true,
+        bbox: (minX <= maxX) ? [minX, minY, maxX, maxY] : null
+      };
+      layers.push(L);
+      selected = L;
+      okCount++;
+    } catch (e) {
+      failNames.push(grp.baseName + '（' + (e && e.message ? e.message : '解析失败') + '）');
+    }
+  }
+  renderLayerList(); renderLegend(); scheduleDraw(); saveViewState();
+  if (okCount > 0) {
+    var last = layers[layers.length - 1];
+    if (last && last.kind === 'vector') fitLayer(last);
+  }
+  if (failNames.length) showErr('以下边界文件未导入：' + failNames.join('；'));
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise(function (resolve, reject) {
+    var rd = new FileReader();
+    rd.onload = function () { resolve(rd.result); };
+    rd.onerror = function () { reject(new Error('读取失败')); };
+    rd.readAsArrayBuffer(file);
+  });
+}
+
 function clearAllLayers() {
   while (layers.length) removeLayer(layers[layers.length - 1]);
 }
@@ -2488,6 +2587,8 @@ function bindUI() {
   };
   $('pickDir').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
   $('pickFiles').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
+  $('btnVector').onclick = function () { $('pickVector').click(); };
+  $('pickVector').onchange = function (e) { loadVectorFiles(e.target.files); e.target.value = ''; };
 
   $('btnRestore').onclick = function () {
     /* 从源更新 = 替换：先清掉当前图层，避免与缓存恢复的图层叠加重复 */
