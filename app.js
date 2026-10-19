@@ -215,7 +215,7 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-            STATE.hlPoly = { L: r.L, pg: r.pg };
+            STATE.hlPoly = { L: r.L, pg: r.pg }; STATE.sceneName = String(r.name || '');
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
@@ -1849,7 +1849,8 @@ function statTableHtml() {
   }
   h += '</table>';
   if (!s.total) return h + '<div class="k" style="margin-top:6px">该区域内没有栅格点。</div>';
-  h += '<div class="k" style="margin:7px 0 3px">档位分布</div><table class="dist">';
+  var _modeName = s.bandMode === 'sinr' ? 'SINR' : (s.bandMode === 'cov' ? '覆盖率' : 'RSRP');
+  h += '<div class="k" style="margin:7px 0 3px;font-weight:700">' + _modeName + ' 档位分布</div><table class="dist">';
   var gm = GRID_MODES[s.bandMode ? s.bandMode : 'rsrp'];
   for (var i = 0; i < gm.bands.length; i++) {
     h += '<tr><td class="sw"><i style="background:' + gm.fill[i] + '"></i></td>' +
@@ -1957,8 +1958,13 @@ function updateToolPanel() {
     title = TOOLS[STATE.measKind].label;
     html = measureHtml();
   } else if (STATE.selStats) {
-    title = '选区统计';
-    html = statTableHtml();
+    if (STATE.sceneName) {
+      title = STATE.sceneName;
+      html = '<div style="font-size:11px;color:var(--fg3);margin:-4px 0 6px">选区统计</div>' + statTableHtml();
+    } else {
+      title = '选区统计';
+      html = statTableHtml();
+    }
   } else if (STATE.measPts.length && STATE.measKind) {
     title = TOOLS[STATE.measKind].label;
     html = measureHtml();
@@ -2090,6 +2096,8 @@ function drawMeasure(c, t, w, h) {
 }
 
 function drawSelection(c, t, w, h) {
+  /* 场景搜索高亮时不画虚线，只留红色边框 */
+  if (typeof STATE !== 'undefined' && STATE.hlPoly) return;
   c.save();
   c.setLineDash([6, 4]);
   c.lineWidth = 1.5;
@@ -2890,7 +2898,7 @@ function bindUI() {
               if (vb) {
                 var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
                 var _pg = vL.polygons[pi];
-                STATE.hlPoly = { L: vL, pg: _pg };
+                STATE.hlPoly = { L: vL, pg: _pg }; STATE.sceneName = String(props[pk] || '');
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
                 /* 栅格层开着：自动用场景边界创建选区并统计 */
                 var _hasGrid = false;
@@ -2990,7 +2998,7 @@ function bindUI() {
           var _sb = _spg._bbox;
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
-            STATE.hlPoly = { L: _sL, pg: _spg };
+            STATE.hlPoly = { L: _sL, pg: _spg }; STATE.sceneName = String(_sres[0].name || '');
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             var _hg = false;
             for (var _hgi = 0; _hgi < layers.length; _hgi++) {
@@ -3069,7 +3077,7 @@ function bindUI() {
     var hadHl = !!STATE.hlCell || !!STATE.hlPoly;
     var hadPin = !!STATE.pin;
     STATE.hlCell = null;
-    STATE.hlPoly = null;
+    STATE.hlPoly = null; STATE.sceneName = null;
     STATE.pin = null;
     var ji = $('jump');
     if (ji) ji.value = '';
