@@ -2969,7 +2969,7 @@ function bindUI() {
       else if (_jt2 === 'cgi') showErr('没有找到' + _ratTxt + 'CGI：' + v);
       else if (_jt2 === 'scene') showErr('没有找到区域场景名称：' + v);
       else if (_jt2 === 'll') showErr('经纬度格式不对，示例：87.48,43.92');
-      else showErr('没有找到匹配的小区/CGI：' + v);
+      else showErr('没有找到匹配的小区/CGI/区域场景名称：' + v);
       hideJumpResults();
       return;
     }
