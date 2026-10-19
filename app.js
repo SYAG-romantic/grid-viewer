@@ -215,7 +215,7 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = String(_rp.name || _rp.NAME || _rp.Name || r.name || '');
+            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = String(_rp.name || _rp.NAME || _rp.Name || _rp.AREANAME || _rp.Areaname || r.name || '');
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
@@ -2925,7 +2925,7 @@ function bindUI() {
                 STATE.hlPoly = { L: vL, pg: _pg };
                 var _pprops = _pg.props || {};
                 /* 优先用 name/NAME 字段，否则用匹配到的值 */
-                var _sn = _pprops.name || _pprops.NAME || _pprops.Name;
+                var _sn = _pprops.name || _pprops.NAME || _pprops.Name || _pprops.AREANAME || _pprops.Areaname || _pprops.areaname;
                 if (!_sn) {
                   /* 找第一个像名称的字段（非纯数字、非ID） */
                   for (var _sk in _pprops) {
@@ -3042,7 +3042,7 @@ function bindUI() {
           var _sb = _spg._bbox;
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
-            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = String(_sp.name || _sp.NAME || _sp.Name || _sres[0].name || '');
+            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = String(_sp.name || _sp.NAME || _sp.Name || _sp.AREANAME || _sp.Areaname || _sres[0].name || '');
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             var _hg = false;
             for (var _hgi = 0; _hgi < layers.length; _hgi++) {
