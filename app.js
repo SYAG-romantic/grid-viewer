@@ -141,14 +141,15 @@ function searchCellsEx(keyword) {
     for (var i = 0; i < n; i++) {
       if (_layerCount >= 60 || results.length >= 120) break;
       var nmLc;
+      var nm;
       if (useLc) {
         nmLc = lcNames[i];
+        nm = nameArr ? String(nameArr[i] || '') : '';
       } else {
-        var _nm = nameArr ? nameArr[i] : null;
-        nmLc = String(_nm || '').toLowerCase();
+        nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
+        nmLc = nm.toLowerCase();
       }
       if (nmLc.indexOf(kw) >= 0) {
-        var nm = nameArr ? String(nameArr[i] || '') : '';
         var cgi = cgiArr ? String(cgiArr[i] || '') : (cgiCol ? String(ds.value(i, cgiCol) || '') : '');
         results.push({ L: L, i: i, name: nm, cgi: cgi }); _layerCount++;
         continue;
@@ -2593,8 +2594,9 @@ function bindUI() {
         return;
       }
     }
-    // 2. 先查精确匹配（哈希表，毫秒级）
+    // 2. 先查精确匹配（哈希表，毫秒级；未建好时跳过走模糊）
     var kwLow = v.toLowerCase();
+    var _foundExact = false;
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
       if (!L.ok || L.kind !== 'site' || !L._nameMap) continue;
@@ -2607,10 +2609,12 @@ function bindUI() {
             map.getView().animate({ center: [x0, y0], zoom: 17, duration: 400 });
           } catch (e) {}
           hideJumpResults();
-          return;
+          _foundExact = true;
+          break;
         }
       }
     }
+    if (_foundExact) return;
     // 3. 模糊搜索
     var res = searchCellsEx(v);
     var exact = [];
