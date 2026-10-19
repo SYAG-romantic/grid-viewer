@@ -993,17 +993,18 @@ async function buildGridGLAsync(L) {
       if (_res && !_res.error && _res.count > 0) {
         if (!glrInit()) return;
         var gl = GLR.gl;
-        if (L.glPosBuf) {
-          try { gl.deleteBuffer(L.glPosBuf); gl.deleteBuffer(L.glBandBuf); } catch (e) {}
-          L.glPosBuf = null; L.glBandBuf = null;
-        }
+        /* 先建新缓冲，再删旧的，避免中间黑屏 */
         var pb = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, pb);
         gl.bufferData(gl.ARRAY_BUFFER, _res.pos, gl.STATIC_DRAW);
         var bb = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, bb);
         gl.bufferData(gl.ARRAY_BUFFER, _res.bnd, gl.STATIC_DRAW);
+        var _oldPb = L.glPosBuf, _oldBb = L.glBandBuf;
         L.glPosBuf = pb; L.glBandBuf = bb;
+        if (_oldPb) {
+          try { gl.deleteBuffer(_oldPb); gl.deleteBuffer(_oldBb); } catch (e) {}
+        }
         L.glRefX = _res.refX; L.glRefY = _res.refY;
         L.glCount = _res.count;
         L.glOk = true;
