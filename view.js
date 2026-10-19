@@ -2531,6 +2531,30 @@ function drawLabels() {
         if (!vbb) continue;
         var vcx = (vbb[0] + vbb[2]) / 2, vcy = (vbb[1] + vbb[3]) / 2;
         if (vcx < extent[0] || vcx > extent[2] || vcy < extent[1] || vcy > extent[3]) continue;
+        /* 确保中心点在多边形内部（凹多边形 bbox 中心可能在外） */
+        if (!vpg._ringsMerc) {
+          vpg._ringsMerc = vpg.rings.map(function (ring) {
+            return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+          });
+        }
+        if (!ptInPoly(vcx, vcy, vpg._ringsMerc)) {
+          /* 中心在外：试 bbox 的 1/4 分位点 */
+          var found = false;
+          var cand = [
+            [vbb[0] + (vbb[2]-vbb[0])*0.25, vbb[1] + (vbb[3]-vbb[1])*0.25],
+            [vbb[0] + (vbb[2]-vbb[0])*0.75, vbb[1] + (vbb[3]-vbb[1])*0.25],
+            [vbb[0] + (vbb[2]-vbb[0])*0.25, vbb[1] + (vbb[3]-vbb[1])*0.75],
+            [vbb[0] + (vbb[2]-vbb[0])*0.75, vbb[1] + (vbb[3]-vbb[1])*0.75],
+            [vbb[0] + (vbb[2]-vbb[0])*0.5, vbb[1] + (vbb[3]-vbb[1])*0.25],
+            [vbb[0] + (vbb[2]-vbb[0])*0.5, vbb[1] + (vbb[3]-vbb[1])*0.75]
+          ];
+          for (var ci = 0; ci < cand.length; ci++) {
+            if (ptInPoly(cand[ci][0], cand[ci][1], vpg._ringsMerc)) {
+              vcx = cand[ci][0]; vcy = cand[ci][1]; found = true; break;
+            }
+          }
+          if (!found) continue;
+        }
         var vprops = vpg.props || {};
         var vnm = vprops.name || vprops.NAME || '';
         if (!vnm) { for (var vk in vprops) { vnm = vprops[vk]; break; } }
