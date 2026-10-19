@@ -430,14 +430,19 @@ async function parseVectorFiles(files, baseName) {
     lats.sort(function (a, b) { return a - b; });
     var medLon = lons[Math.floor(lons.length / 2)];
     var medLat = lats[Math.floor(lats.length / 2)];
-    // 过滤偏离中位数超过 10 度的点
+    // 过滤：去掉与前后点距离都超过 0.5 度的离群点
     var cleanRings = [];
     for (var rj = 0; rj < pg.rings.length; rj++) {
       var oring = pg.rings[rj];
       var cring = [];
       for (var vk = 0; vk < oring.length; vk++) {
         var lo = oring[vk][0], la = oring[vk][1];
-        if (Math.abs(lo - medLon) <= 10 && Math.abs(la - medLat) <= 10) {
+        var prev = oring[(vk - 1 + oring.length) % oring.length];
+        var next = oring[(vk + 1) % oring.length];
+        var dPrev = Math.max(Math.abs(lo - prev[0]), Math.abs(la - prev[1]));
+        var dNext = Math.max(Math.abs(lo - next[0]), Math.abs(la - next[1]));
+        // 保留：与任一邻居距离在 0.5 度内
+        if (dPrev <= 0.5 || dNext <= 0.5) {
           cring.push(oring[vk]);
         }
       }
