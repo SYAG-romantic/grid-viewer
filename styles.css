@@ -385,7 +385,7 @@ transition:all .22s cubic-bezier(.4,0,.2,1)}
 .icobtn:hover{background:var(--hover);border-color:var(--hoverbd);color:var(--accent);transform:translateY(-1px);
 box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .icobtn:active{transform:translateY(0) scale(.96);box-shadow:0 1px 4px rgba(0,0,0,.15)}
-.dsel-btn:hover,.themebtn:hover{transform:scale(1.06);background:var(--glass);border-color:var(--line);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.dsel-btn:hover,.themebtn:hover{transform:scale(1.06)!important;background:var(--glass)!important;border-color:var(--line)!important;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
 .dsel-btn:active,.themebtn:active{transform:scale(.96)}
 
 .dsel-pop button{transition:background .18s,transform .15s;text-shadow:0 1px 3px rgba(0,0,0,.25)}
