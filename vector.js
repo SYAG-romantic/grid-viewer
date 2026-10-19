@@ -135,7 +135,7 @@ function parseMapInfo(mapBuf, idBuf) {
       var off = idDv.getInt32((rec - 1) * 4, true);
       if (!off) continue;
       var t = dv.getUint8(off);
-      if (t === 0x0d || t === 0x0e || t === 0x2e || t === 0x2f) {
+      if (t === 0x0d || t === 0x2e || t === 0x2f) {
         try {
           var rings = readRegion(off);
           if (rings.length) polygons.push({ recNo: rec, rings: rings });
@@ -190,12 +190,66 @@ function parseShp(shpBuf) {
   return { polygons: polygons, shapeType: shapeType };
 }
 
+/* ---------- KML 解析 ---------- */
+function parseKml(kmlText) {
+  var polygons = [];
+  var props = [];
+  var parser = new DOMParser();
+  var doc = parser.parseFromString(kmlText, 'text/xml');
+  var pms = doc.getElementsByTagName('Placemark');
+  for (var i = 0; i < pms.length; i++) {
+    var pm = pms[i];
+    var nameEl = pm.getElementsByTagName('name')[0];
+    var nm = nameEl ? nameEl.textContent.trim() : '';
+    // 属性：ExtendedData
+    var pr = { name: nm };
+    var sds = pm.getElementsByTagName('SimpleData');
+    for (var si = 0; si < sds.length; si++) {
+      var sd = sds[si];
+      var k = sd.getAttribute('name');
+      if (k) pr[k] = sd.textContent.trim();
+    }
+    // 几何：Polygon / MultiGeometry
+    var rings = [];
+    var polys = pm.getElementsByTagName('Polygon');
+    for (var pi = 0; pi < polys.length; pi++) {
+      var coordEls = polys[pi].getElementsByTagName('coordinates');
+      for (var ci = 0; ci < coordEls.length; ci++) {
+        var txt = coordEls[ci].textContent.trim();
+        var ring = [];
+        var parts = txt.split(/\s+/);
+        for (var vi = 0; vi < parts.length; vi++) {
+          var c = parts[vi].split(',');
+          if (c.length >= 2) {
+            var lon = parseFloat(c[0]), lat = parseFloat(c[1]);
+            if (isFinite(lon) && isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
+              ring.push([lon, lat]);
+            }
+          }
+        }
+        if (ring.length >= 3) rings.push(ring);
+      }
+    }
+    if (rings.length) {
+      polygons.push({ recNo: i + 1, rings: rings });
+      props.push(pr);
+    }
+  }
+  var fields = props.length ? Object.keys(props[0]) : [];
+  return { polygons: polygons, props: props, fields: fields };
+}
+
 /* ---------- 统一入口 ---------- */
 // files: { tab, dat, map, id } 或 { shp, shx, dbf, prj, cpg }
 // 返回 { name, polygons: [{ rings, props }] }
 function parseVectorFiles(files, baseName) {
   var polygons, props = null, propFields = [];
-  if (files.geojson) {
+  if (files.kml) {
+    var kr = parseKml(files.kml);
+    polygons = kr.polygons;
+    props = kr.props;
+    propFields = kr.fields;
+  } else if (files.geojson) {
     // GeoJSON FeatureCollection
     var gj = JSON.parse(files.geojson);
     polygons = [];
