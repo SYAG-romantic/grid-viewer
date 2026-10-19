@@ -153,7 +153,9 @@ button:active{transform:scale(.955);background:var(--active);border-color:var(--
 /* 用 accent2 作底：白字在 #3b82f6 上仅 3.55:1，换 #1d4ed8 后 6.66:1 */
 button.pri{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:var(--line);color:var(--fg)}
 #btnFiles,#btnVector,#btnForget,#btnClearCache{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-#btnRestore,#btnForget,#btnClearCache{border-radius:10px;padding:7px 12px}
+#btnRestore,#btnForget,#btnClearCache{border-radius:10px;padding:7px 12px;transition:transform .15s ease}
+#btnRestore:hover,#btnForget:hover,#btnClearCache:hover{transform:scale(1.05)}
+#btnRestore:active,#btnForget:active,#btnClearCache:active{transform:scale(.9);color:var(--accent)!important}
 button.pri:hover{border-color:var(--accent2);filter:brightness(1.1)}
 button.dim{color:var(--fg2)}
 button.wide{width:100%}
@@ -181,7 +183,7 @@ button.panbtn:active,button.lvbtn:active,.eye:active,
 /* 图标按钮统一的手感（与工具条一致）：悬停轻微放大 + 按下回弹。
    用 .hov 类而非 :hover —— 便于自动化测试验证，与工具条的类机制一致 */
 .ol-control button.hov{transform:scale(1.08)}
-.ol-control button:active{transform:scale(.78)!important;color:var(--accent)!important}
+.ol-control button:active{transform:scale(.78)!important;color:var(--accent)!important;outline:none!important;box-shadow:none!important}
 
 /* 面板开合按钮与主题按钮（同为独立图标按钮），统一放大手感 */
 #btnFold,#btnTheme{
@@ -237,7 +239,9 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .tag.vector{background:var(--tagVecBg);color:var(--tagVecFg)}
 .layer .meta{font-size:12px;color:var(--fg3);margin-top:3px;padding-left:21px}
 .layer .ops{display:flex;gap:5px;margin-top:6px;padding-left:21px}
-.layer .ops button{padding:2px 7px;font-size:12px}
+.layer .ops button{padding:2px 7px;font-size:12px;transition:transform .15s ease}
+.layer .ops button:hover{transform:scale(1.1)}
+.layer .ops button:active{transform:scale(.85);color:var(--accent)!important}
 .empty{color:var(--fg3);font-size:12.5px;padding:8px 0;text-align:center}
 
 /* ---------- 条件筛选 ---------- */
