@@ -2609,6 +2609,14 @@ function bindUI() {
   }
   $('btnJump').onclick = doJump;
   $('jump').onkeydown = function (e) { if (e.key === 'Enter') doJump(); };
+  /* 点击空白处关闭搜索结果下拉 */
+  document.addEventListener('click', function (e) {
+    var box = document.getElementById('jumpResults');
+    if (!box || box.style.display === 'none') return;
+    var t = e.target;
+    if (t.closest && (t.closest('#jumpResults') || t.closest('#jump') || t.closest('#btnJump'))) return;
+    box.style.display = 'none';
+  });
   $('btnPinClear').onclick = function () {
     var hadHl = !!STATE.hlCell;
     var hadPin = !!STATE.pin;
