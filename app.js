@@ -2585,7 +2585,7 @@ function bindUI() {
         setPin(lon, lat);
         map.getView().animate({
           center: [lonToMercX(lon), latToMercY(lat)],
-          zoom: Math.max(map.getView().getZoom(), 16),
+          zoom: Math.max(map.getView().getZoom(), 17),
           duration: 320
         });
         hideJumpResults();
@@ -2608,7 +2608,7 @@ function bindUI() {
       if (isFinite(x0) && isFinite(y0)) {
         STATE.hlCell = { L: r0.L, i: r0.i };
         try {
-          map.getView().animate({ center: [x0, y0], zoom: 16, duration: 400 });
+          map.getView().animate({ center: [x0, y0], zoom: 17, duration: 400 });
         } catch (e) {}
         hideJumpResults();
         return;
