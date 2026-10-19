@@ -422,8 +422,9 @@ function initMap() {
 
   /* 缩放/平移动画过程中只画快速圆点：动画每帧都重绘，画全扇区会把动画卡成 PPT。
      停稳 250ms 后再补画一次全扇区，避免连续缩放时每停一下就卡一次 */
-  map.on('movestart', function () { STATE.navigating = true; });
+  map.on('movestart', function () { STATE.navigating = true; STATE._dragging = true; });
   map.on('moveend', function () {
+    STATE._dragging = false;
     STATE.navigating = false;
     clearTimeout(map._navT);
     map._navT = setTimeout(scheduleDraw, 250);
@@ -1658,8 +1659,8 @@ function drawVector(c, L, t, w, h, box) {
   }
   c.stroke();
   c.restore();
-  /* 搜索高亮：深红色边框 */
-  if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L) {
+  /* 搜索高亮：深红色边框（拖动时跳过，moveend 再画） */
+  if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L && !STATE._dragging) {
     var hpg = STATE.hlPoly.pg;
     var hbb = hpg._bbox;
     if (hbb && !(hbb[2] < b0 || hbb[0] > b2 || hbb[3] < b1 || hbb[1] > b3)) {
