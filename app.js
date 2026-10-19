@@ -118,7 +118,7 @@ function searchCellsEx(keyword) {
   var kw = String(keyword || '').trim().toLowerCase();
   if (!kw) return [];
   var results = [];
-  for (var li = 0; li < layers.length && results.length < 100; li++) {
+  for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
     if (!L.ok || L.kind !== 'site') continue;
     var ds = L.ds, n = ds.n;
@@ -135,7 +135,8 @@ function searchCellsEx(keyword) {
       L._cgiCol = cgiCol;
     }
     var cgiArr = (cgiCol && ds.str && ds.str[cgiCol]) ? ds.str[cgiCol] : null;
-    for (var i = 0; i < n && results.length < 100; i++) {
+    for (var i = 0; i < n; i++) {
+      if (results.length >= 200) break;
       var nm = nameArr ? String(nameArr[i] || '') : (nameCol ? String(ds.value(i, nameCol) || '') : '');
       if (nm.toLowerCase().indexOf(kw) >= 0) {
         var cgi = cgiArr ? String(cgiArr[i] || '') : (cgiCol ? String(ds.value(i, cgiCol) || '') : '');
@@ -150,7 +151,7 @@ function searchCellsEx(keyword) {
       }
     }
   }
-  return results;
+  return results.slice(0, 100);
 }
 function showJumpResults(res, kw) {
   var box = document.getElementById('jumpResults');
