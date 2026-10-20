@@ -300,6 +300,25 @@
           <button type="button" role="option" data-v="scene"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><span>区域场景名称</span></button>
         </div>
       </div>
+      <div class="dsel" id="statsBox">
+        <button type="button" id="btnStats" class="toolbtn" aria-haspopup="true" aria-expanded="false" title="场景指标统计">
+          <span>统计</span>
+          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="dsel-pop stats-pop" id="statsPop">
+          <div class="dsel-h">场景指标统计（4G / 5G 分表）</div>
+          <div class="st-row"><select id="stLayer" title="选择边界图层"></select></div>
+          <div class="st-row"><input id="stSearch" type="text" placeholder="搜索场景名称…" autocomplete="off"></div>
+          <div id="stList" class="st-list"></div>
+          <div class="st-foot">
+            <span id="stInfo"></span>
+            <span class="st-btns">
+              <button type="button" id="stExpOne">导出选中</button>
+              <button type="button" id="stExpAll">导出全部</button>
+            </span>
+          </div>
+        </div>
+      </div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
