@@ -71,12 +71,8 @@
             <button id="btnDir" class="pri">选择数据文件夹</button>
             <button id="btnFiles">选择文件</button>
           </div>
-          <div style="margin-bottom:7px">
-            <button id="btnVector" style="width:100%">添加边界图层</button>
-          </div>
           <input type="file" id="pickDir" webkitdirectory directory multiple hidden>
-          <input type="file" id="pickFiles" multiple hidden accept=".csv,.txt,.tsv,.json,.geojson,.xlsx,.xls">
-          <input type="file" id="pickVector" multiple hidden accept=".tab,.dat,.map,.id,.shp,.shx,.dbf,.prj,.cpg,.geojson,.json,.kml,.mif,.mid">
+          <input type="file" id="pickFiles" multiple hidden accept=".csv,.txt,.tsv,.json,.geojson,.xlsx,.xls,.tab,.dat,.map,.id,.shp,.shx,.dbf,.prj,.cpg,.kml,.mif,.mid">
           <div id="restoreBar" class="restore" style="display:none">
             <div class="restore-t">已记住数据源：<b id="srcName">—</b></div>
             <div class="mini">
@@ -87,9 +83,9 @@
             <div class="restore-h" id="restoreHint">浏览器会弹出一次授权，点「允许」即可自动重新读取，无需再找文件夹。</div>
           </div>
           <div style="font-size:11.5px;color:var(--fg3);line-height:1.5">
-            也可把文件直接拖到右侧地图。支持 csv / txt / geojson / xlsx。
+            也可把文件直接拖到右侧地图。数据与边界文件可一起选，类型自动识别。
             文件名含「工参/小区/基站」按工参图层加载，含「栅格」按栅格图层加载，其余自动判别。
-            边界图层：一次选中同名 .tab/.dat/.map/.id（MapInfo）或 .shp/.dbf/.prj（Shapefile）。
+            边界图层：一次选中同名 .tab/.dat/.map/.id（MapInfo）或 .shp/.dbf/.prj（Shapefile），也支持 kml / geojson。
           </div>
 
 <div id="layerList" style="margin-top:9px"></div>
