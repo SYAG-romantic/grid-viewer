@@ -13,7 +13,7 @@
   --errbg:#3d1a1a; --errbd:#6e2a2a; --errfg:#f2b8b8;
   --tagGridBg:#1c2c4a; --tagGridFg:#8fb8f5;
   --tagSiteBg:#3d2a16; --tagSiteFg:#e8a866;
-  --tagVecBg:#3a2418; --tagVecFg:#ff9a5c;
+  --tagVecBg:#2c1a4d; --tagVecFg:#d3a8ff;
   --ok:#6fd598; --warn:#d9a05a;
   --sb:#33333b;
   color-scheme:dark;
@@ -38,7 +38,7 @@ html.light{
   --errbg:#fdeaea; --errbd:#e8b4b4; --errfg:#a12626;
   --tagGridBg:#dce8fd; --tagGridFg:#1f55d6;
   --tagSiteBg:#fbe6cd; --tagSiteFg:#9a5512;
-  --tagVecBg:#ffe4d1; --tagVecFg:#c2571a;
+  --tagVecBg:#f1e4ff; --tagVecFg:#7c3aed;
   --ok:#187144; --warn:#9a5a0a;
   --sb:#c6c6d1;
   color-scheme:light;
