@@ -269,7 +269,7 @@ table.stat td.pct{text-align:right;color:var(--fg3);width:52px;font-variant-nume
 #labelCanvas{position:absolute;inset:0;pointer-events:none;z-index:4}
 #map{position:absolute;inset:0;background:var(--mapbg)}
 /* .ol-viewport 不设 z-index：避免建层叠上下文把缩放控件锁在栅格画布下 */
-.ol-overlaycontainer-stopevent{z-index:5}
+.ol-overlaycontainer-stopevent{z-index:5!important}
 #pts{position:absolute;inset:0;pointer-events:none;z-index:1}
 /* 工具模式下只改光标，不改 pointer-events：
    事件在 #mapwrap 捕获阶段被拦下，滚轮缩放因此不受影响 */
@@ -559,7 +559,7 @@ html.light #popup td.hl:last-child{color:var(--accent2)}
 /* 缩放按钮改成独立圆角方块，圆角与工具条图标按钮统一（9px）。
    覆盖 ol.css 的默认 2px 上下粘连样式，并给玻璃底/边框，视觉与其他按钮一致 */
 .ol-zoom .ol-zoom-in,
-.ol-zoom .ol-zoom-out{border-radius:9px;background:var(--panel2);border:1px solid var(--line);box-shadow:none;color:var(--fg)}
+.ol-zoom .ol-zoom-out{border-radius:9px;background:var(--glass);border:1px solid var(--line);box-shadow:none;color:var(--fg)}
 .ol-zoom .ol-zoom-in{margin-bottom:6px}
 .ol-attribution{display:none!important}   /* 去掉"点击显示天地图"的归属控件 */
 /* 去掉「指北/旋转复位」控件：它默认停在右上角，本应用不旋转地图用不到。
