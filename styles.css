@@ -445,7 +445,7 @@ box-shadow:0 3px 10px rgba(0,0,0,.18)}
   padding:calc(7px * var(--ls)) calc(8px * var(--ls)) calc(7px * var(--ls)) calc(10px * var(--ls));
   background:var(--soft2);cursor:move;user-select:none;
   font-size:calc(12.5px * var(--ls));font-weight:600;flex:0 0 auto;touch-action:none}
-#legend header .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#legend header .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;padding:1px 0}
 #legend .sub{color:var(--fg3);font-weight:400;font-size:calc(12px * var(--ls))}
 button.lvbtn{width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
   background:none;border:none;color:var(--fg3);cursor:pointer;border-radius:6px;flex:0 0 20px}
