@@ -475,7 +475,7 @@ function refreshActive() {
 var IDB_NAME = (typeof global !== 'undefined' && global.__IDB_NAME) || 'raster-viewer', IDB_STORE = 'src', IDB_CACHE = 'cache';
 var MAX_FILES = 40;
 var CACHE_LIMIT = 1024 * 1024 * 1024;   /* 数据缓存总量上限 1GB，超出则不缓存（避免撑爆配额） */
-var ACCEPT_RE = /\.(csv|txt|tsv|json|geojson|xlsx|xls)$/i;
+var ACCEPT_RE = /\.(csv|txt|tsv|json|geojson|xlsx|xls|tab|dat|map|id|shp|shx|dbf|prj|cpg|kml|mif|mid)$/i;
 var FSA_OK = (typeof window !== 'undefined') && !!window.showDirectoryPicker &&
   (typeof window.isSecureContext === 'undefined' || window.isSecureContext);
 var srcEntries = [];
@@ -2651,12 +2651,33 @@ function hideErr() {
   if (el) el.style.display = 'none';
 }
 
+/* geojson/json 内容识别：含多边形几何 → 边界图层；否则按数据文件解析 */
+async function geoJsonIsVector(f) {
+  try {
+    var txt = await f.text();
+    return /"type"\s*:\s*"(Multi)?Polygon"/.test(txt);
+  } catch (e) { return false; }
+}
+
 async function loadFiles(fileList) {
   rflog('loadFiles begin n=' + (fileList && fileList.length));
-  var files = Array.prototype.slice.call(fileList).filter(function (f) {
-    return /\.(csv|txt|tsv|json|geojson|xlsx|xls)$/i.test(f.name);
-  });
-  if (!files.length) { showErr('没有可识别的数据文件（支持 csv/txt/geojson/xlsx）'); return; }
+  /* 统一导入分发：数据与边界可混选，自动识别——
+     tab/shp/kml/mif 等边界格式直接转边界解析；geojson/json 按内容（多边形→边界，点→数据） */
+  var VEC_RE = /\.(tab|dat|map|id|shp|shx|dbf|prj|cpg|kml|mif|mid)$/i;
+  var AMB_RE = /\.(geojson|json)$/i;
+  var all = Array.prototype.slice.call(fileList || []);
+  var files = [], vecFiles = [], ambFiles = [];
+  for (var ai = 0; ai < all.length; ai++) {
+    var af = all[ai];
+    if (VEC_RE.test(af.name)) vecFiles.push(af);
+    else if (AMB_RE.test(af.name)) ambFiles.push(af);
+    else if (/\.(csv|txt|tsv|xlsx|xls)$/i.test(af.name)) files.push(af);
+  }
+  for (var aj = 0; aj < ambFiles.length; aj++) {
+    if (await geoJsonIsVector(ambFiles[aj])) vecFiles.push(ambFiles[aj]);
+    else files.push(ambFiles[aj]);
+  }
+  if (!files.length && !vecFiles.length) { showErr('没有可识别的文件（支持 csv/txt/xlsx 数据，tab/shp/kml/geojson 边界）'); return; }
 
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -2718,6 +2739,11 @@ async function loadFiles(fileList) {
      快照对象是「当前会话全部图层」——分多次导入时自动合并，后导入的不会覆盖先导入的。
      自动化测试页用 __NO_SESSION_CACHE 跳过，避免污染真实缓存 */
   refreshSessionCache();
+  /* 同批选中的边界文件接着走边界解析（与数据文件互不干扰） */
+  if (vecFiles.length) {
+    try { await loadVectorFiles(vecFiles); }
+    catch (e) { showErr('边界导入失败：' + (e && e.message ? e.message : e)); busyOff(); }
+  }
 }
 
 /* ============================ 14. 事件绑定 ============================ */
@@ -2817,21 +2843,6 @@ function bindUI() {
   };
   $('pickDir').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
   $('pickFiles').onchange = function (e) { loadFiles(e.target.files); e.target.value = ''; };
-  $('btnVector').onclick = function () { $('pickVector').click(); };
-  $('pickVector').onchange = function (e) {
-    /* 必须先把 FileList 拷成真数组再清空 input：
-       e.target.value = '' 会把 input.files 置空，而 FileList 是“活的”，
-       先清空后读取就一个文件都拿不到 —— 表现就是“选了文件但没任何反应” */
-    var picked = [];
-    var fl = e.target.files;
-    if (fl) for (var fi = 0; fi < fl.length; fi++) picked.push(fl[fi]);
-    e.target.value = '';   /* 清空后允许再次选择同一批文件 */
-    if (!picked.length) { showErr('没有选中任何文件'); return; }
-    loadVectorFiles(picked).catch(function (er) {
-      showErr('边界导入失败：' + (er && er.message ? er.message : er));
-      busyOff();
-    });
-  };
 
   $('btnRestore').onclick = function () {
     /* 从源更新 = 替换：先清掉当前图层，避免与缓存恢复的图层叠加重复 */
