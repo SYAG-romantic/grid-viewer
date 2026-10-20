@@ -13,7 +13,7 @@
 /* 从 .TAB 头解析 Charset，返回 TextDecoder 可用的编码名 */
 function parseTabCharset(tabText) {
   if (!tabText) return null;
-  var m = /Charset\s+"([^"]+)"/i.exec(String(tabText));
+  var m = /Charset\s+"?([^\s"]+)"?/i.exec(String(tabText));
   if (!m) return null;
   var cs = m[1].toLowerCase();
   if (cs.indexOf('utf-8') >= 0 || cs.indexOf('utf8') >= 0) return 'utf-8';
@@ -49,6 +49,12 @@ function parseTabFieldTypes(tabText) {
 /* fieldTypes 可选：{ 字段名: 'float'|'largeint'|'integer'|'smallint'|'logical' }，
  * 只有 MapInfo 的 .DAT 才需要（它把数值列按二进制写）；标准 .DBF 传 null 即可 */
 function parseDbf(buf, encoding, fieldTypes) {
+  /* .TAB 声明的字段名与 .DAT 头里的大小写可能不一致，类型查表统一走小写 */
+  var ftLow = null;
+  if (fieldTypes) {
+    ftLow = {};
+    for (var _fk in fieldTypes) ftLow[String(_fk).toLowerCase()] = fieldTypes[_fk];
+  }
   var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
   var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   var nRec = dv.getUint32(4, true);
@@ -77,8 +83,8 @@ function parseDbf(buf, encoding, fieldTypes) {
   if ((encoding || 'gbk') === 'gbk' && nRec > 0 && rLen > 0) {
     try {
       var sample = [];
-      var maxRec = Math.min(nRec, 100);
-      for (var sr = 0; sr < maxRec && sample.length < 262144; sr++) {
+      var maxRec = Math.min(nRec, 400);
+      for (var sr = 0; sr < maxRec && sample.length < 524288; sr++) {
         var sb = hLen + sr * rLen;
         for (var sf = 0; sf < fields.length; sf++) {
           if (fields[sf].type !== 'C') continue;
@@ -108,15 +114,15 @@ function parseDbf(buf, encoding, fieldTypes) {
     for (var f = 0; f < fields.length; f++) {
       var fd = fields[f];
       var b0 = base + fd.off, e = b0 + fd.len;
-      var ft = fieldTypes ? fieldTypes[fd.name] : null;
+      var ft = ftLow ? ftLow[String(fd.name).toLowerCase()] : null;
       /* MapInfo .DAT 的二进制数值列：按 .TAB 声明的类型直接取值 */
-      if (ft === 'float' && fd.len === 8) { rec[fd.name] = dv.getFloat64(b0, true); continue; }
+      if (ft === 'float' && fd.len === 8) { try { rec[fd.name] = dv.getFloat64(b0, true); } catch (ee1) { rec[fd.name] = ''; } continue; }
       if ((ft === 'largeint' || ft === 'bigint') && fd.len === 8) {
         try { rec[fd.name] = String(dv.getBigInt64(b0, true)); } catch (e) { rec[fd.name] = ''; }
         continue;
       }
-      if (ft === 'integer' && fd.len === 4) { rec[fd.name] = dv.getInt32(b0, true); continue; }
-      if (ft === 'smallint' && fd.len === 2) { rec[fd.name] = dv.getInt16(b0, true); continue; }
+      if (ft === 'integer' && fd.len === 4) { try { rec[fd.name] = dv.getInt32(b0, true); } catch (ee2) { rec[fd.name] = ''; } continue; }
+      if (ft === 'smallint' && fd.len === 2) { try { rec[fd.name] = dv.getInt16(b0, true); } catch (ee3) { rec[fd.name] = ''; } continue; }
       if (ft === 'logical' && fd.len === 1) { rec[fd.name] = u8[b0] ? 'T' : 'F'; continue; }
       /* 文本列：定长字段右侧是空格 / NUL 填充，先把有效区间夹出来再解码；
          纯 ASCII（数字、编号）直接 fromCharCode，省掉 TextDecoder 的每次固定开销 */
@@ -448,7 +454,7 @@ async function parseShp(shpBuf, onProgress) {
     if (roff + 4 > len || contentLen <= 0) break;
     try {
       var st = dv.getInt32(roff, true);
-      if (st === 5 || st === 15) { // Polygon / PolygonZ
+      if (st === 5 || st === 15 || st === 25) { // Polygon / PolygonZ / PolygonM（XY 段布局一致）
         /* 记录头里带了这条记录的包围盒，直接拿来当 bbox，
            省掉 App 侧再遍历一遍所有顶点算范围（十万面百万点要好几百毫秒） */
         var bx1 = dv.getFloat64(roff + 4, true), by1 = dv.getFloat64(roff + 12, true);
@@ -482,6 +488,10 @@ async function parseShp(shpBuf, onProgress) {
     } catch (e) { /* 单条记录坏掉不影响整层 */ }
     off = roff + contentLen;
   }
+  /* 有记录却一个多边形都没解出来：多半是几何类型不支持（如 MultiPatch），明确报错别给空图层 */
+  if (!polygons.length && recNo > 0) {
+    throw new Error('SHP 里有 ' + recNo + ' 条记录，但没有可识别的多边形（文件几何类型 ' + shapeType + ' 可能不受支持）');
+  }
   return { polygons: polygons, shapeType: shapeType };
 }
 
@@ -503,6 +513,13 @@ function parseKml(kmlText) {
       var sd = sds[si];
       var k = sd.getAttribute('name');
       if (k) pr[k] = sd.textContent.trim();
+    }
+    /* ExtendedData 的 <Data name="…"><value>…</value></Data> 形式（不少 GIS 导出的默认写法） */
+    var eds = pm.getElementsByTagName('Data');
+    for (var ei = 0; ei < eds.length; ei++) {
+      var ek = eds[ei].getAttribute('name');
+      var evEl = eds[ei].getElementsByTagName('value')[0];
+      if (ek && evEl && !(ek in pr)) pr[ek] = evEl.textContent.trim();
     }
     // 属性：description 里的 HTML 表格
     var descEl = pm.getElementsByTagName('description')[0];
@@ -536,9 +553,11 @@ function parseKml(kmlText) {
         if (ring.length >= 3) rings.push(ring);
       }
     }
+    /* props 必须与 Placemark 序号严格对齐（挂接按 recNo 取 props[recNo-1]）：
+       无多边形的 Placemark（点/样式）也要占位，否则后面所有多边形属性整体错位 */
+    props.push(pr);
     if (rings.length) {
       polygons.push({ recNo: i + 1, rings: rings });
-      props.push(pr);
     }
   }
   var fields = props.length ? Object.keys(props[0]) : [];
@@ -550,6 +569,10 @@ function parseMif(mifText, midText) {
   var polygons = [];
   var props = [];
   var fields = [];
+  /* MID 分隔符以 MIF 头的 Delimiter 声明为准（默认逗号） */
+  var midDelim = ',';
+  var dm = /^\s*Delimiter\s+"(.)"/im.exec(String(mifText || ''));
+  if (dm) midDelim = dm[1];
   // 解析 MID 属性（CSV 风格）
   var midRows = [];
   if (midText) {
@@ -562,7 +585,7 @@ function parseMif(mifText, midText) {
       for (var ci = 0; ci < ln.length; ci++) {
         var ch = ln[ci];
         if (ch === '"') inQ = !inQ;
-        else if (ch === ',' && !inQ) { row.push(cur); cur = ''; }
+        else if (ch === midDelim && !inQ) { row.push(cur); cur = ''; }
         else cur += ch;
       }
       row.push(cur);
@@ -592,6 +615,9 @@ function parseMif(mifText, midText) {
     }
     if (ul === 'DATA') { inData = true; continue; }
     if (!inData) continue;
+    /* 非 REGION 对象（点/线等）各占一行 MID：也要计数，否则后续 REGION 属性错位。
+       只在没有正在读的 REGION 时才算新对象（REGION 内部的 CENTER 等子行不在此列） */
+    if (!curPoly && /^(PLINE|POINT|LINE|ARC|RECT|ELLIPSE|TEXT|ROUNDTEXT|MULTIPOINT)\b/.test(ul)) { featIdx++; continue; }
     if (ul.indexOf('REGION') === 0) {
       var nsec = parseInt(l.split(/\s+/)[1] || '1', 10);
       curRings = []; curRing = null; ptsLeft = 0;
@@ -618,7 +644,7 @@ function parseMif(mifText, midText) {
             }
           }
           polygons.push({ recNo: featIdx + 1, rings: curRings });
-          props.push(pr);
+          props[featIdx] = pr;   /* 按 MID 行号占位（与 recNo 同口径），不能紧凑 push，否则混入非 REGION 对象时错位 */
           featIdx++;
           curPoly = null;
         }
