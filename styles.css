@@ -637,8 +637,3 @@ html.light #btnTheme .ic-sun{display:block}
 #stLayerCur{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #stLayerPop button{white-space:normal;text-align:left}
 
-/* 统计模块文字按钮（与搜索模块同高同玻璃） */
-.st-tbtn{height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:transform .15s ease}
-.st-tbtn:hover{transform:scale(1.06)}
-.st-tbtn:active{transform:scale(.9);color:var(--accent)}
-.st-tbtn:disabled{opacity:.45;cursor:default;transform:none}
