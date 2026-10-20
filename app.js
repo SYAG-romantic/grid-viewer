@@ -41,6 +41,11 @@ function renderLayerList() {
     if (!L) return;
     el.querySelector('[data-act="vis"]').onchange = function (e) {
       L.visible = e.target.checked; scheduleDraw(); saveViewState();
+      /* 统计联动：当前统计图层被取消勾选 → 统计按钮恢复「统计」（重新勾选不自动恢复，要在统计下拉里重选） */
+      if (!L.visible && typeof ST !== 'undefined' && ST.layerId >= 0 && layers[ST.layerId] === L) {
+        ST.layerId = -1; ST.selScene = -1;
+        stSyncLayerCur();
+      }
     };
     el.querySelector('[data-act="sel"]').onclick = function () { selectLayer(L); };
     el.querySelector('[data-act="del"]').onclick = function () { removeLayer(L); };
