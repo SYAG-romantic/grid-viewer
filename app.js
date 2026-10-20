@@ -3597,7 +3597,9 @@ function stSelectScene(si) {
   STATE.sceneName = getSceneName(pg.props || {}) || ('场景 ' + (si + 1));
   var bb = pg._bbox || polyBBoxMerc(pg);
   if (bb) {
-    try { map.getView().animate({ center: [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2], zoom: 14, duration: 400 }); } catch (e) {}
+    /* 按场景实际大小贴合缩放（固定 14 级对小场景太远）：外扩 18% + 60 米边距，最大 16.5 级 */
+    var pw = (bb[2] - bb[0]) * 0.18 + 60, ph = (bb[3] - bb[1]) * 0.18 + 60;
+    try { map.getView().fit([bb[0] - pw, bb[1] - ph, bb[2] + pw, bb[3] + ph], { duration: 400, maxZoom: 16.5 }); } catch (e) {}
   }
   if (pg._ringsMerc.length && pg._ringsMerc[0].length >= 3) {
     var ring = pg._ringsMerc[0];
