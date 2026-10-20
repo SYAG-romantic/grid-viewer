@@ -179,7 +179,7 @@ button.panbtn:active,button.lvbtn:active,.eye:active,
 /* OpenLayers 自带控件（缩放/指北针）也给同样的手感 */
 /* OL 自带控件跟随本主题：它用 --ol-* 变量，这儿覆盖成我们的调色板 */
 .ol-control button{width:26px;height:26px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);background:var(--glass);
+  background:var(--glass);
   transition:transform .22s cubic-bezier(.34,1.56,.64,1),background-color .18s ease}
 /* 图标按钮统一的手感（与工具条一致）：悬停轻微放大 + 按下回弹。
    用 .hov 类而非 :hover —— 便于自动化测试验证，与工具条的类机制一致 */
@@ -282,7 +282,7 @@ table.stat td.pct{text-align:right;color:var(--fg3);width:52px;font-variant-nume
   display:flex;flex-direction:column;gap:6px;transition:left .3s cubic-bezier(.22,.61,.36,1)}
 .tgroup{position:relative}
 button.tbtn{width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;
-  border-radius:9px;background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-radius:9px;background:var(--glass);
   border:1px solid var(--line);color:var(--fg2);
   box-shadow:0 4px 16px rgba(0,0,0,.4);position:relative;
   /* Dock 式放大的手感：带轻微回弹的缓动 */
