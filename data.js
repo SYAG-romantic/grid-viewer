@@ -273,6 +273,12 @@ Dataset.prototype.columnText = function (col) {
   if (!this._colCache) this._colCache = {};
   if (this._colCache[col]) return this._colCache[col];
   var out = new Array(this.n);
+  /* 无原始文本存储（如 xlsx 导入）：逐行 value() 兜底，不能直接读 this.store（为 null 会抛错） */
+  if (!this.store || !this.lineOff) {
+    for (var vi = 0; vi < this.n; vi++) out[vi] = String(this.value(vi, col) || '');
+    this._colCache[col] = out;
+    return out;
+  }
   var delim = this.delim, len, p, fi, k, start, end, s;
   for (var i = 0; i < this.n; i++) {
     s = this.store.range(this.lineOff[i], this.lineOff[i + 1]);
@@ -555,7 +561,8 @@ function pickColumn(columns, keys) {
       if (low[j] === keys[i]) return columns[j];
     }
     for (var j2 = 0; j2 < low.length; j2++) {
-      if (low[j2].indexOf(keys[i]) >= 0) return columns[j2];
+      /* 单字符 key（x/y）只认"以它开头"的列（x坐标），避免 max/county 之类中间含字母的列被误认 */
+      if (keys[i].length >= 2 ? (low[j2].indexOf(keys[i]) >= 0) : (low[j2].indexOf(keys[i]) === 0)) return columns[j2];
     }
   }
   return null;
@@ -564,11 +571,13 @@ function pickColumn(columns, keys) {
 /* 从文件名/列名判断制式：'5G' | '4G' | null。
    弱覆盖门限分制式：5G = -105，4G = -110，对应 cnt105Col / cnt110Col */
 function detectRat(ds) {
+  /* 文件名优先：列名里出现「5G共站」之类字样不能把 4G 文件误判成 5G（门限列会跟着选错） */
   var name = String(ds.name || '').toLowerCase();
+  if (name.indexOf('5g') >= 0 || name.indexOf('5 g') >= 0) return '5G';
+  if (name.indexOf('4g') >= 0 || name.indexOf('4 g') >= 0) return '4G';
   var cols = ds.columns.map(function (c) { return String(c).toLowerCase(); }).join(' ');
-  var hay = name + ' ' + cols;
-  if (hay.indexOf('5g') >= 0 || hay.indexOf('5 g') >= 0) return '5G';
-  if (hay.indexOf('4g') >= 0 || hay.indexOf('4 g') >= 0) return '4G';
+  if (cols.indexOf('5g') >= 0 || cols.indexOf('5 g') >= 0) return '5G';
+  if (cols.indexOf('4g') >= 0 || cols.indexOf('4 g') >= 0) return '4G';
   return null;
 }
 
@@ -628,20 +637,39 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
-    /* 同步建精确匹配索引（加载多1-2秒，换搜索毫秒级） */
+    /* 同步建搜索索引：精确哈希 + 模糊用的小写名字数组 + CGI 数组，一次建好。
+       注意 ds.str 在 CSV 解析时并不填充（只有站型列存了数组），旧代码逐行
+       ds.value() 取名字/CGI，每行都 splitRow 整行（31 列）——模糊搜索每敲
+       一次键就要 330k 次 splitRow，这就是下拉要三四秒的根因。
+       这里每行只 cells() 一次（一次 splitRow），名字/CGI 同批取出：加载
+       耗时与原来相当，但之后每次模糊搜索只是数组 indexOf，毫秒级。 */
     if (L.nameCol) {
       try {
         var _n2 = ds.n;
-        var _map = {}, _lc2 = new Array(_n2);
-        var _arr2 = (ds.str && ds.str[L.nameCol]) ? ds.str[L.nameCol] : null;
+        var _map = {}, _lc2 = new Array(_n2), _nmArr = new Array(_n2);
+        var _nc = ds.columns.indexOf(L.nameCol);
+        /* CGI 列（cgi/ecgi）：模糊搜索第二匹配列，同批一次建好 */
+        var _cgiCol = null;
+        for (var _scc = 0; _scc < ds.columns.length; _scc++) {
+          var _scn = String(ds.columns[_scc] || '').toLowerCase();
+          if (_scn === 'cgi' || _scn === 'ecgi') { _cgiCol = ds.columns[_scc]; break; }
+        }
+        var _cc = _cgiCol ? ds.columns.indexOf(_cgiCol) : -1;
+        var _cgArr = _cgiCol ? new Array(_n2) : null;
         for (var _j = 0; _j < _n2; _j++) {
-          var _raw = _arr2 ? _arr2[_j] : ds.value(_j, L.nameCol);
-          var _nm2 = String(_raw || '').toLowerCase();
+          var _cells = ds.cells(_j);
+          var _raw = (_nc >= 0 && _nc < _cells.length) ? _cells[_nc] : '';
+          _nmArr[_j] = String(_raw || '');
+          var _nm2 = _nmArr[_j].toLowerCase();
           _lc2[_j] = _nm2;
           if (_nm2) _map[_nm2] = _j;
+          if (_cgArr) _cgArr[_j] = String((_cc >= 0 && _cc < _cells.length) ? (_cells[_cc] || '') : '');
         }
         L._nameMap = _map;
         L._lcNames = _lc2;
+        L._nameArr = _nmArr;
+        L._cgiCol = _cgiCol;
+        L._cgiArr = _cgArr;
       } catch (e) {}
     }
     L.bandCol = pickColumn(ds.columns, ALIAS.band);
@@ -667,6 +695,7 @@ function makeLayer(ds, kind, skipCity) {
     var idx = new Int16Array(ds.n);
     if (arr) {
       for (var i = 0; i < ds.n; i++) {
+        if (!isFinite(arr[i])) { idx[i] = -1; continue; }   /* 空单元格是 NaN，不能当成一个叫 'NaN' 的城市 */
         var k = String(Math.round(arr[i]));
         var v = map[k];
         if (v === undefined) { v = list.length; map[k] = v; list.push(k); }
@@ -701,6 +730,13 @@ async function buildCityIdxAsync(L) {
       var numCols = {}, strCols = {};
       if (ds.num[cityCol]) numCols[cityCol] = ds.num[cityCol];
       if (ds.str && ds.str[cityCol]) strCols[cityCol] = ds.str[cityCol];
+      /* 文本城市列 ds.str 从不填充：必须逐行 value() 取出真实值再给 Worker，
+         否则 Worker 拿不到数据会把所有行归成一类、索引整体作废 */
+      if (!numCols[cityCol] && !strCols[cityCol]) {
+        var _sa = new Array(ds.n);
+        for (var _vi = 0; _vi < ds.n; _vi++) _sa[_vi] = String(ds.value(_vi, cityCol) || '');
+        strCols[cityCol] = _sa;
+      }
       var _res = await workerCall('cityIndex', {
         n: ds.n, columns: ds.columns,
         numCols: numCols, strCols: strCols, cityCol: cityCol
@@ -717,6 +753,7 @@ async function buildCityIdxAsync(L) {
   var idx = new Int16Array(ds.n);
   if (arr) {
     for (var i = 0; i < ds.n; i++) {
+      if (!isFinite(arr[i])) { idx[i] = -1; continue; }
       var k = String(Math.round(arr[i]));
       var v = map[k];
       if (v === undefined) { v = list.length; map[k] = v; list.push(k); }
@@ -742,8 +779,9 @@ async function projectLayerAsync(L) {
   var ds = L.ds, n = ds.n;
   var lon = ds.num[L.lonCol], lat = ds.num[L.latCol];
   if (!lon || !lat) { L.ok = false; L.error = '经纬度列不是数值'; return; }
-  /* 大数据量（>50万）才走 Worker，小数据量主线程更快 */
-  if (_w && n > 500000) {
+  /* 大数据量（>50万）才走 Worker，小数据量主线程更快；
+     坐标纠偏模式（crsMode=1）Worker 不支持，强制主线程保证各图层口径一致 */
+  if (_w && n > 500000 && STATE.crsMode !== 1) {
     try {
       var _res = await workerCall('projectGrid', {
         data: { lon: lon, lat: lat, n: n }
