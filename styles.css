@@ -632,3 +632,7 @@ html.light #btnTheme .ic-sun{display:block}
 .st-btns{display:flex;gap:6px}
 .st-btns button{padding:6px 12px;border-radius:8px;font-size:12.5px}
 .st-btns button:disabled{opacity:.45;cursor:default}
+
+/* 统计图层下拉：名称太长省略 */
+#stLayerCur{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stLayerPop button{white-space:normal;text-align:left}
