@@ -243,24 +243,6 @@ function showJumpResults(res, kw) {
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
-            var _cg = false;
-            for (var _cgi = 0; _cgi < layers.length; _cgi++) {
-              if (layers[_cgi].kind === 'grid' && layers[_cgi].visible && layers[_cgi].ok) { _cg = true; break; }
-            }
-            if (_cg) {
-              if (!r.pg._ringsMerc) {
-                r.pg._ringsMerc = r.pg.rings.map(function (ring) {
-                  return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-                });
-              }
-              if (r.pg._ringsMerc.length && r.pg._ringsMerc[0].length >= 3) {
-                STATE.polyPts = r.pg._ringsMerc[0].slice();
-                STATE.polyDone = true;
-                STATE.sceneSel = true;
-                STATE.selBox = null; STATE.selCircle = null;
-                try { applySelection(); } catch (e2) {}
-              }
-            }
             scheduleDraw();
           }
           box.style.display = 'none';
@@ -2959,34 +2941,6 @@ function bindUI() {
                 }
                 STATE.sceneName = String(_sn || props[pk] || '');
                 map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
-                /* 栅格层开着：自动用场景边界创建选区并统计 */
-                var _hasGrid = false;
-                for (var _gi = 0; _gi < layers.length; _gi++) {
-                  if (layers[_gi].kind === 'grid' && layers[_gi].visible && layers[_gi].ok) { _hasGrid = true; break; }
-                }
-                if (_hasGrid) {
-                  if (!_pg._ringsMerc) {
-                    _pg._ringsMerc = _pg.rings.map(function (ring) {
-                      return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-                    });
-                  }
-                  if (_pg._ringsMerc.length && _pg._ringsMerc[0].length >= 3) {
-                    var _ring = _pg._ringsMerc[0];
-                    /* 简化：超过 20 个点时抽稀，拖动不卡 */
-                    if (_ring.length > 20) {
-                      var _step = Math.ceil(_ring.length / 20);
-                      var _simp = [];
-                      for (var _si = 0; _si < _ring.length; _si += _step) _simp.push(_ring[_si]);
-                      _ring = _simp;
-                    }
-                    STATE.polyPts = _ring;
-                    STATE.polyDone = true;
-                    STATE.sceneSel = true;
-                    STATE.selBox = null;
-                    STATE.selCircle = null;
-                    try { applySelection(); } catch (e) {}
-                  }
-                }
                 scheduleDraw();
                 return;
               }
@@ -3068,24 +3022,6 @@ function bindUI() {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
             STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = getSceneName(_sp) || String(_sres[0].name || '');
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
-            var _hg = false;
-            for (var _hgi = 0; _hgi < layers.length; _hgi++) {
-              if (layers[_hgi].kind === 'grid' && layers[_hgi].visible && layers[_hgi].ok) { _hg = true; break; }
-            }
-            if (_hg) {
-              if (!_spg._ringsMerc) {
-                _spg._ringsMerc = _spg.rings.map(function (ring) {
-                  return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-                });
-              }
-              if (_spg._ringsMerc.length && _spg._ringsMerc[0].length >= 3) {
-                STATE.polyPts = _spg._ringsMerc[0].slice();
-                STATE.polyDone = true;
-                STATE.sceneSel = true;
-                STATE.selBox = null; STATE.selCircle = null;
-                try { applySelection(); } catch (e2) {}
-              }
-            }
             scheduleDraw();
             hideJumpResults();
             return;
@@ -3395,8 +3331,8 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 
-/* ========== 场景指标统计（按边界图层逐场景汇总 4G/5G 众测指标并导出） ========== */
-var ST = { layerId: -1, selScene: -1, filter: '', busy: false };
+/* ========== 场景指标统计（统计面板：选图层 → 搜场景查询/清除 → 导出） ========== */
+var ST = { layerId: -1, selScene: -1, busy: false };
 
 function stVectorLayerIdxs() {
   var out = [];
@@ -3410,8 +3346,7 @@ function stVectorLayerIdxs() {
 function stCityName(props) {
   var cid = props.CITYID != null ? props.CITYID : (props.CityID != null ? props.CityID : props.cityid);
   if (cid != null && CITY_NAMES[String(cid)]) return CITY_NAMES[String(cid)];
-  var f = String(props.F || props.city || props.CITY || '').trim();
-  return f;
+  return String(props.F || props.city || props.CITY || '').trim();
 }
 
 function stRangeStr(bb) {
@@ -3463,16 +3398,26 @@ function initStatsPanel() {
   document.addEventListener('click', function () { if (box.classList.contains('open')) close(); });
   selLayer.onchange = function () {
     ST.layerId = parseInt(selLayer.value, 10);
-    ST.selScene = -1;
-    stRenderList();
+    stDoClear(true);
+    stInfoMsg();
   };
-  var tm = null;
-  search.oninput = function () {
-    clearTimeout(tm);
-    tm = setTimeout(function () { ST.filter = search.value.trim().toLowerCase(); stRenderList(); }, 200);
-  };
-  document.getElementById('stExpOne').onclick = function () { stExport(false); };
-  document.getElementById('stExpAll').onclick = function () { stExport(true); };
+  document.getElementById('stQuery').onclick = function () { stDoQuery(); };
+  search.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); stDoQuery(); } };
+  document.getElementById('stClear').onclick = function () { stDoClear(false); stInfoMsg(); };
+  document.getElementById('stExport').onclick = function () { stExport(ST.selScene < 0); };
+}
+
+function stInfoMsg() {
+  var info = document.getElementById('stInfo');
+  if (!info || ST.busy) return;
+  var L = layers[ST.layerId];
+  if (!L || !L.polygons) { info.textContent = ''; return; }
+  if (ST.selScene >= 0) {
+    var nm = getSceneName(L.polygons[ST.selScene].props || {}) || ('场景 ' + (ST.selScene + 1));
+    info.textContent = '已选：' + nm + '（导出只导该场景）';
+  } else {
+    info.textContent = '共 ' + L.polygons.length + ' 个场景（导出导全部）';
+  }
 }
 
 function stRefreshLayers() {
@@ -3493,62 +3438,114 @@ function stRefreshLayers() {
     if (ST.layerId < 0 || !layers[ST.layerId] || layers[ST.layerId].kind !== 'vector') ST.layerId = idxs[0];
     sel.value = String(ST.layerId);
   }
-  stRenderList();
+  stInfoMsg();
 }
 
-function stSceneList() {
+/* 在当前图层里按名称模糊找场景，返回 [idx] */
+function stFindScenes(kw) {
   var L = layers[ST.layerId];
-  if (!L || L.kind !== 'vector' || !L.polygons) return [];
+  if (!L || !L.polygons) return [];
+  kw = (kw || '').trim().toLowerCase();
   var out = [];
   for (var i = 0; i < L.polygons.length; i++) {
-    var pg = L.polygons[i];
-    var nm = getSceneName(pg.props || {}) || ('场景 ' + (i + 1));
-    if (ST.filter && nm.toLowerCase().indexOf(ST.filter) < 0) continue;
-    out.push({ idx: i, name: nm, city: stCityName(pg.props || {}) });
+    var nm = getSceneName(L.polygons[i].props || {}) || '';
+    if (!kw || nm.toLowerCase().indexOf(kw) >= 0) out.push(i);
   }
   return out;
 }
 
-function stRenderList() {
+function stDoQuery() {
+  if (ST.layerId < 0) { showErr('先选择一个边界图层'); return; }
+  var kw = document.getElementById('stSearch').value.trim();
+  if (!kw) { showErr('先输入要查询的场景名称'); return; }
+  var hits = stFindScenes(kw);
   var list = document.getElementById('stList');
-  var sc = stSceneList();
-  if (ST.layerId < 0) {
-    list.innerHTML = '<div class="st-empty">先用「添加边界图层」导入一个图层</div>';
-  } else if (!sc.length) {
-    list.innerHTML = '<div class="st-empty">没有匹配的场景</div>';
-  } else {
-    var html = '', MAX = 300;
-    for (var i = 0; i < Math.min(sc.length, MAX); i++) {
-      html += '<div class="st-item' + (sc[i].idx === ST.selScene ? ' on' : '') + '" data-i="' + sc[i].idx + '">'
-        + '<span class="st-city">' + esc(sc[i].city) + '</span>' + esc(sc[i].name) + '</div>';
-    }
-    if (sc.length > MAX) html += '<div class="st-empty">仅显示前 ' + MAX + ' 条，用搜索缩小范围</div>';
-    list.innerHTML = html;
-    Array.prototype.forEach.call(list.querySelectorAll('.st-item'), function (el) {
-      el.onclick = function () {
-        ST.selScene = parseInt(el.getAttribute('data-i'), 10);
-        Array.prototype.forEach.call(list.querySelectorAll('.st-item'), function (x) { x.classList.remove('on'); });
-        el.classList.add('on');
-        stUpdateInfo(sc.length);
-      };
+  if (!hits.length) {
+    list.style.display = 'none';
+    showErr('没有找到场景：' + kw);
+    return;
+  }
+  if (hits.length === 1) {
+    list.style.display = 'none';
+    stSelectScene(hits[0]);
+    return;
+  }
+  /* 多个匹配：列出来点选 */
+  var L = layers[ST.layerId];
+  var html = '', MAX = 30;
+  for (var i = 0; i < Math.min(hits.length, MAX); i++) {
+    var pg = L.polygons[hits[i]];
+    html += '<div class="st-item" data-i="' + hits[i] + '"><span class="st-city">'
+      + esc(stCityName(pg.props || {})) + '</span>'
+      + esc(getSceneName(pg.props || {}) || ('场景 ' + (hits[i] + 1))) + '</div>';
+  }
+  if (hits.length > MAX) html += '<div class="st-empty">共 ' + hits.length + ' 个匹配，仅显示前 ' + MAX + ' 个，请输入更完整的名称</div>';
+  list.innerHTML = html;
+  list.style.display = '';
+  Array.prototype.forEach.call(list.querySelectorAll('.st-item'), function (el) {
+    el.onclick = function () {
+      list.style.display = 'none';
+      stSelectScene(parseInt(el.getAttribute('data-i'), 10));
+    };
+  });
+}
+
+/* 选中单个场景：红色高亮 + 建选区出统计（原顶部搜场景的那套） */
+function stSelectScene(si) {
+  var L = layers[ST.layerId];
+  if (!L || !L.polygons || !L.polygons[si]) return;
+  var pg = L.polygons[si];
+  if (!pg._ringsMerc) {
+    pg._ringsMerc = pg.rings.map(function (ring) {
+      return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
     });
   }
-  stUpdateInfo(sc.length);
+  ST.selScene = si;
+  STATE.hlPoly = { L: L, pg: pg };
+  STATE.sceneName = getSceneName(pg.props || {}) || ('场景 ' + (si + 1));
+  var bb = pg._bbox || polyBBoxMerc(pg);
+  if (bb) {
+    try { map.getView().animate({ center: [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2], zoom: 14, duration: 400 }); } catch (e) {}
+  }
+  if (pg._ringsMerc.length && pg._ringsMerc[0].length >= 3) {
+    var ring = pg._ringsMerc[0];
+    if (ring.length > 20) {
+      var step = Math.ceil(ring.length / 20), simp = [];
+      for (var k = 0; k < ring.length; k += step) simp.push(ring[k]);
+      ring = simp;
+    }
+    STATE.polyPts = ring;
+    STATE.polyDone = true;
+    STATE.sceneSel = true;
+    STATE.selBox = null;
+    STATE.selCircle = null;
+    try { applySelection(); } catch (e2) {}
+  }
+  scheduleDraw();
+  stInfoMsg();
 }
 
-function stUpdateInfo(total) {
-  var info = document.getElementById('stInfo');
-  if (!info) return;
-  var L = layers[ST.layerId];
-  var all = L && L.polygons ? L.polygons.length : 0;
-  if (ST.busy) { /* 计算中由进度更新 */ }
-  else info.textContent = ST.layerId < 0 ? '' : (ST.filter ? ('匹配 ' + total + ' / 共 ' + all + ' 个场景') : ('共 ' + all + ' 个场景'));
-  var e1 = document.getElementById('stExpOne'), e2 = document.getElementById('stExpAll');
-  if (e1) e1.disabled = ST.busy || ST.selScene < 0;
-  if (e2) e2.disabled = ST.busy || ST.layerId < 0;
+function stDoClear(keepInput) {
+  ST.selScene = -1;
+  if (!keepInput) {
+    var inp = document.getElementById('stSearch');
+    if (inp) inp.value = '';
+  }
+  var list = document.getElementById('stList');
+  if (list) list.style.display = 'none';
+  if (STATE.sceneSel || STATE.hlPoly) {
+    STATE.hlPoly = null;
+    STATE.sceneName = null;
+    STATE.sceneSel = false;
+    STATE.polyPts = [];
+    STATE.polyDone = false;
+    STATE.selStats = null;
+    try { updateToolPanel(); } catch (e) {}
+    scheduleDraw();
+  }
 }
 
-/* 异步逐点归类到场景并累计指标；done(rowsByRat) 回调 */
+/* 异步逐点归类到场景并累计指标；done(rowsByRat, err) */
 function stCompute(sceneIdxs, done) {
   var L = layers[ST.layerId];
   var grids = [];
@@ -3558,17 +3555,21 @@ function stCompute(sceneIdxs, done) {
   }
   if (!L || !grids.length) { done(null, !grids.length ? '未加载栅格图层' : '未选择边界图层'); return; }
 
-  /* 场景准备：外环 + 包围盒 */
   var scenes = [];
   for (var si = 0; si < sceneIdxs.length; si++) {
     var pg = L.polygons[sceneIdxs[si]];
-    if (!pg || !pg._ringsMerc || !pg._ringsMerc.length) continue;
+    if (!pg) continue;
+    if (!pg._ringsMerc) {
+      pg._ringsMerc = pg.rings.map(function (ring) {
+        return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+      });
+    }
+    if (!pg._ringsMerc || !pg._ringsMerc.length) continue;
     var bb = pg._bbox || polyBBoxMerc(pg);
     scenes.push({ idx: sceneIdxs[si], pg: pg, ring: pg._ringsMerc[0], bb: bb });
   }
   if (!scenes.length) { done(null, '所选场景无有效边界'); return; }
 
-  /* 空间索引（均匀网格） */
   var gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
   scenes.forEach(function (sc) {
     if (sc.bb[0] < gx0) gx0 = sc.bb[0]; if (sc.bb[2] > gx1) gx1 = sc.bb[2];
@@ -3587,10 +3588,8 @@ function stCompute(sceneIdxs, done) {
 
   function newAcc() { return { total: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
   var acc = { '4G': scenes.map(newAcc), '5G': scenes.map(newAcc) };
-
   var work = grids.map(function (g) { return { g: g, i: 0, n: g.mx.length }; });
-  var totalPts = work.reduce(function (a, w) { return a + w.n; }, 0);
-  var donePts = 0, wi = 0;
+  var wi = 0;
 
   function step() {
     var t0 = Date.now();
@@ -3618,17 +3617,14 @@ function stCompute(sceneIdxs, done) {
             var av = cntAll[w.i], tv = cntThr[w.i];
             if (isFinite(av) && isFinite(tv)) { a.mrcnt += av; a.mrpass += tv; }
           }
-          break; /* 一个点只归一个场景 */
+          break;
         }
       }
       if (w.i >= w.n) wi++;
     }
-    /* 进度按已完成图层粗算 */
-    var pct = totalPts ? Math.min(99, Math.round((wi / work.length) * 100)) : 100;
     var info = document.getElementById('stInfo');
-    if (info) info.textContent = '计算中… ' + pct + '%';
+    if (info) info.textContent = '计算中… ' + Math.min(99, Math.round((wi / Math.max(1, work.length)) * 100)) + '%';
     if (wi < work.length) { setTimeout(step, 0); return; }
-    /* 组装结果行 */
     function rowsFor(rat) {
       var rows = [];
       for (var i = 0; i < scenes.length; i++) {
@@ -3662,14 +3658,16 @@ function stExport(all) {
   var idxs = [];
   if (all) { for (var i = 0; i < L.polygons.length; i++) idxs.push(i); }
   else {
-    if (ST.selScene < 0) { showErr('先在列表里选一个场景'); return; }
+    if (ST.selScene < 0) { showErr('先查询并选中一个场景，或清除后导出全部'); return; }
     idxs.push(ST.selScene);
   }
-  ST.busy = true; stUpdateInfo(0);
-  var info = document.getElementById('stInfo');
+  ST.busy = true;
+  var bq = document.getElementById('stQuery'), bc = document.getElementById('stClear'), be = document.getElementById('stExport');
+  if (bq) bq.disabled = true; if (bc) bc.disabled = true; if (be) be.disabled = true;
   stCompute(idxs, function (res, err) {
     ST.busy = false;
-    if (err || !res) { showErr(err || '统计失败'); stRenderList(); return; }
+    if (bq) bq.disabled = false; if (bc) bc.disabled = false; if (be) be.disabled = false;
+    if (err || !res) { showErr(err || '统计失败'); stInfoMsg(); return; }
     var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
     var H5 = H4.slice(); H5[9] = '覆盖率≥-105dBm(%)';
     var total = res['4G'].length;
@@ -3684,11 +3682,12 @@ function stExport(all) {
         stDownloadCsv(base + '_4G.csv', H4, res['4G']);
         setTimeout(function () { stDownloadCsv(base + '_5G.csv', H5, res['5G']); }, 400);
       }
+      var info = document.getElementById('stInfo');
       if (info) info.textContent = '已导出 ' + total + ' 个场景';
     } catch (e) {
       showErr('导出失败：' + e.message);
+      stInfoMsg();
     }
-    stUpdateInfo(0);
   });
 }
 
