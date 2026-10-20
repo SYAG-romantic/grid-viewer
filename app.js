@@ -145,6 +145,13 @@ function getSceneName(props) {
       if (v0) return v0;
     }
   }
+  /* ArcGIS 的 OBJECTID 列：有些图层（如新疆图层）区域场景名称就存这一列，优先级高于普通名称字段 */
+  for (i = 0; i < keys.length; i++) {
+    if (/^objectid/i.test(keys[i])) {
+      var vObj = String(props[keys[i]] || '').trim();
+      if (vObj) return vObj;
+    }
+  }
   /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i]; kl = k.toLowerCase();
