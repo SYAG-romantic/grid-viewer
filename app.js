@@ -426,6 +426,12 @@ function bindRatToggle() {
 function removeLayer(L) {
   var i = layers.indexOf(L);
   if (i >= 0) layers.splice(i, 1);
+  /* 统计模块的图层选择跟着同步：删掉选中的统计图层→恢复默认；删它之前的图层→下标前移 */
+  if (typeof ST !== 'undefined') {
+    if (i >= 0 && ST.layerId === i) { ST.layerId = -1; ST.selScene = -1; }
+    else if (i >= 0 && ST.layerId > i) ST.layerId--;
+    if (typeof stSyncLayerCur === 'function') stSyncLayerCur();
+  }
   if (L && L.glPosBuf && GLR && GLR.gl) {
     try { GLR.gl.deleteBuffer(L.glPosBuf); GLR.gl.deleteBuffer(L.glBandBuf); } catch (e) {}
     L.glPosBuf = null; L.glOk = false;
@@ -3433,7 +3439,8 @@ function stEnsureLayer() {
 function stSyncLayerCur() {
   var cur = document.getElementById('stLayerCur');
   var L = layers[ST.layerId];
-  if (cur) cur.textContent = (L && L.kind === 'vector') ? L.name : '统计';
+  if (!L || L.kind !== 'vector') ST.layerId = -1;
+  if (cur) cur.textContent = (ST.layerId >= 0 && layers[ST.layerId]) ? layers[ST.layerId].name : '统计';
 }
 
 function stShowStatus(html) {
@@ -3452,9 +3459,11 @@ function stRefreshLayers() {
   pop.innerHTML = '<div class="dsel-h">统计图层（边界图层）</div>';
   if (!idxs.length) {
     pop.innerHTML += '<div class="st-empty" style="padding:8px 10px">未加载边界图层</div>';
+    ST.layerId = -1;
+    stSyncLayerCur();
     return;
   }
-  if (ST.layerId < 0 || !layers[ST.layerId] || layers[ST.layerId].kind !== 'vector') ST.layerId = idxs[0];
+  if (ST.layerId < 0 || !layers[ST.layerId] || layers[ST.layerId].kind !== 'vector') ST.layerId = -1;
   idxs.forEach(function (li) {
     var L = layers[li];
     var b = document.createElement('button');
