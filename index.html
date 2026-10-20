@@ -139,35 +139,6 @@
         </button>
         <div id="jumpResults" style="display:none;position:absolute;top:38px;left:0;right:0;max-height:320px;overflow:auto;background:var(--popbg);backdrop-filter:blur(10px) saturate(1.3);-webkit-backdrop-filter:blur(10px) saturate(1.3);border:1px solid var(--line);border-radius:8px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
       </div>
-      <div id="toolsBox" style="position:relative;display:flex;align-items:center;gap:6px;padding:0 2px" title="测量 / 框选 / 经纬度拾取">
-      <div class="tgroup" id="grpMeasure">
-        <button id="btnMeasure" class="tbtn" title="测量：测量线 / 面积 / 方位角 / 角度">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1.8" y="8" width="20.4" height="8" rx="2"/>
-            <path d="M6 8v3M10 8v4M14 8v3M18 8v4"/>
-          </svg>
-          <i class="tcar"></i>
-        </button>
-        <div class="tfly" id="flyMeasure">
-          <button data-tool="line">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>
-            <span>测量线</span>
-          </button>
-          <button data-tool="area">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 6l8-3 8 3v8l-8 7-8-7z"/></svg>
-            <span>测量面积</span>
-          </button>
-          <button data-tool="azimuth">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4"/><path d="M12 12l4-4"/></svg>
-            <span>测量方位角</span>
-          </button>
-          <button data-tool="angle">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20L12 5l8 15"/><path d="M4 20h16"/></svg>
-            <span>测量角度</span>
-          </button>
-        </div>
-      </div>
 
       <div class="tgroup" id="grpSelect">
         <button id="btnSelect" class="tbtn" title="选择：矩形 / 多边形 / 自由手绘 / 半径">
@@ -378,15 +349,9 @@
         </div>
         <input type="text" id="stSearch" placeholder="搜索区域场景名称" title="输入区域场景名称后点查询" autocomplete="off"
                style="flex:1 1 auto;min-width:60px;max-width:140px;height:32px;font-size:12px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--fg);padding:0 8px;outline:none">
-        <button id="stQuery" class="icon-btn" title="查询场景并统计">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        </button>
-        <button id="stClear" class="icon-btn" title="清除选中场景（导出将导全部）">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
-        </button>
-        <button id="stExport" class="icon-btn" title="导出：选中场景只导该场景，否则导全部">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-        </button>
+        <button id="stQuery" class="st-tbtn" title="查询场景并统计">查询</button>
+        <button id="stClear" class="st-tbtn" title="清除选中场景（导出将导全部）">清除</button>
+        <button id="stExport" class="st-tbtn" title="导出：选中场景只导该场景，否则导全部">导出</button>
         <div id="stList" style="display:none;position:absolute;top:38px;left:0;right:0;max-height:320px;overflow:auto;background:var(--popbg);backdrop-filter:blur(10px) saturate(1.3);-webkit-backdrop-filter:blur(10px) saturate(1.3);border:1px solid var(--line);border-radius:8px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
       </div>
       <button id="btnTheme" class="themebtn" title="切换深色 / 浅色">
@@ -416,6 +381,36 @@
       <div class="body" id="legendBody"></div>
     </div>
 
+
+    <div id="toolStrip">
+      <div class="tgroup" id="grpMeasure">
+        <button id="btnMeasure" class="tbtn" title="测量：测量线 / 面积 / 方位角 / 角度">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.8" y="8" width="20.4" height="8" rx="2"/>
+            <path d="M6 8v3M10 8v4M14 8v3M18 8v4"/>
+          </svg>
+          <i class="tcar"></i>
+        </button>
+        <div class="tfly" id="flyMeasure">
+          <button data-tool="line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>
+            <span>测量线</span>
+          </button>
+          <button data-tool="area">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 6l8-3 8 3v8l-8 7-8-7z"/></svg>
+            <span>测量面积</span>
+          </button>
+          <button data-tool="azimuth">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4"/><path d="M12 12l4-4"/></svg>
+            <span>测量方位角</span>
+          </button>
+          <button data-tool="angle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20L12 5l8 15"/><path d="M4 20h16"/></svg>
+            <span>测量角度</span>
+          </button>
+        </div>
+    </div>
 
     <div id="toolPanel">
       <div class="tp-h"><b id="tpTitle">测量</b><button id="tpClose" class="lvbtn" title="清除结果并退出工具">✕</button></div>
