@@ -1066,6 +1066,21 @@ async function loadVectorFiles(fileList) {
             if (pminY < minY) minY = pminY; if (pmaxY > maxY) maxY = pmaxY;
           }
         }
+        /* 预计算墨卡托坐标环（分片让帧）：绘制每帧直接用，逐帧现算投影几万面必卡死 */
+        busyPhase('正在准备绘制：' + grp.baseName);
+        for (var pm = 0; pm < res.polygons.length; pm++) {
+          var pgM = res.polygons[pm];
+          if (!pgM._ringsMerc) {
+            pgM._ringsMerc = pgM.rings.map(function (ringM) {
+              return ringM.map(function (ptM) { return [lonToMercX(ptM[0]), latToMercY(ptM[1])]; });
+            });
+          }
+          if (pm % 1200 === 1199) {
+            var busyElM = document.getElementById('busyS');
+            if (busyElM) busyElM.textContent = '已准备 ' + (pm + 1).toLocaleString() + ' / ' + res.polygons.length.toLocaleString() + ' 个多边形';
+            await yieldFrame();
+          }
+        }
         var L = {
           id: 'L' + (layerSeq++),
           kind: 'vector',
