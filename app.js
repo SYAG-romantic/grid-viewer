@@ -2248,7 +2248,7 @@ function drawSelection(c, t, w, h) {
 
 /* 工具模式要放行的 UI：工具条/面板、顶栏、图例、主题按钮，
    以及 OpenLayers 自带控件（缩放 +/- 等），否则工具激活时它们会失效 */
-var TOOL_UI_SEL = '#toolStrip,#toolPanel,#topbar,#legend,#btnTheme,.ol-control';
+var TOOL_UI_SEL = '#toolsBox,#toolPanel,#topbar,#legend,#btnTheme,.ol-control';
 
 function copyCoords() {
   var cp = STATE.coordPick;
@@ -2383,7 +2383,7 @@ function initTools() {
 
   /* Dock 式悬停放大：只切 hot/near 两个类，缩放交给 CSS，
      不做逐帧距离计算，避免和地图重绘抢帧 */
-  var tbtns = Array.prototype.slice.call(document.querySelectorAll('#toolStrip button.tbtn'));
+  var tbtns = Array.prototype.slice.call(document.querySelectorAll('#toolsBox button.tbtn'));
   function hoverAt(i) {
     tbtns.forEach(function (b, k) {
       b.classList.toggle('hot', k === i);
@@ -2395,7 +2395,7 @@ function initTools() {
   });
   /* 注意要挂在工具条上：挂 #mapwrap 的话，鼠标从按钮移进地图区不会触发 mouseleave，
      按钮会一直保持放大状态 */
-  var stripEl = document.getElementById('toolStrip');
+  var stripEl = document.getElementById('toolsBox');
   if (stripEl) stripEl.addEventListener('mouseleave', function () { hoverAt(-1); });
 
   /* 独立图标按钮（开合/主题/缩放）统一悬停放大 —— 用 .hov 类，与工具条的类机制一致，
