@@ -3400,9 +3400,23 @@ function stVectorLayerIdxs() {
 }
 
 function stCityName(props) {
-  var cid = props.CITYID != null ? props.CITYID : (props.CityID != null ? props.CityID : props.cityid);
-  if (cid != null && CITY_NAMES[String(cid)]) return CITY_NAMES[String(cid)];
-  return String(props.F || props.city || props.CITY || '').trim();
+  if (!props) return '';
+  /* 与地市匹配同口径：CITYID 优先换名（查不到名不输出数字），
+     否则认城市字段（F/CITY* 或中文「地州/地市/城市」） */
+  var nameKey = null;
+  for (var k in props) {
+    if (/cityid/i.test(k)) {
+      var cid = String(props[k] == null ? '' : props[k]).trim();
+      if (cid && CITY_NAMES[cid]) return CITY_NAMES[cid];
+    }
+    if (nameKey === null) {
+      var kl = k.toLowerCase();
+      if (kl === 'f' || kl === 'city' || kl === 'cityname' || kl.indexOf('city') === 0 ||
+          kl.indexOf('地州') >= 0 || kl.indexOf('地市') >= 0 || kl.indexOf('城市') >= 0) nameKey = k;
+    }
+  }
+  if (nameKey) return String(props[nameKey] == null ? '' : props[nameKey]).trim();
+  return '';
 }
 
 function stRangeStr(bb) {
