@@ -420,6 +420,7 @@ function bindRatToggle() {
     btn.setAttribute('aria-expanded', 'false');
   }
   function applyRat(rat) {
+    STATE.rat = (rat === '*') ? 'all' : rat;   /* 记下当前制式，统计导出/计算要联动读它 */
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
       if (!L.rat) continue;
@@ -3666,9 +3667,25 @@ function stDoClear(keepInput) {
 }
 
 /* 异步逐点归类到场景并累计指标；done(rowsByRat, err) */
+/* 当前制式：优先工具栏记录的 STATE.rat；没有时（恢复的会话）从栅格图层可见性推导 */
+function stRatWant() {
+  var r = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : null;
+  if (r === '4G' || r === '5G' || r === 'all') return r;
+  var has4 = false, has5 = false;
+  for (var i = 0; i < layers.length; i++) {
+    var L = layers[i];
+    if (L.kind === 'grid' && L.ok && L.visible) {
+      if (L.rat === '5G') has5 = true; else if (L.rat === '4G') has4 = true;
+    }
+  }
+  if (has4 && !has5) return '4G';
+  if (has5 && !has4) return '5G';
+  return 'all';
+}
+
 function stCompute(sceneIdxs, done) {
   var L = layers[ST.layerId];
-  var ratWant = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
+  var ratWant = stRatWant();
   var grids = [];
   for (var gi = 0; gi < layers.length; gi++) {
     var g = layers[gi];
