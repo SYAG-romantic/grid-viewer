@@ -157,6 +157,15 @@ button.pri{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-fi
 #btnRestore:hover,#btnForget:hover,#btnClearCache:hover{transform:scale(1.08);border-color:var(--line)}
 #btnRestore:active,#btnForget:active,#btnClearCache:active{transform:scale(.9);color:var(--accent)}
 button.pri:hover{border-color:var(--accent2);filter:brightness(1.1)}
+/* 左侧面板动作按钮统一：与顶栏下拉同款（毛玻璃底、9px 圆角、悬浮只缩放、点击变蓝） */
+#btnDir,#btnFiles,#btnVector,#btnRestore,#btnForget,#btnClearCache{
+  background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:12.5px;color:var(--fg);
+  transition:transform .12s ease}
+#btnDir:hover,#btnFiles:hover,#btnVector:hover,#btnRestore:hover,#btnForget:hover,#btnClearCache:hover{
+  background:var(--glass);border-color:var(--line);filter:none;transform:scale(1.04)}
+#btnDir:active,#btnFiles:active,#btnVector:active,#btnRestore:active,#btnForget:active,#btnClearCache:active{
+  background:var(--glass);border-color:var(--line);transform:scale(.96);color:var(--accent)}
 button.dim{color:var(--fg2)}
 button.wide{width:100%}
 button:disabled{opacity:.45;cursor:not-allowed;transform:none}
