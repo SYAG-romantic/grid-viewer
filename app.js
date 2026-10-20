@@ -133,6 +133,13 @@ function getSceneName(props) {
     if (/^[A-Z0-9\-_]+$/i.test(v) && v.length > 10 && /\d/.test(v)) return true;
     return false;
   }
+  /* 有「唯一」类字段（如唯一名称）的图层以它为准：普通名称字段（村名等）会重名，统计/导出按名字认场景会串 */
+  for (i = 0; i < keys.length; i++) {
+    if (keys[i].indexOf('唯一') >= 0) {
+      var v0 = String(props[keys[i]] || '').trim();
+      if (v0) return v0;
+    }
+  }
   /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i]; kl = k.toLowerCase();
