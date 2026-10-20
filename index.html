@@ -301,7 +301,7 @@
           <button type="button" role="option" data-v="scene"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><span>区域场景名称</span></button>
         </div>
       </div>
-      <div id="statsBox" style="position:relative;display:flex;align-items:center;gap:6px;padding:0 2px" title="场景指标统计：选图层 → 搜场景查询 → 导出">
+      <div id="statsBox" style="position:relative" title="场景指标统计：选图层 → 搜场景查询 → 导出">
         <div class="dsel" id="stLayerBox" style="flex:0 0 auto">
           <button type="button" id="stLayerBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false" style="height:32px" title="选择边界图层">
             <b id="stLayerCur">统计</b>
@@ -310,7 +310,7 @@
           <div class="dsel-pop" id="stLayerPop" role="listbox" style="text-align:left"></div>
         </div>
         <input type="text" id="stSearch" placeholder="搜索区域场景名称" title="输入区域场景名称后点查询" autocomplete="off"
-               style="flex:1 1 auto;min-width:60px;max-width:140px;height:32px;font-size:12px;border:1px solid var(--line);border-radius:8px;background:var(--glass);color:var(--fg);padding:0 8px;outline:none">
+               style="flex:1 1 auto;min-width:60px;max-width:140px;height:30px;font-size:12px;border:none;background:transparent;color:var(--fg);padding:0 2px;outline:none">
         <button id="stQuery" class="icon-btn" title="查询场景并统计">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
