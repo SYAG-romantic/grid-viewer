@@ -1623,87 +1623,22 @@ function vecCityMatcher(polys, cityName, cityCode) {
   };
 }
 
-function drawVector(c, L, t, w, h, box) {
-  var polys = L.polygons;
-  if (!polys || !polys.length) return;
-  /* 小图层直接绘制；大图层（几万多边形）走离屏缓存：
-     拖动/缩放中只贴缓存图（平移/缩放），停稳后才重绘一张清晰的，不再逐帧画几万条边 */
-  if (polys.length < 1500) {
-    renderVectorInto(c, L, t, w, h, box);
-    drawVectorHighlight(c, L, t, box);
-    return;
-  }
-  var dpr = Math.min(global.devicePixelRatio || 1, 2);
-  while (dpr > 1 && w * dpr * (h * dpr) > 16000000) dpr -= 0.25;
-  var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
-  var vc = L._vcache;
-  var rotated = Math.abs(t[1]) > 1e-9 || Math.abs(t[2]) > 1e-9;
-  var sameFilter = vc && vc.citySel === L.citySel && vc.cityCode === L.cityCode && vc.dpr === dpr;
-  var covered = false, sameScale = false;
-  if (vc && sameFilter && !rotated) {
-    sameScale = Math.abs(t[0] - vc.t0) < 1e-9 && Math.abs(t[3] - vc.t3) < 1e-9;
-    covered = box[0] >= vc.ext[0] && box[1] >= vc.ext[1] && box[2] <= vc.ext[2] && box[3] <= vc.ext[3];
-  }
-  var intersects = vc && sameFilter && !rotated &&
-    !(box[2] < vc.ext[0] || box[0] > vc.ext[2] || box[3] < vc.ext[1] || box[1] > vc.ext[3]);
-  if (vc && sameFilter && !rotated && ((sameScale && covered) || (dragging && intersects))) {
-    /* 贴缓存：当前像素 = 缓存像素按比例缩放 + 平移 */
-    var kx = t[0] / vc.t0, ky = t[3] / vc.t3;
-    var dx = t[4] - kx * vc.tc4, dy = t[5] - ky * vc.tc5;
-    c.save();
-    c.translate(dx, dy);
-    c.scale(kx, ky);
-    c.drawImage(vc.cv, 0, 0, vc.wCss, vc.hCss);
-    c.restore();
-    drawVectorHighlight(c, L, t, box);
-    return;
-  }
-  if (dragging && vc && sameFilter && !rotated) {
-    /* 缓存完全不在当前视野：这一帧先直接画（保证不空白），停稳后会重建缓存 */
-    renderVectorInto(c, L, t, w, h, box);
-    drawVectorHighlight(c, L, t, box);
-    return;
-  }
-  /* 重建缓存：渲染范围 = 当前视野外扩一圈，拖动时先靠贴图覆盖 */
-  var padFrac = 0.4;
-  while (padFrac > 0 && (w * (1 + 2 * padFrac)) * dpr * ((h * (1 + 2 * padFrac)) * dpr) > 30000000) padFrac -= 0.1;
-  var bw = box[2] - box[0], bh = box[3] - box[1];
-  var ext = [box[0] - bw * padFrac, box[1] - bh * padFrac, box[2] + bw * padFrac, box[3] + bh * padFrac];
-  var scale = Math.abs(t[0]);
-  var wCss = Math.max(2, Math.round((ext[2] - ext[0]) * scale));
-  var hCss = Math.max(2, Math.round((ext[3] - ext[1]) * scale));
-  var cv2 = document.createElement('canvas');
-  cv2.width = Math.round(wCss * dpr); cv2.height = Math.round(hCss * dpr);
-  var c2 = cv2.getContext('2d');
-  c2.setTransform(dpr, 0, 0, dpr, 0, 0);
-  /* 缓存坐标系的变换：把缓存范围左上角对齐到画布 (0,0) */
-  var tlx = t[0] * ext[0] + t[2] * ext[3] + t[4];
-  var tly = t[1] * ext[0] + t[3] * ext[3] + t[5];
-  var tc = [t[0], t[1], t[2], t[3], t[4] - tlx, t[5] - tly];
-  renderVectorInto(c2, L, tc, wCss, hCss, ext);
-  L._vcache = { cv: cv2, wCss: wCss, hCss: hCss, ext: ext, t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
-                dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
-  c.drawImage(cv2, tlx, tly, wCss, hCss);
-  drawVectorHighlight(c, L, t, box);
-}
-
-function renderVectorInto(c, L, t, w, h, box) {
-  var polys = L.polygons;
-
-  var polys = L.polygons;
-  if (!polys || !polys.length) return;
-  var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
-  var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
-  var scale = Math.abs(t0) || 0;                /* px / 墨卡托单位 */
-  var minSpan = scale > 0 ? 1 / scale : 0;      /* 1px 对应多少墨卡托单位 */
+/* 把离屏缓存按当前视图变换贴到主画布（平移 + 缩放） */
+function vecBlit(c, vc, t) {
+  var kx = t[0] / vc.t0, ky = t[3] / vc.t3;
+  var dx = t[4] - kx * vc.tc4, dy = t[5] - ky * vc.tc5;
   c.save();
-  c.strokeStyle = '#c86bff';
-  c.lineWidth = 2.5;
-  c.lineJoin = 'round';
-  c.lineCap = 'round';
-  c.beginPath();
-  /* 地市过滤：CITYID 优先按代码，否则认城市字段（含中文地州/地市/城市）；
-     一个都匹配不上就不过滤（无地市字段的图层照常显示） */
+  c.translate(dx, dy);
+  c.scale(kx, ky);
+  c.drawImage(vc.cv, 0, 0, vc.wCss, vc.hCss);
+  c.restore();
+}
+function vecIntersects(vc, box) {
+  return !(box[2] < vc.ext[0] || box[0] > vc.ext[2] || box[3] < vc.ext[1] || box[1] > vc.ext[3]);
+}
+/* 渲染准备：地市匹配器 + 抽稀参数。settled=true 表示画缓存用的清晰版（不做拖动降级） */
+function vecRenderInit(L, t, box, settled) {
+  var polys = L.polygons;
   var cityF = L.citySel;
   var cityC = L.cityCode;
   var cityOn = cityF && cityF !== '*';
@@ -1718,13 +1653,33 @@ function renderVectorInto(c, L, t, w, h, box) {
     }
     if (!anyMatch) { cityOn = false; cityMatcher = null; }
   }
-  /* 拖动/缩放进行中：小多边形先画成点、顶点抽稀放宽，停下后自动恢复完整轮廓（与工参拖动降级同理） */
-  var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
-  var dotLim = dragging ? 18 : 1;
-  var thinPx = dragging ? 2.0 : 0.75;
-  var dotPath = null;   /* 小多边形的点位批量收集，最后一次填充（逐个圆头描边画点极慢） */
-  if (dragging) { c.lineJoin = 'miter'; }
-  for (var pi = 0; pi < polys.length; pi++) {
+  var dragging = !settled && (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
+  return {
+    pi: 0, cityOn: cityOn, cityMatcher: cityMatcher,
+    scale: Math.abs(t[0]) || 0,
+    dotLim: dragging ? 18 : 1,
+    thinPx: dragging ? 2.0 : 0.75,
+    miter: dragging
+  };
+}
+/* 从 st.pi 起续画一片（自带 beginPath/stroke，可跨帧续画），画完返回 true */
+function vecRenderChunk(c, L, t, box, st, budgetMs) {
+  var polys = L.polygons;
+  var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
+  var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
+  var scale = st.scale, dotLim = st.dotLim, thinPx = st.thinPx;
+  var cityOn = st.cityOn, cityMatcher = st.cityMatcher;
+  var startT = performance.now();
+  c.save();
+  c.strokeStyle = '#c86bff';
+  c.lineWidth = 2.5;
+  c.lineJoin = st.miter ? 'miter' : 'round';
+  c.lineCap = 'round';
+  c.beginPath();
+  var dotPath = null;
+  var pi = st.pi;
+  for (; pi < polys.length; pi++) {
+    if (pi > st.pi && (pi & 255) === 0 && performance.now() - startT > budgetMs) break;
     var pg = polys[pi];
     if (cityOn && !cityMatcher(pg.props || {})) continue;
     var pb = pg._bbox;
@@ -1760,7 +1715,7 @@ function renderVectorInto(c, L, t, w, h, box) {
         var py = t1 * mxv + t3 * myv + t5;
         if (!started) { c.moveTo(px, py); started = true; lpx = px; lpy = py; }
         else {
-          /* 屏幕抽稀：离上一个落点不足 0.75px 的顶点跳过，低缩放下顶点数骤降 */
+          /* 屏幕抽稀：离上一个落点不足 thinPx 的顶点跳过，低缩放下顶点数骤降 */
           var dx = px - lpx, dy = py - lpy;
           if (dx < thinPx && dx > -thinPx && dy < thinPx && dy > -thinPx) continue;
           c.lineTo(px, py); lpx = px; lpy = py;
@@ -1769,9 +1724,121 @@ function renderVectorInto(c, L, t, w, h, box) {
       if (started) c.closePath();
     }
   }
+  st.pi = pi;
   c.stroke();
   if (dotPath) { c.fillStyle = '#c86bff'; c.fill(dotPath); }
   c.restore();
+  return pi >= polys.length;
+}
+function renderVectorInto(c, L, t, w, h, box) {
+  var st = vecRenderInit(L, t, box, false);
+  while (!vecRenderChunk(c, L, t, box, st, 1e9)) { /* 一次画完 */ }
+}
+
+function drawVector(c, L, t, w, h, box) {
+  var polys = L.polygons;
+  if (!polys || !polys.length) return;
+  /* 小图层直接绘制；大图层（几万多边形）走离屏缓存 + 分片渲染：
+     拖动/缩放中只贴缓存图，停稳后分片把新图画完（每帧约 28ms），不再整屏卡一下 */
+  if (polys.length < 1500) {
+    renderVectorInto(c, L, t, w, h, box);
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  var dpr = Math.min(global.devicePixelRatio || 1, 2);
+  while (dpr > 1 && w * dpr * (h * dpr) > 16000000) dpr -= 0.25;
+  var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
+  var rotated = Math.abs(t[1]) > 1e-9 || Math.abs(t[2]) > 1e-9;
+  if (rotated) {
+    renderVectorInto(c, L, t, w, h, box);
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  var vc = L._vcache;
+  var vcOk = vc && vc.citySel === L.citySel && vc.cityCode === L.cityCode && vc.dpr === dpr;
+  /* —— 有进行中的分片任务 —— */
+  var job = L._vcJob;
+  if (job && !(job.citySel === L.citySel && job.cityCode === L.cityCode && job.dpr === dpr)) {
+    L._vcJob = null; job = null;
+  }
+  if (job) {
+    var jobView = Math.abs(t[0] - job.t0) < 1e-9 &&
+      box[0] >= job.ext[0] && box[1] >= job.ext[1] && box[2] <= job.ext[2] && box[3] <= job.ext[3];
+    if (!dragging && jobView) {
+      var done = vecRenderChunk(job.c2, L, job.tc, job.ext, job.st, 28);
+      if (done) {
+        L._vcache = { cv: job.cv2, wCss: job.wCss, hCss: job.hCss, ext: job.ext,
+                      t0: job.t0, t3: job.t3, tc4: job.tc4, tc5: job.tc5,
+                      dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
+        L._vcJob = null;
+        vecBlit(c, L._vcache, t);
+      } else {
+        /* 画完四分之一前先贴旧缓存（画面完整），之后贴渐进的新图 */
+        if (vcOk && job.st.pi < polys.length * 0.25 && vecIntersects(vc, box)) vecBlit(c, vc, t);
+        else vecBlit(c, { cv: job.cv2, wCss: job.wCss, hCss: job.hCss, t0: job.t0, t3: job.t3, tc4: job.tc4, tc5: job.tc5 }, t);
+        scheduleDraw();
+      }
+      drawVectorHighlight(c, L, t, box);
+      return;
+    }
+    if (dragging) {
+      if (vcOk && vecIntersects(vc, box)) vecBlit(c, vc, t);
+      else vecBlit(c, { cv: job.cv2, wCss: job.wCss, hCss: job.hCss, t0: job.t0, t3: job.t3, tc4: job.tc4, tc5: job.tc5 }, t);
+      drawVectorHighlight(c, L, t, box);
+      return;
+    }
+    L._vcJob = null; job = null;   /* 停稳但视野已离开任务范围：弃任务，下面新建 */
+  }
+  /* —— 缓存可直接用 —— */
+  if (vcOk) {
+    var sameScale = Math.abs(t[0] - vc.t0) < 1e-9 && Math.abs(t[3] - vc.t3) < 1e-9;
+    var covered = box[0] >= vc.ext[0] && box[1] >= vc.ext[1] && box[2] <= vc.ext[2] && box[3] <= vc.ext[3];
+    if ((sameScale && covered) || (dragging && vecIntersects(vc, box))) {
+      vecBlit(c, vc, t);
+      drawVectorHighlight(c, L, t, box);
+      return;
+    }
+    if (dragging && !vecIntersects(vc, box)) {
+      renderVectorInto(c, L, t, w, h, box);
+      drawVectorHighlight(c, L, t, box);
+      return;
+    }
+  } else if (dragging) {
+    renderVectorInto(c, L, t, w, h, box);
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  /* —— 新建分片任务：渲染范围 = 当前视野外扩一圈 —— */
+  var padFrac = 0.4;
+  while (padFrac > 0 && (w * (1 + 2 * padFrac)) * dpr * ((h * (1 + 2 * padFrac)) * dpr) > 30000000) padFrac -= 0.1;
+  var bw = box[2] - box[0], bh = box[3] - box[1];
+  var ext = [box[0] - bw * padFrac, box[1] - bh * padFrac, box[2] + bw * padFrac, box[3] + bh * padFrac];
+  var scale = Math.abs(t[0]);
+  var wCss = Math.max(2, Math.round((ext[2] - ext[0]) * scale));
+  var hCss = Math.max(2, Math.round((ext[3] - ext[1]) * scale));
+  var cv2 = document.createElement('canvas');
+  cv2.width = Math.round(wCss * dpr); cv2.height = Math.round(hCss * dpr);
+  var c2 = cv2.getContext('2d');
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var tlx = t[0] * ext[0] + t[2] * ext[3] + t[4];
+  var tly = t[1] * ext[0] + t[3] * ext[3] + t[5];
+  var tc = [t[0], t[1], t[2], t[3], t[4] - tlx, t[5] - tly];
+  var nJob = { cv2: cv2, c2: c2, tc: tc, ext: ext, wCss: wCss, hCss: hCss,
+               t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
+               dpr: dpr, citySel: L.citySel, cityCode: L.cityCode,
+               st: vecRenderInit(L, tc, ext, true) };
+  L._vcJob = nJob;
+  if (vecRenderChunk(c2, L, tc, ext, nJob.st, 28)) {
+    L._vcache = { cv: cv2, wCss: wCss, hCss: hCss, ext: ext, t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
+                  dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
+    L._vcJob = null;
+    vecBlit(c, L._vcache, t);
+  } else {
+    if (vcOk && vecIntersects(vc, box)) vecBlit(c, vc, t);
+    else vecBlit(c, { cv: cv2, wCss: wCss, hCss: hCss, t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5] }, t);
+    scheduleDraw();
+  }
+  drawVectorHighlight(c, L, t, box);
 }
 
 function drawVectorHighlight(c, L, t, box) {
@@ -2665,20 +2732,30 @@ function getSceneName(props) {
   if (!props) return '';
   var keys = Object.keys(props);
   var i, k, kl;
+  /* 编号型的值（如 CJ0001454）不是名称，哪怕装在「唯一名称」这种字段里 */
+  function isIdVal(v) {
+    if (/^[A-Za-z]{1,5}\d{3,}$/.test(v)) return true;
+    if (/^\d{6,}$/.test(v)) return true;
+    if (/^[A-Z0-9\-_]+$/i.test(v) && v.length > 10 && /\d/.test(v)) return true;
+    return false;
+  }
+  /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i]; kl = k.toLowerCase();
-    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0) {
+    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0 || /名$/.test(k)) {
       var v = String(props[k] || '').trim();
-      if (v && v.indexOf('\uFFFD') < 0) return v;
+      if (v && v.indexOf('\\uFFFD') < 0 && !isIdVal(v)) return v;
     }
   }
+  /* 第二遍兜底：第一个像名称的字符串 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i];
     var v2 = String(props[k] || '').trim();
-    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
+    if (!v2 || v2.indexOf('\\uFFFD') >= 0) continue;
     if (/^[\d\-\.]+$/.test(v2)) continue;
     if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
     if (v2.length > 60) continue;
+    if (isIdVal(v2)) continue;
     return v2;
   }
   return '';
