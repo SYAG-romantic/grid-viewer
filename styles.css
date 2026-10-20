@@ -382,6 +382,10 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 
 #btnLabel{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .18s ease}
 #btnLabel:hover{transform:scale(1.06);background:var(--glass);border-color:var(--line)}
+#btnStats{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .18s ease;display:flex;align-items:center;gap:5px}
+#btnStats:hover{transform:scale(1.06);background:var(--glass);border-color:var(--line)}
+#btnStats .chev{color:var(--fg3);margin-left:1px;transition:transform .26s cubic-bezier(.22,.61,.36,1)}
+#statsBox.open #btnStats .chev{transform:rotate(180deg)}
 #btnLabel:active{transform:translateY(0) scale(.97)}
 #btnLabel.on{background:var(--glass);border-color:var(--accent2);color:var(--accent2)}
 .dsel.open .dsel-btn{border-color:var(--accent)}
@@ -605,3 +609,22 @@ html.light #btnTheme .ic-sun{display:block}
   transform: scale(0.78)!important; color:var(--accent)!important;
   color: var(--accent2);
 }
+
+/* 场景统计面板 */
+.stats-pop{width:340px;max-width:86vw;padding:8px;left:auto;right:0;transform-origin:top right}
+.st-row{margin-bottom:7px}
+.st-row select,.st-row input{width:100%;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--glass);color:var(--fg);font-size:12.5px;padding:0 10px;outline:none}
+.st-row input::placeholder{color:var(--fg3)}
+.st-list{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;background:rgba(0,0,0,.12)}
+.st-item{padding:7px 10px;font-size:12.5px;color:var(--fg);cursor:pointer;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-item:last-child{border-bottom:none}
+.st-item:hover{background:var(--hover)}
+.st-item.on{background:var(--accent);color:#fff}
+.st-item .st-city{color:var(--fg3);font-size:11.5px;margin-right:6px}
+.st-item.on .st-city{color:rgba(255,255,255,.75)}
+.st-empty{padding:14px 10px;color:var(--fg3);font-size:12.5px;text-align:center}
+.st-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#stInfo{font-size:11.5px;color:var(--fg3);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-btns{display:flex;gap:6px}
+.st-btns button{padding:6px 12px;border-radius:8px;font-size:12.5px}
+.st-btns button:disabled{opacity:.45;cursor:default}
