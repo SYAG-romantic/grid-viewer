@@ -298,10 +298,10 @@ button.tbtn.hot{transform:scale(1.17);box-shadow:0 10px 24px rgba(0,0,0,.5)}
 button.tbtn.on.hot{transform:scale(1.19)}
 button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
   border:3px solid transparent;border-left-color:currentColor;opacity:.6}
-.tfly{position:absolute;left:0;top:calc(100% + 7px);min-width:158px;padding:4px;
+.tfly{position:absolute;left:calc(100% + 7px);top:0;min-width:158px;padding:4px;
   background:var(--popbg);border:1px solid var(--popbd);border-radius:10px;
   box-shadow:0 12px 30px rgba(0,0,0,.45);z-index:20;
-  opacity:0;transform:translateY(-6px) scale(.97);transform-origin:top left;
+  opacity:0;transform:translateX(-6px) scale(.97);transform-origin:top left;
   pointer-events:none;
   transition:opacity .16s ease, transform .24s cubic-bezier(.22,.61,.36,1)}
 .tgroup.open .tfly{opacity:1;transform:none;pointer-events:auto}
@@ -316,7 +316,9 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .tfly button.on{color:var(--accent);font-weight:500}
 .tfly button.on:after{content:"";margin-left:auto;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .tfly .tsep{height:1px;margin:4px 6px;background:var(--line)}
-#toolPanel{position:absolute;left:calc(var(--mleft) + 10px);top:54px;z-index:6;
+#toolStrip{position:absolute;left:calc(var(--mleft) + 10px);top:54px;z-index:7;
+  display:flex;flex-direction:column;gap:6px;transition:left .3s cubic-bezier(.22,.61,.36,1)}
+#toolPanel{position:absolute;left:calc(var(--mleft) + 54px);top:54px;z-index:6;
   min-width:196px;max-width:270px;
   background:var(--glass);border:1px solid var(--line);border-radius:10px;
   box-shadow:0 6px 22px rgba(0,0,0,.45);overflow:hidden;
@@ -634,3 +636,9 @@ html.light #btnTheme .ic-sun{display:block}
 /* 统计图层下拉：名称太长省略 */
 #stLayerCur{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #stLayerPop button{white-space:normal;text-align:left}
+
+/* 统计模块文字按钮（与搜索模块同高同玻璃） */
+.st-tbtn{height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:transform .15s ease}
+.st-tbtn:hover{transform:scale(1.06)}
+.st-tbtn:active{transform:scale(.9);color:var(--accent)}
+.st-tbtn:disabled{opacity:.45;cursor:default;transform:none}
