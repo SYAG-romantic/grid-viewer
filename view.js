@@ -1654,8 +1654,10 @@ function drawVector(c, L, t, w, h, box) {
   }
   /* 拖动/缩放进行中：小多边形先画成点、顶点抽稀放宽，停下后自动恢复完整轮廓（与工参拖动降级同理） */
   var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
-  var dotLim = dragging ? 14 : 1;
-  var thinPx = dragging ? 1.6 : 0.75;
+  var dotLim = dragging ? 18 : 1;
+  var thinPx = dragging ? 2.0 : 0.75;
+  var dotPath = null;   /* 小多边形的点位批量收集，最后一次填充（逐个圆头描边画点极慢） */
+  if (dragging) { c.lineJoin = 'miter'; }
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
     if (cityOn && !cityMatcher(pg.props || {})) continue;
@@ -1667,8 +1669,8 @@ function drawVector(c, L, t, w, h, box) {
         var cxm = (pb[0] + pb[2]) * 0.5, cym = (pb[1] + pb[3]) * 0.5;
         var cpx = t0 * cxm + t2 * cym + t4;
         var cpy = t1 * cxm + t3 * cym + t5;
-        c.moveTo(cpx, cpy);
-        c.lineTo(cpx + 0.01, cpy);
+        if (!dotPath) dotPath = new Path2D();
+        dotPath.rect(cpx - 1.25, cpy - 1.25, 2.5, 2.5);
         continue;
       }
     }
@@ -1702,6 +1704,7 @@ function drawVector(c, L, t, w, h, box) {
     }
   }
   c.stroke();
+  if (dotPath) { c.fillStyle = '#c86bff'; c.fill(dotPath); }
   c.restore();
   /* 搜索高亮：深红色边框（拖动时跳过，moveend 再画） */
   if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L && !STATE._dragging) {
