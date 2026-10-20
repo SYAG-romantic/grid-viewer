@@ -323,10 +323,6 @@ function exportSelection() {
   XLSX.writeFile(wb, '框选小区_' + totalRows + '条.xlsx');
   showErr('已导出 ' + totalRows + ' 条小区（4G ' + rows4g.length + ' 条，5G ' + rows5g.length + ' 条）');
 }
-function bindExportSel() {
-  var btn = document.getElementById('btnExportSel');
-  if (btn) btn.onclick = exportSelection;
-}
 /* 4G/5G 快捷切换 */
 /* 弹窗 8 方向拉伸 */
 function bindPopupResize(popupId) {
@@ -3258,7 +3254,6 @@ function boot() {
   initStatsPanel();
   bindPopupResize('popup');
   bindPopupResize('tkPop');
-  bindExportSel();
   getSiteWorker();   /* 预热 Worker */
   initTheme();
   initResponsive();
@@ -3399,7 +3394,12 @@ function initStatsPanel() {
   q.onclick = function () { stDoQuery(); };
   if (search) search.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); stDoQuery(); } };
   document.getElementById('stClear').onclick = function () { stDoClear(false); };
-  document.getElementById('stExport').onclick = function () { stExport(ST.selScene < 0); };
+  document.getElementById('stExport').onclick = function () {
+    /* 统一导出分发：① 统计查中的场景 → 该场景栅格统计；② 地图上有手动框选 → 选区内小区清单；③ 都没有 → 统计图层全部场景栅格统计 */
+    if (STATE.sceneSel && ST.selScene >= 0) { stExport(false); return; }
+    if (currentSel()) { exportSelection(); return; }
+    stExport(true);
+  };
   initStLayerDropdown();
   document.addEventListener('click', function (e) {
     var list = document.getElementById('stList');
