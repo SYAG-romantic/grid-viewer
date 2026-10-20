@@ -616,6 +616,10 @@ html.light #btnTheme .ic-sun{display:block}
 .st-row select,.st-row input{width:100%;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--glass);color:var(--fg);font-size:12.5px;padding:0 10px;outline:none}
 .st-row input::placeholder{color:var(--fg3)}
 .st-list{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;background:rgba(0,0,0,.12)}
+.st-qrow{display:flex;gap:6px;align-items:stretch}
+.st-qrow input{flex:1;min-width:0;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--glass);color:var(--fg);font-size:12.5px;padding:0 10px;outline:none}
+.st-qrow button{flex:0 0 auto;padding:0 13px;border-radius:8px;font-size:12.5px}
+.st-qrow button:disabled{opacity:.45;cursor:default}
 .st-item{padding:7px 10px;font-size:12.5px;color:var(--fg);cursor:pointer;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-item:last-child{border-bottom:none}
 .st-item:hover{background:var(--hover)}
