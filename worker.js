@@ -9,6 +9,8 @@ function buildCityIndex(n, columns, numCols, strCols, cityCol) {
   var numArr = numCols[cityCol];
   if (numArr) {
     for (var i = 0; i < n; i++) {
+      /* 与主线程口径一致：空值（NaN）记 -1，不把 'NaN' 当成一个城市 */
+      if (!isFinite(numArr[i])) { idx[i] = -1; continue; }
       var k = String(Math.round(numArr[i]));
       var v = map[k];
       if (v === undefined) { v = list.length; map[k] = v; list.push(k); }
@@ -16,18 +18,12 @@ function buildCityIndex(n, columns, numCols, strCols, cityCol) {
     }
   } else {
     var sarr = strCols[cityCol];
-    // 中文地市名映射（与主线程一致）
-    var CITY_MAP = {
-      '乌鲁木齐': '乌鲁木齐', '克拉玛依': '克拉玛依', '吐鲁番': '吐鲁番', '哈密': '哈密',
-      '昌吉': '昌吉回族自治州', '博尔塔拉': '博尔塔拉蒙古自治州', '巴音郭楞': '巴音郭楞蒙古自治州',
-      '阿克苏': '阿克苏地区', '克孜勒苏': '克孜勒苏柯尔克孜自治州', '喀什': '喀什地区',
-      '和田': '和田地区', '伊犁': '伊犁哈萨克自治州', '塔城': '塔城地区', '阿勒泰': '阿勒泰地区'
-    };
+    /* 与主线程口径一致：保留原值（简称），不做全称映射；空值记 -1 不进列表 */
     for (var j = 0; j < n; j++) {
       var raw = sarr ? String(sarr[j] || '').trim() : '';
-      var k2 = CITY_MAP[raw] || raw || '(空)';
-      var v2 = map[k2];
-      if (v2 === undefined) { v2 = list.length; map[k2] = v2; list.push(k2); }
+      if (!raw) { idx[j] = -1; continue; }
+      var v2 = map[raw];
+      if (v2 === undefined) { v2 = list.length; map[raw] = v2; list.push(raw); }
       idx[j] = v2;
     }
   }
