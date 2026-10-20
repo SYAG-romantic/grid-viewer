@@ -180,7 +180,7 @@ function zoomToCity() {
     for (var pi = 0; pi < vL.polygons.length; pi++) {
       var pg = vL.polygons[pi];
       if (!zMatcher(pg.props || {})) continue;
-      var bb = pg._bbox;
+      var bb = pg._bbox || polyBBoxMerc(pg);
       if (bb) {
         found = true;
         if (bb[0] < x0) x0 = bb[0]; if (bb[2] > x1) x1 = bb[2];
@@ -2017,8 +2017,12 @@ function pickSiteSector(L, pixel, t, res) {
   var half = _beamW * Math.PI / 360;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var n = L.ds.n, mx = L.mx, my = L.my;
+  /* 地市口径与绘制一致：被地市筛掉的扇区不可点（citySel 是城市索引；'none' 表示该层无此地市） */
+  var _csIdx = (L.citySel !== undefined && L.citySel !== '*' && L.citySel !== 'none') ? parseInt(L.citySel, 10) : -1;
   var hits = [];
   for (var i = 0; i < n; i++) {
+    if (L.citySel === 'none') break;
+    if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
     var x = mx[i], y = my[i];
     if (!isFinite(x) || !isFinite(y)) continue;
     var sx = t[0] * x + t[2] * y + t[4];
@@ -2073,6 +2077,8 @@ function pickAt(pixel) {
   var best = null, bestD = tol * tol;
 
   function consider(L, i) {
+    if (L.citySel === 'none') return;
+    if (L.citySel !== undefined && L.citySel !== '*' && L.cityIdx && L.cityIdx[i] !== parseInt(L.citySel, 10)) return;
     var x = L.mx[i], y = L.my[i];
     if (!isFinite(x) || !isFinite(y)) return;
     var px = t[0] * x + t[2] * y + t[4];
@@ -2094,8 +2100,17 @@ function pickAt(pixel) {
       var coord = map.getCoordinateFromPixel(pixel);
       if (coord) {
         var mxx = coord[0], myy = coord[1];
+        var pMatcher = (L.citySel && L.citySel !== '*') ? vecCityMatcher(L.polygons, L.citySel, L.cityCode) : null;
+        var pAny = false;
+        if (pMatcher) {
+          for (var pai = 0; pai < L.polygons.length; pai++) {
+            if (pMatcher(L.polygons[pai].props || {})) { pAny = true; break; }
+          }
+          if (!pAny) pMatcher = null;
+        }
         for (var pi = 0; pi < L.polygons.length; pi++) {
           var pg = L.polygons[pi];
+          if (pMatcher && !pMatcher(pg.props || {})) continue;
           var bb = pg._bbox;
           if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
           if (!pg._ringsMerc) {
@@ -2758,14 +2773,14 @@ function getSceneName(props) {
     k = keys[i]; kl = k.toLowerCase();
     if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0 || /名$/.test(k)) {
       var v = String(props[k] || '').trim();
-      if (v && v.indexOf('\\uFFFD') < 0 && !isIdVal(v)) return v;
+      if (v && v.indexOf('\uFFFD') < 0 && !isIdVal(v)) return v;
     }
   }
   /* 第二遍兜底：第一个像名称的字符串 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i];
     var v2 = String(props[k] || '').trim();
-    if (!v2 || v2.indexOf('\\uFFFD') >= 0) continue;
+    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
     if (/^[\d\-\.]+$/.test(v2)) continue;
     if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
     if (v2.length > 60) continue;
