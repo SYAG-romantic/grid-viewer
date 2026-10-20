@@ -1707,6 +1707,7 @@ function applySelection() {
   var test = makeSelTest(sel);
   if (!test) { STATE.selStats = null; updateToolPanel(); return; }
   var counts = [0, 0, 0, 0, 0, 0, 0], total = 0, rsum = 0, rn = 0, ssum = 0, sn = 0;
+  var poor = 0;   /* 质差栅格数：5G 栅格105覆盖率<80% 或平均SINR<-3；4G 栅格110覆盖率<80% */
   var mrcnt = 0, mrpass = 0, weakRat = null;   /* 弱覆盖：达标采样数 / 总采样数 */
   var selMode = 'rsrp';   /* 档位分布按第一个可见栅格图层的着色模式显示 */
   for (var li = 0; li < layers.length; li++) {
@@ -1731,6 +1732,16 @@ function applySelection() {
           var a = cntAll[i], t = cntThr[i];
           if (isFinite(a) && isFinite(t)) { mrcnt += a; mrpass += t; }
         }
+        var _poor = false;
+        if (cntAll && cntThr) {
+          var _pa = cntAll[i], _pt = cntThr[i];
+          if (isFinite(_pa) && isFinite(_pt) && _pa > 0 && _pt / _pa < 0.8) _poor = true;
+        }
+        if (!_poor && L.rat === '5G' && sinr) {
+          var _ps = sinr[i];
+          if (isFinite(_ps) && _ps < -3) _poor = true;
+        }
+        if (_poor) poor++;
       }
     }
   }
@@ -1743,7 +1754,7 @@ function applySelection() {
   }
   STATE.lastResult = 'select';
   STATE.selStats = {
-    counts: counts, total: total, bandMode: selMode,
+    counts: counts, total: total, poor: poor, bandMode: selMode,
     rsrpMean: rn ? rsum / rn : null,
     sinrMean: sn ? ssum / sn : null,
     /* 采样点口径：总数 = Σ MRCnt，弱覆盖 = 总数 − 达标数（MRCnt_105/110） */
@@ -1857,6 +1868,7 @@ function statTableHtml() {
     h += '<tr><td class="k">面积</td><td class="num">' + fmtArea(w * hgt) + '</td></tr>';
   }
   h += '<tr><td class="k">栅格点数</td><td class="num hl">' + s.total.toLocaleString() + '</td></tr>';
+  h += '<tr><td class="k" title="5G：栅格105覆盖率<80% 或平均SINR<-3dB；4G：栅格110覆盖率<80%">质差栅格数</td><td class="num">' + (s.poor || 0).toLocaleString() + '</td></tr>';
   if (s.sampTotal !== null && s.sampTotal !== undefined) {
     h += '<tr><td class="k">栅格采样点数</td><td class="num">' + s.sampTotal.toLocaleString() + '</td></tr>';
     h += '<tr><td class="k" title="低于弱覆盖门限（' + (s.rat === '5G' ? 'RSRP≥-105' : 'RSRP≥-110') +
@@ -3607,7 +3619,7 @@ function stCompute(sceneIdxs, done) {
     }
   });
 
-  function newAcc() { return { total: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
+  function newAcc() { return { total: 0, poor: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
   var acc = { '4G': scenes.map(newAcc), '5G': scenes.map(newAcc) };
   var work = grids.map(function (g) { return { g: g, i: 0, n: g.mx.length }; });
   var wi = 0;
@@ -3638,6 +3650,16 @@ function stCompute(sceneIdxs, done) {
             var av = cntAll[w.i], tv = cntThr[w.i];
             if (isFinite(av) && isFinite(tv)) { a.mrcnt += av; a.mrpass += tv; }
           }
+          var _poor2 = false;
+          if (cntAll && cntThr) {
+            var _av2 = cntAll[w.i], _tv2 = cntThr[w.i];
+            if (isFinite(_av2) && isFinite(_tv2) && _av2 > 0 && _tv2 / _av2 < 0.8) _poor2 = true;
+          }
+          if (!_poor2 && g.rat === '5G' && sinr) {
+            var _sv3 = sinr[w.i];
+            if (isFinite(_sv3) && _sv3 < -3) _poor2 = true;
+          }
+          if (_poor2) a.poor++;
           break;
         }
       }
@@ -3657,6 +3679,7 @@ function stCompute(sceneIdxs, done) {
           stRangeStr(sc.bb),
           Math.round(stPolyAreaKm2(sc.ring) * 100) / 100,
           a.total,
+          a.poor,
           a.mrcnt > 0 ? a.mrcnt : 0,
           a.mrcnt > 0 ? Math.max(0, a.mrcnt - a.mrpass) : 0,
           a.rn ? Math.round(a.rsum / a.rn * 100) / 100 : '',
@@ -3691,8 +3714,8 @@ function stExport(all) {
     ST.busy = false;
     if (bq) bq.disabled = false; if (bc) bc.disabled = false; if (be) be.disabled = false;
     if (err || !res) { showErr(err || '统计失败'); stInfoMsg(); return; }
-    var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
-    var H5 = H4.slice(); H5[9] = '覆盖率≥-105dBm(%)';
+    var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
+    var H5 = H4.slice(); H5[10] = '覆盖率≥-105dBm(%)';
     var total = res['4G'].length;
     var base = (L.name || '场景统计').replace(/[\\/:*?"<>|]/g, '_');
     try {
