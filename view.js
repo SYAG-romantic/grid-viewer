@@ -1626,6 +1626,72 @@ function vecCityMatcher(polys, cityName, cityCode) {
 function drawVector(c, L, t, w, h, box) {
   var polys = L.polygons;
   if (!polys || !polys.length) return;
+  /* 小图层直接绘制；大图层（几万多边形）走离屏缓存：
+     拖动/缩放中只贴缓存图（平移/缩放），停稳后才重绘一张清晰的，不再逐帧画几万条边 */
+  if (polys.length < 1500) {
+    renderVectorInto(c, L, t, w, h, box);
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  var dpr = Math.min(global.devicePixelRatio || 1, 2);
+  while (dpr > 1 && w * dpr * (h * dpr) > 16000000) dpr -= 0.25;
+  var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
+  var vc = L._vcache;
+  var rotated = Math.abs(t[1]) > 1e-9 || Math.abs(t[2]) > 1e-9;
+  var sameFilter = vc && vc.citySel === L.citySel && vc.cityCode === L.cityCode && vc.dpr === dpr;
+  var covered = false, sameScale = false;
+  if (vc && sameFilter && !rotated) {
+    sameScale = Math.abs(t[0] - vc.t0) < 1e-9 && Math.abs(t[3] - vc.t3) < 1e-9;
+    covered = box[0] >= vc.ext[0] && box[1] >= vc.ext[1] && box[2] <= vc.ext[2] && box[3] <= vc.ext[3];
+  }
+  var intersects = vc && sameFilter && !rotated &&
+    !(box[2] < vc.ext[0] || box[0] > vc.ext[2] || box[3] < vc.ext[1] || box[1] > vc.ext[3]);
+  if (vc && sameFilter && !rotated && ((sameScale && covered) || (dragging && intersects))) {
+    /* 贴缓存：当前像素 = 缓存像素按比例缩放 + 平移 */
+    var kx = t[0] / vc.t0, ky = t[3] / vc.t3;
+    var dx = t[4] - kx * vc.tc4, dy = t[5] - ky * vc.tc5;
+    c.save();
+    c.translate(dx, dy);
+    c.scale(kx, ky);
+    c.drawImage(vc.cv, 0, 0, vc.wCss, vc.hCss);
+    c.restore();
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  if (dragging && vc && sameFilter && !rotated) {
+    /* 缓存完全不在当前视野：这一帧先直接画（保证不空白），停稳后会重建缓存 */
+    renderVectorInto(c, L, t, w, h, box);
+    drawVectorHighlight(c, L, t, box);
+    return;
+  }
+  /* 重建缓存：渲染范围 = 当前视野外扩一圈，拖动时先靠贴图覆盖 */
+  var padFrac = 0.4;
+  while (padFrac > 0 && (w * (1 + 2 * padFrac)) * dpr * ((h * (1 + 2 * padFrac)) * dpr) > 30000000) padFrac -= 0.1;
+  var bw = box[2] - box[0], bh = box[3] - box[1];
+  var ext = [box[0] - bw * padFrac, box[1] - bh * padFrac, box[2] + bw * padFrac, box[3] + bh * padFrac];
+  var scale = Math.abs(t[0]);
+  var wCss = Math.max(2, Math.round((ext[2] - ext[0]) * scale));
+  var hCss = Math.max(2, Math.round((ext[3] - ext[1]) * scale));
+  var cv2 = document.createElement('canvas');
+  cv2.width = Math.round(wCss * dpr); cv2.height = Math.round(hCss * dpr);
+  var c2 = cv2.getContext('2d');
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  /* 缓存坐标系的变换：把缓存范围左上角对齐到画布 (0,0) */
+  var tlx = t[0] * ext[0] + t[2] * ext[3] + t[4];
+  var tly = t[1] * ext[0] + t[3] * ext[3] + t[5];
+  var tc = [t[0], t[1], t[2], t[3], t[4] - tlx, t[5] - tly];
+  renderVectorInto(c2, L, tc, wCss, hCss, ext);
+  L._vcache = { cv: cv2, wCss: wCss, hCss: hCss, ext: ext, t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
+                dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
+  c.drawImage(cv2, tlx, tly, wCss, hCss);
+  drawVectorHighlight(c, L, t, box);
+}
+
+function renderVectorInto(c, L, t, w, h, box) {
+  var polys = L.polygons;
+
+  var polys = L.polygons;
+  if (!polys || !polys.length) return;
   var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   var scale = Math.abs(t0) || 0;                /* px / 墨卡托单位 */
@@ -1706,6 +1772,11 @@ function drawVector(c, L, t, w, h, box) {
   c.stroke();
   if (dotPath) { c.fillStyle = '#c86bff'; c.fill(dotPath); }
   c.restore();
+}
+
+function drawVectorHighlight(c, L, t, box) {
+  var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
+  var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   /* 搜索高亮：深红色边框（拖动时跳过，moveend 再画） */
   if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L && !STATE._dragging) {
     var hpg = STATE.hlPoly.pg;
