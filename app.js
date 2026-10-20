@@ -126,20 +126,30 @@ function getSceneName(props) {
   if (!props) return '';
   var keys = Object.keys(props);
   var i, k, kl;
+  /* 编号型的值（如 CJ0001454）不是名称，哪怕装在「唯一名称」这种字段里 */
+  function isIdVal(v) {
+    if (/^[A-Za-z]{1,5}\d{3,}$/.test(v)) return true;
+    if (/^\d{6,}$/.test(v)) return true;
+    if (/^[A-Z0-9\-_]+$/i.test(v) && v.length > 10 && /\d/.test(v)) return true;
+    return false;
+  }
+  /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i]; kl = k.toLowerCase();
-    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0) {
+    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0 || /名$/.test(k)) {
       var v = String(props[k] || '').trim();
-      if (v && v.indexOf('\uFFFD') < 0) return v;
+      if (v && v.indexOf('\\uFFFD') < 0 && !isIdVal(v)) return v;
     }
   }
+  /* 第二遍兜底：第一个像名称的字符串 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i];
     var v2 = String(props[k] || '').trim();
-    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
+    if (!v2 || v2.indexOf('\\uFFFD') >= 0) continue;
     if (/^[\d\-\.]+$/.test(v2)) continue;
     if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
     if (v2.length > 60) continue;
+    if (isIdVal(v2)) continue;
     return v2;
   }
   return '';
