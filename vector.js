@@ -72,6 +72,35 @@ function parseDbf(buf, encoding, fieldTypes) {
   }
   var foff = 1; // 跳过删除标记
   for (var fi = 0; fi < fields.length; fi++) { fields[fi].off = foff; foff += fields[fi].len; }
+  /* 编码兜底识别：调用方按 gbk 假设时（无 .cpg 的 SHP 常见），抽样字符列原始字节试 UTF-8 严格解码，
+     能完整解通说明文件其实是 UTF-8（GBK 字节流几乎必然在严格模式下报错），避免整表乱码 */
+  if ((encoding || 'gbk') === 'gbk' && nRec > 0 && rLen > 0) {
+    try {
+      var sample = [];
+      var maxRec = Math.min(nRec, 100);
+      for (var sr = 0; sr < maxRec && sample.length < 262144; sr++) {
+        var sb = hLen + sr * rLen;
+        for (var sf = 0; sf < fields.length; sf++) {
+          if (fields[sf].type !== 'C') continue;
+          var so = sb + fields[sf].off;
+          for (var sk = 0; sk < fields[sf].len; sk++) {
+            var sc2 = u8[so + sk];
+            if (sc2 >= 0x80) sample.push(sc2);
+          }
+        }
+      }
+      if (sample.length > 8) {
+        new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(sample));
+        dec = new TextDecoder('utf-8');
+        /* 字段名也要用新编码重解一遍 */
+        for (var ni2 = 0; ni2 < fields.length; ni2++) {
+          var noff = 32 + ni2 * 32, nb = [];
+          for (var nk = 0; nk < 11; nk++) { var nc = u8[noff + nk]; if (!nc) break; nb.push(nc); }
+          try { fields[ni2].name = dec.decode(new Uint8Array(nb)).trim(); } catch (e2) {}
+        }
+      }
+    } catch (e) { /* 严格解码失败：确实是 GBK，保持原解码器 */ }
+  }
   var records = new Array(nRec);
   for (var r = 0; r < nRec; r++) {
     var base = hLen + r * rLen;
