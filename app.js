@@ -3661,10 +3661,13 @@ function stDoClear(keepInput) {
 /* 异步逐点归类到场景并累计指标；done(rowsByRat, err) */
 function stCompute(sceneIdxs, done) {
   var L = layers[ST.layerId];
+  var ratWant = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
   var grids = [];
   for (var gi = 0; gi < layers.length; gi++) {
     var g = layers[gi];
-    if (g.ok && g.kind === 'grid' && g.ds && g.mx && g.my) grids.push(g);
+    if (!g.ok || g.kind !== 'grid' || !g.ds || !g.mx || !g.my) continue;
+    if ((ratWant === '4G' || ratWant === '5G') && g.rat !== ratWant) continue;
+    grids.push(g);
   }
   if (!L || !grids.length) { done(null, !grids.length ? '未加载栅格图层' : '未选择边界图层'); return; }
 
@@ -3689,19 +3692,22 @@ function stCompute(sceneIdxs, done) {
     if (sc.bb[1] < gy0) gy0 = sc.bb[1]; if (sc.bb[3] > gy1) gy1 = sc.bb[3];
   });
   var cell = Math.max(gx1 - gx0, gy1 - gy0) / 48 || 1000;
-  var gidx = {};
+  var gidx = new Map();
   scenes.forEach(function (sc, pos) {
     var cx0 = Math.floor((sc.bb[0] - gx0) / cell), cx1 = Math.floor((sc.bb[2] - gx0) / cell);
     var cy0 = Math.floor((sc.bb[1] - gy0) / cell), cy1 = Math.floor((sc.bb[3] - gy0) / cell);
     for (var cx = cx0; cx <= cx1; cx++) for (var cy = cy0; cy <= cy1; cy++) {
-      var k = cx + '_' + cy;
-      (gidx[k] || (gidx[k] = [])).push(pos);
+      var k = cx * 128 + cy;
+      var arr = gidx.get(k);
+      if (arr) arr.push(pos); else gidx.set(k, [pos]);
     }
   });
 
   function newAcc() { return { total: 0, poor: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
   var acc = { '4G': scenes.map(newAcc), '5G': scenes.map(newAcc) };
   var work = grids.map(function (g) { return { g: g, i: 0, n: g.mx.length }; });
+  var totalPts = 0;
+  work.forEach(function (w) { totalPts += w.n; });
   var wi = 0;
 
   function step() {
@@ -3716,7 +3722,7 @@ function stCompute(sceneIdxs, done) {
       for (; w.i < end; w.i++) {
         var x = mx[w.i], y = my[w.i];
         if (x < gx0 || x > gx1 || y < gy0 || y > gy1) continue;
-        var cand = gidx[Math.floor((x - gx0) / cell) + '_' + Math.floor((y - gy0) / cell)];
+        var cand = gidx.get(Math.floor((x - gx0) / cell) * 128 + Math.floor((y - gy0) / cell));
         if (!cand) continue;
         for (var ci = 0; ci < cand.length; ci++) {
           var sc = scenes[cand[ci]];
@@ -3745,7 +3751,9 @@ function stCompute(sceneIdxs, done) {
       }
       if (w.i >= w.n) wi++;
     }
-    stShowStatus('计算中… ' + Math.min(99, Math.round((wi / Math.max(1, work.length)) * 100)) + '%');
+    var donePts = 0;
+    for (var _wi = 0; _wi < work.length; _wi++) donePts += (_wi < wi ? work[_wi].n : (_wi === wi ? work[_wi].i : 0));
+    stShowStatus('计算中… ' + Math.min(99, Math.round(donePts / Math.max(1, totalPts) * 100)) + '%');
     if (wi < work.length) { setTimeout(step, 0); return; }
     function rowsFor(rat) {
       var rows = [];
@@ -3769,7 +3777,12 @@ function stCompute(sceneIdxs, done) {
       }
       return rows;
     }
-    done({ '4G': rowsFor('4G'), '5G': rowsFor('5G') }, null);
+    var out = {};
+    var has4 = grids.some(function (g) { return g.rat !== '5G'; });
+    var has5 = grids.some(function (g) { return g.rat === '5G'; });
+    if (has4) out['4G'] = rowsFor('4G');
+    if (has5) out['5G'] = rowsFor('5G');
+    done(out, null);
   }
   setTimeout(step, 0);
 }
@@ -3782,7 +3795,17 @@ function stExport(all) {
     L = layers[ST.layerId];
   }
   var idxs = [];
-  if (all) { for (var i = 0; i < L.polygons.length; i++) idxs.push(i); }
+  var cityFilter = (typeof STATE !== 'undefined' && STATE.cityFilter) ? STATE.cityFilter : '*';
+  if (all) {
+    for (var i = 0; i < L.polygons.length; i++) idxs.push(i);
+    if (cityFilter && cityFilter !== '*' && typeof vecCityMatcher === 'function') {
+      var cityMatcher = vecCityMatcher(L.polygons, CITY_NAMES[cityFilter] || cityFilter, cityFilter);
+      if (cityMatcher) {
+        idxs = idxs.filter(function (ix) { return cityMatcher(L.polygons[ix].props || {}); });
+        if (!idxs.length) { showErr('当前地市下该图层没有场景'); return; }
+      }
+    }
+  }
   else {
     if (ST.selScene < 0) { showErr('先查询并选中一个场景，或清除后导出全部'); return; }
     idxs.push(ST.selScene);
@@ -3796,17 +3819,25 @@ function stExport(all) {
     if (err || !res) { showErr(err || '统计失败'); stInfoMsg(); return; }
     var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
     var H5 = H4.slice(); H5[10] = '覆盖率≥-105dBm(%)';
-    var total = res['4G'].length;
+    var rats = [];
+    if (res['4G']) rats.push('4G');
+    if (res['5G']) rats.push('5G');
+    if (!rats.length) { showErr('没有可导出的数据'); stInfoMsg(); return; }
+    var total = res[rats[0]].length;
     var base = (L.name || '场景统计').replace(/[\\/:*?"<>|]/g, '_');
+    if (all && cityFilter && cityFilter !== '*') base += '_' + (CITY_NAMES[cityFilter] || cityFilter);
+    if (rats.length === 1) base += '_' + rats[0];
     try {
       if (total <= 1000000 && typeof XLSX !== 'undefined') {
         var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H4].concat(res['4G'])), '4G');
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H5].concat(res['5G'])), '5G');
+        rats.forEach(function (rt) {
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([(rt === '5G' ? H5 : H4)].concat(res[rt])), rt);
+        });
         XLSX.writeFile(wb, base + '_场景指标.xlsx');
       } else {
-        stDownloadCsv(base + '_4G.csv', H4, res['4G']);
-        setTimeout(function () { stDownloadCsv(base + '_5G.csv', H5, res['5G']); }, 400);
+        rats.forEach(function (rt, ri) {
+          setTimeout(function () { stDownloadCsv(base + '_' + rt + '.csv', rt === '5G' ? H5 : H4, res[rt]); }, ri * 400);
+        });
       }
       stShowStatus('已导出 ' + total + ' 个场景');
       setTimeout(function () { var l = document.getElementById('stList'); if (l) l.style.display = 'none'; }, 2500);
