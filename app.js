@@ -3459,8 +3459,15 @@ function stRefreshLayers() {
     var L = layers[li];
     var b = document.createElement('button');
     b.type = 'button';
-    b.style.justifyContent = 'flex-start';
-    b.textContent = L.name + '（' + L.polygons.length + ' 个场景）';
+    var nm = document.createElement('span');
+    nm.className = 'st-nm';
+    nm.textContent = L.name;
+    nm.title = L.name;
+    var ct = document.createElement('span');
+    ct.className = 'st-ct';
+    ct.textContent = L.polygons.length + ' 个场景';
+    b.appendChild(nm);
+    b.appendChild(ct);
     if (li === ST.layerId) b.classList.add('on');
     b.onclick = function (e) {
       e.stopPropagation();
