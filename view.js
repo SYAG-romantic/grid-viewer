@@ -170,32 +170,16 @@ function zoomToCity() {
     if (b[0] < x0) x0 = b[0]; if (b[2] > x1) x1 = b[2];
     if (b[1] < y0) y0 = b[1]; if (b[3] > y1) y1 = b[3];
   }
-  /* 边界层：按 citySel 过滤多边形算范围（CITYID优先） */
+  /* 边界层：按地市过滤多边形算范围（与绘制同口径，认 CITYID 与中文地州/地市/城市字段） */
   var cityName = CITY_NAMES[v] || v;
-  function _zCityMatch(_props) {
-    var hasId = false, idMatch = false;
-    for (var _k in _props) {
-      if (/cityid/i.test(_k)) {
-        hasId = true;
-        if (String(_props[_k] || '') === String(v)) idMatch = true;
-      }
-    }
-    if (hasId) return idMatch;
-    for (var _k2 in _props) {
-      var _kl = _k2.toLowerCase();
-      if (_kl === 'f' || _kl === 'city' || _kl === 'cityname' || _kl.indexOf('city') === 0) {
-        var _vv = String(_props[_k2] || '');
-        if (_vv === cityName || _vv.indexOf(cityName) === 0) return true;
-      }
-    }
-    return false;
-  }
   for (var vi = 0; vi < layers.length; vi++) {
     var vL = layers[vi];
     if (!vL.visible || !vL.ok || vL.kind !== 'vector' || !vL.polygons) continue;
+    var zMatcher = vecCityMatcher(vL.polygons, cityName, v);
+    if (!zMatcher) continue;
     for (var pi = 0; pi < vL.polygons.length; pi++) {
       var pg = vL.polygons[pi];
-      if (!_zCityMatch(pg.props || {})) continue;
+      if (!zMatcher(pg.props || {})) continue;
       var bb = pg._bbox;
       if (bb) {
         found = true;
@@ -1607,6 +1591,38 @@ function polyBBoxMerc(pg) {
  *    十万级的 POI/工参小面每帧全量描一遍，缩到全省视野时一帧要 8 秒，直接卡死；
  *    塌点只看 bbox，两次 canvas 调用，密度观感还在。
  * 3) 描边样式要 save/restore，别把 lineWidth/lineJoin 漏给后面的图层。 */
+/* 边界图层地市匹配器：先从样本属性里一次性认出地市字段，再返回判定函数。
+   有 CITYID 只认代码精确匹配；否则认城市字段（F / CITY* / 中文「地州」「地市」「城市」），
+   值与地市名相等或以其开头。认不出字段返回 null（该图层不参与地市过滤）。 */
+function vecCityMatcher(polys, cityName, cityCode) {
+  var mode = 0, key = null;
+  var lim = Math.min(polys.length, 50);
+  for (var i = 0; i < lim && !key; i++) {
+    var p = polys[i].props || {};
+    for (var k in p) { if (/cityid/i.test(k)) { mode = 1; key = k; break; } }
+  }
+  if (!key) {
+    for (var j = 0; j < lim && !key; j++) {
+      var p2 = polys[j].props || {};
+      for (var k2 in p2) {
+        var kl = k2.toLowerCase();
+        if (kl === 'f' || kl === 'city' || kl === 'cityname' || kl.indexOf('city') === 0 ||
+            kl.indexOf('地州') >= 0 || kl.indexOf('地市') >= 0 || kl.indexOf('城市') >= 0) { mode = 2; key = k2; break; }
+      }
+    }
+  }
+  if (!key) return null;
+  if (mode === 1) {
+    return function (props) {
+      return !!(cityCode && cityCode !== '*' && String((props || {})[key] || '') === String(cityCode));
+    };
+  }
+  return function (props) {
+    var pv = String((props || {})[key] || '');
+    return pv === cityName || (cityName && pv.indexOf(cityName) === 0);
+  };
+}
+
 function drawVector(c, L, t, w, h, box) {
   var polys = L.polygons;
   if (!polys || !polys.length) return;
@@ -1620,46 +1636,34 @@ function drawVector(c, L, t, w, h, box) {
   c.lineJoin = 'round';
   c.lineCap = 'round';
   c.beginPath();
-  /* 地市过滤：支持城市代码（CITYID）和名称，一个都匹配不上就不过滤 */
+  /* 地市过滤：CITYID 优先按代码，否则认城市字段（含中文地州/地市/城市）；
+     一个都匹配不上就不过滤（无地市字段的图层照常显示） */
   var cityF = L.citySel;
   var cityC = L.cityCode;
   var cityOn = cityF && cityF !== '*';
-  function _cityMatch(_props) {
-    if (!cityOn) return true;
-    /* 优先用 CITYID 精确匹配代码 */
-    var hasCityId = false, cityIdMatch = false;
-    for (var _pk in _props) {
-      if (/cityid/i.test(_pk)) {
-        hasCityId = true;
-        if (cityC && cityC !== '*' && String(_props[_pk] || '') === String(cityC)) cityIdMatch = true;
-      }
-    }
-    if (hasCityId) return cityIdMatch;
-    /* 无 CITYID 时，只查城市名字段（F/CITY），不查 AREANAME 这类描述字段 */
-    for (var _pk2 in _props) {
-      var _kl = _pk2.toLowerCase();
-      if (_kl === 'f' || _kl === 'city' || _kl === 'cityname' || _kl.indexOf('city') === 0) {
-        var _pv2 = String(_props[_pk2] || '');
-        if (_pv2 === cityF || _pv2.indexOf(cityF) === 0) return true;
-      }
-    }
-    return false;
-  }
-  var matchCount = 0;
+  var cityMatcher = null;
   if (cityOn) {
-    for (var _pi = 0; _pi < polys.length; _pi++) {
-      if (_cityMatch(polys[_pi].props || {})) { matchCount++; break; }
+    cityMatcher = vecCityMatcher(polys, cityF, cityC);
+    var anyMatch = false;
+    if (cityMatcher) {
+      for (var _pi = 0; _pi < polys.length; _pi++) {
+        if (cityMatcher(polys[_pi].props || {})) { anyMatch = true; break; }
+      }
     }
-    if (matchCount === 0) cityOn = false;
+    if (!anyMatch) { cityOn = false; cityMatcher = null; }
   }
+  /* 拖动/缩放进行中：小多边形先画成点、顶点抽稀放宽，停下后自动恢复完整轮廓（与工参拖动降级同理） */
+  var dragging = (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
+  var dotLim = dragging ? 14 : 1;
+  var thinPx = dragging ? 1.6 : 0.75;
   for (var pi = 0; pi < polys.length; pi++) {
     var pg = polys[pi];
-    if (cityOn && !_cityMatch(pg.props || {})) continue;
+    if (cityOn && !cityMatcher(pg.props || {})) continue;
     var pb = pg._bbox;
     if (pb === undefined) pb = polyBBoxMerc(pg);
     if (pb) {
       if (pb[2] < b0 || pb[0] > b2 || pb[3] < b1 || pb[1] > b3) continue;
-      if (minSpan > 0 && (pb[2] - pb[0]) < minSpan && (pb[3] - pb[1]) < minSpan) {
+      if (scale > 0 && (pb[2] - pb[0]) * scale < dotLim && (pb[3] - pb[1]) * scale < dotLim) {
         var cxm = (pb[0] + pb[2]) * 0.5, cym = (pb[1] + pb[3]) * 0.5;
         var cpx = t0 * cxm + t2 * cym + t4;
         var cpy = t1 * cxm + t3 * cym + t5;
@@ -1690,7 +1694,7 @@ function drawVector(c, L, t, w, h, box) {
         else {
           /* 屏幕抽稀：离上一个落点不足 0.75px 的顶点跳过，低缩放下顶点数骤降 */
           var dx = px - lpx, dy = py - lpy;
-          if (dx < 0.75 && dx > -0.75 && dy < 0.75 && dy > -0.75) continue;
+          if (dx < thinPx && dx > -thinPx && dy < thinPx && dy > -thinPx) continue;
           c.lineTo(px, py); lpx = px; lpy = py;
         }
       }
