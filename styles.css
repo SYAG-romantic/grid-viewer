@@ -268,8 +268,8 @@ table.stat td.pct{text-align:right;color:var(--fg3);width:52px;font-variant-nume
 #mapwrap{position:absolute;inset:0}
 #labelCanvas{position:absolute;inset:0;pointer-events:none;z-index:4}
 #map{position:absolute;inset:0;background:var(--mapbg)}
-.ol-viewport{z-index:0}
-.ol-overlaycontainer-stopevent{z-index:3}
+/* .ol-viewport 不设 z-index：避免建层叠上下文把缩放控件锁在栅格画布下 */
+.ol-overlaycontainer-stopevent{z-index:5}
 #pts{position:absolute;inset:0;pointer-events:none;z-index:1}
 /* 工具模式下只改光标，不改 pointer-events：
    事件在 #mapwrap 捕获阶段被拦下，滚轮缩放因此不受影响 */
