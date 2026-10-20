@@ -1668,20 +1668,31 @@ function drawVector(c, L, t, w, h, box) {
         continue;
       }
     }
-    var rings = pg.rings;
+    /* 用预计算的墨卡托环绘制：逐帧把经纬度现算成墨卡托，几万个多边形直接卡死 */
+    var rings = pg._ringsMerc;
+    if (!rings) {
+      rings = pg._ringsMerc = pg.rings.map(function (ring0) {
+        return ring0.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+      });
+    }
     for (var ri = 0; ri < rings.length; ri++) {
       var ring = rings[ri];
       var n = ring.length;
       if (n < 2) continue;
-      var started = false;
+      var started = false, lpx = 0, lpy = 0;
       for (var vi = 0; vi < n; vi++) {
         var pt = ring[vi];
-        var mxv = lonToMercX(pt[0]), myv = latToMercY(pt[1]);
+        var mxv = pt[0], myv = pt[1];
         if (!isFinite(mxv) || !isFinite(myv)) { started = false; continue; }
         var px = t0 * mxv + t2 * myv + t4;
         var py = t1 * mxv + t3 * myv + t5;
-        if (!started) { c.moveTo(px, py); started = true; }
-        else c.lineTo(px, py);
+        if (!started) { c.moveTo(px, py); started = true; lpx = px; lpy = py; }
+        else {
+          /* 屏幕抽稀：离上一个落点不足 0.75px 的顶点跳过，低缩放下顶点数骤降 */
+          var dx = px - lpx, dy = py - lpy;
+          if (dx < 0.75 && dx > -0.75 && dy < 0.75 && dy > -0.75) continue;
+          c.lineTo(px, py); lpx = px; lpy = py;
+        }
       }
       if (started) c.closePath();
     }
