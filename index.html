@@ -92,7 +92,6 @@
             边界图层：一次选中同名 .tab/.dat/.map/.id（MapInfo）或 .shp/.dbf/.prj（Shapefile）。
           </div>
 
-      <button id="btnExportSel" style="width:100%;padding:7px;margin:2px 0 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--fg);cursor:pointer;font-size:12.5px;">导出框选小区 (Excel)</button>
 <div id="layerList" style="margin-top:9px"></div>
         </div>
       </details>
@@ -317,7 +316,7 @@
         <button id="stClear" class="icon-btn" title="清除选中场景（导出将导全部）">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
         </button>
-        <button id="stExport" class="icon-btn" title="导出：选中场景只导该场景，否则导全部">
+        <button id="stExport" class="icon-btn" title="导出：统计选中场景→该场景指标；地图上有框选→选区内小区；都没有→全部场景指标">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
         </button>
         <div id="stList" style="display:none;position:absolute;top:38px;left:0;right:0;max-height:320px;overflow:auto;background:var(--popbg);backdrop-filter:blur(10px) saturate(1.3);-webkit-backdrop-filter:blur(10px) saturate(1.3);border:1px solid var(--line);border-radius:8px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
