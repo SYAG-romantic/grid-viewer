@@ -3380,65 +3380,86 @@ function stInRing(x, y, ring) {
 }
 
 function initStatsPanel() {
-  var box = document.getElementById('statsBox');
-  var btn = document.getElementById('btnStats');
-  if (!box || !btn || btn._stInit) return;
-  btn._stInit = true;
-  var pop = document.getElementById('statsPop');
-  var selLayer = document.getElementById('stLayer');
+  var q = document.getElementById('stQuery');
+  if (!q || q._stInit) return;
+  q._stInit = true;
   var search = document.getElementById('stSearch');
+  q.onclick = function () { stDoQuery(); };
+  if (search) search.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); stDoQuery(); } };
+  document.getElementById('stClear').onclick = function () { stDoClear(false); };
+  document.getElementById('stExport').onclick = function () { stExport(ST.selScene < 0); };
+  initStLayerDropdown();
+  document.addEventListener('click', function (e) {
+    var list = document.getElementById('stList');
+    if (list && list.style.display !== 'none' && !(e.target.closest && e.target.closest('#statsBox'))) list.style.display = 'none';
+  });
+}
+
+function initStLayerDropdown() {
+  var box = document.getElementById('stLayerBox');
+  var btn = document.getElementById('stLayerBtn');
+  if (!box || !btn) return;
   function close() { box.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
   btn.onclick = function (e) {
     e.stopPropagation();
+    stRefreshLayers();
     var open = box.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) stRefreshLayers();
   };
-  if (pop) pop.addEventListener('click', function (e) { e.stopPropagation(); });
   document.addEventListener('click', function () { if (box.classList.contains('open')) close(); });
-  selLayer.onchange = function () {
-    ST.layerId = parseInt(selLayer.value, 10);
-    stDoClear(true);
-    stInfoMsg();
-  };
-  document.getElementById('stQuery').onclick = function () { stDoQuery(); };
-  search.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); stDoQuery(); } };
-  document.getElementById('stClear').onclick = function () { stDoClear(false); stInfoMsg(); };
-  document.getElementById('stExport').onclick = function () { stExport(ST.selScene < 0); };
 }
 
-function stInfoMsg() {
-  var info = document.getElementById('stInfo');
-  if (!info || ST.busy) return;
-  var L = layers[ST.layerId];
-  if (!L || !L.polygons) { info.textContent = ''; return; }
-  if (ST.selScene >= 0) {
-    var nm = getSceneName(L.polygons[ST.selScene].props || {}) || ('场景 ' + (ST.selScene + 1));
-    info.textContent = '已选：' + nm + '（导出只导该场景）';
-  } else {
-    info.textContent = '共 ' + L.polygons.length + ' 个场景（导出导全部）';
-  }
+function stEnsureLayer() {
+  if (ST.layerId >= 0 && layers[ST.layerId] && layers[ST.layerId].kind === 'vector') return true;
+  var idxs = stVectorLayerIdxs();
+  if (!idxs.length) return false;
+  ST.layerId = idxs[0];
+  stSyncLayerCur();
+  return true;
 }
+
+function stSyncLayerCur() {
+  var cur = document.getElementById('stLayerCur');
+  var L = layers[ST.layerId];
+  if (cur) cur.textContent = (L && L.kind === 'vector') ? L.name : '统计图层';
+}
+
+function stShowStatus(html) {
+  var list = document.getElementById('stList');
+  if (!list) return;
+  list.innerHTML = '<div class="st-empty" style="padding:9px 10px">' + html + '</div>';
+  list.style.display = '';
+}
+
+function stInfoMsg() { /* 状态提示改走 stShowStatus（顶栏模块内） */ }
 
 function stRefreshLayers() {
-  var sel = document.getElementById('stLayer');
+  var pop = document.getElementById('stLayerPop');
+  if (!pop) return;
   var idxs = stVectorLayerIdxs();
-  sel.innerHTML = '';
+  pop.innerHTML = '<div class="dsel-h">统计图层（边界图层）</div>';
   if (!idxs.length) {
-    sel.innerHTML = '<option value="-1">未加载边界图层</option>';
-    ST.layerId = -1;
-  } else {
-    for (var j = 0; j < idxs.length; j++) {
-      var L = layers[idxs[j]];
-      var op = document.createElement('option');
-      op.value = String(idxs[j]);
-      op.textContent = L.name + '（' + L.polygons.length + ' 个场景）';
-      sel.appendChild(op);
-    }
-    if (ST.layerId < 0 || !layers[ST.layerId] || layers[ST.layerId].kind !== 'vector') ST.layerId = idxs[0];
-    sel.value = String(ST.layerId);
+    pop.innerHTML += '<div class="st-empty" style="padding:8px 10px">未加载边界图层</div>';
+    return;
   }
-  stInfoMsg();
+  if (ST.layerId < 0 || !layers[ST.layerId] || layers[ST.layerId].kind !== 'vector') ST.layerId = idxs[0];
+  idxs.forEach(function (li) {
+    var L = layers[li];
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.style.justifyContent = 'flex-start';
+    b.textContent = L.name + '（' + L.polygons.length + ' 个场景）';
+    if (li === ST.layerId) b.classList.add('on');
+    b.onclick = function (e) {
+      e.stopPropagation();
+      ST.layerId = li;
+      stDoClear(false);
+      stSyncLayerCur();
+      document.getElementById('stLayerBox').classList.remove('open');
+    };
+    pop.appendChild(b);
+  });
+  stSyncLayerCur();
 }
 
 /* 在当前图层里按名称模糊找场景，返回 [idx] */
@@ -3455,7 +3476,7 @@ function stFindScenes(kw) {
 }
 
 function stDoQuery() {
-  if (ST.layerId < 0) { showErr('先选择一个边界图层'); return; }
+  if (!stEnsureLayer()) { showErr('先加载一个边界图层'); return; }
   var kw = document.getElementById('stSearch').value.trim();
   if (!kw) { showErr('先输入要查询的场景名称'); return; }
   var hits = stFindScenes(kw);
@@ -3622,8 +3643,7 @@ function stCompute(sceneIdxs, done) {
       }
       if (w.i >= w.n) wi++;
     }
-    var info = document.getElementById('stInfo');
-    if (info) info.textContent = '计算中… ' + Math.min(99, Math.round((wi / Math.max(1, work.length)) * 100)) + '%';
+    stShowStatus('计算中… ' + Math.min(99, Math.round((wi / Math.max(1, work.length)) * 100)) + '%');
     if (wi < work.length) { setTimeout(step, 0); return; }
     function rowsFor(rat) {
       var rows = [];
@@ -3654,7 +3674,10 @@ function stCompute(sceneIdxs, done) {
 function stExport(all) {
   if (ST.busy) return;
   var L = layers[ST.layerId];
-  if (!L) { showErr('先选择一个边界图层'); return; }
+  if (!L) {
+    if (!stEnsureLayer()) { showErr('先加载一个边界图层'); return; }
+    L = layers[ST.layerId];
+  }
   var idxs = [];
   if (all) { for (var i = 0; i < L.polygons.length; i++) idxs.push(i); }
   else {
@@ -3682,8 +3705,8 @@ function stExport(all) {
         stDownloadCsv(base + '_4G.csv', H4, res['4G']);
         setTimeout(function () { stDownloadCsv(base + '_5G.csv', H5, res['5G']); }, 400);
       }
-      var info = document.getElementById('stInfo');
-      if (info) info.textContent = '已导出 ' + total + ' 个场景';
+      stShowStatus('已导出 ' + total + ' 个场景');
+      setTimeout(function () { var l = document.getElementById('stList'); if (l) l.style.display = 'none'; }, 2500);
     } catch (e) {
       showErr('导出失败：' + e.message);
       stInfoMsg();
