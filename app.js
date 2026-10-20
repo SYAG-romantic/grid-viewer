@@ -3433,7 +3433,7 @@ function stEnsureLayer() {
 function stSyncLayerCur() {
   var cur = document.getElementById('stLayerCur');
   var L = layers[ST.layerId];
-  if (cur) cur.textContent = (L && L.kind === 'vector') ? L.name : '统计图层';
+  if (cur) cur.textContent = (L && L.kind === 'vector') ? L.name : '统计';
 }
 
 function stShowStatus(html) {
