@@ -384,7 +384,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .dsel-btn .chev{color:var(--fg3);margin-left:1px;
   transition:transform .26s cubic-bezier(.22,.61,.36,1)}
 
-#btnLabel{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .18s ease}
+#btnLabel{cursor:pointer;transition:all .18s ease}
 #btnLabel:hover{transform:scale(1.06);background:var(--glass);border-color:var(--line)}
 #btnStats{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--glass);color:var(--fg2);cursor:pointer;font-size:12.5px;transition:all .18s ease;display:flex;align-items:center;gap:5px}
 #btnStats:hover{transform:scale(1.06);background:var(--glass);border-color:var(--line)}
