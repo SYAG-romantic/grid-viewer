@@ -253,6 +253,16 @@ Dataset.prototype.lineText = function (i) {
 };
 Dataset.prototype.cells = function (i) {
   if (this.extra && this.extra[i]) return this.extra[i];
+  if (this.aoa) {
+    /* xlsx：原始行按需转字符串（数值保持数值存储，不再为全表预建字符串副本）；
+       读过的行进小缓存，上限 4096 行——弹窗等零星读受益，全表扫描不会把缓存撑成第二份全量副本 */
+    var r = this.aoa[i] || [];
+    var out = new Array(r.length);
+    for (var c = 0; c < r.length; c++) out[c] = (r[c] === null || r[c] === undefined) ? '' : String(r[c]);
+    if (!this.extra) this.extra = {};
+    if ((this._extraN || 0) < 4096) { this.extra[i] = out; this._extraN = (this._extraN || 0) + 1; }
+    return out;
+  }
   return splitRow(this.lineText(i), this.delim);
 };
 Dataset.prototype.value = function (i, col) {
@@ -536,12 +546,10 @@ function parseXlsx(file, name) {
         for (var c3 = 0; c3 < nCols; c3++) {
           if (grow[c3]) ds.num[columns[c3]] = grow[c3];
         }
-        ds.extra = {};
-        for (var r3 = 0; r3 < ds.n; r3++) {
-          ds.extra[r3] = data[r3].map(function (v) {
-            return v === null || v === undefined ? '' : String(v);
-          });
-        }
+        /* 只保留解析原始行（数值是数值、文本是原字符串引用）作为唯一数据源：
+           旧做法再把每格复制成字符串存一份 ds.extra，19 万行×31 列约 600 万个
+           字符串、几百 MB。cells() 现在按需转换（见 Dataset.prototype.cells） */
+        ds.aoa = data;
         /* 站型列（与 parseDelimited 一致）：室分识别依赖它 */
         var stypeNameX = pickColumn(columns, ALIAS.stype);
         var stypeIdxX = stypeNameX ? columns.indexOf(stypeNameX) : -1;
