@@ -2124,49 +2124,58 @@ function pickAt(pixel) {
     if (d < bestD) { bestD = d; best = { L: L, i: i }; }
   }
 
-  for (var li = layers.length - 1; li >= 0; li--) {
+  /* 点击优先级（2026-10-21 定）：工参扇区 > 栅格点/工参中心点 > 边界多边形。
+     原先按图层倒序查、边界层最先命中，点在多边形里的扇区永远弹不出小区信息 */
+  for (var li = layers.length - 1; li >= 0 && !best; li--) {
     var L = layers[li];
-    if (!L.visible || !L.ok) continue;
-    if (L.kind === 'grid' && L.buckets) {
-      for (var b = 0; b < (L.bandCount || 6); b++) {
-        var idx = L.buckets[b];
-        for (var k = 0; k < idx.length; k++) consider(L, idx[k]);
-      }
-    } else if (L.kind === 'vector' && L.polygons) {
-      var coord = map.getCoordinateFromPixel(pixel);
-      if (coord) {
-        var mxx = coord[0], myy = coord[1];
-        var pMatcher = (L.citySel && L.citySel !== '*') ? vecCityMatcher(L.polygons, L.citySel, L.cityCode) : null;
-        var pAny = false;
-        if (pMatcher) {
-          for (var pai = 0; pai < L.polygons.length; pai++) {
-            if (pMatcher(L.polygons[pai].props || {})) { pAny = true; break; }
-          }
-          if (!pAny) pMatcher = null;
+    if (!L.visible || !L.ok || L.kind !== 'site') continue;
+    var secHits = pickSiteSector(L, pixel, t, res);
+    if (secHits.length === 1) best = { L: L, i: secHits[0], sector: true };
+    else if (secHits.length > 1) best = { L: L, i: secHits[0], rows: secHits, sector: true };
+  }
+  if (!best) {
+    for (var li2 = layers.length - 1; li2 >= 0; li2--) {
+      var L2 = layers[li2];
+      if (!L2.visible || !L2.ok) continue;
+      if (L2.kind === 'grid' && L2.buckets) {
+        for (var b = 0; b < (L2.bandCount || 6); b++) {
+          var idx = L2.buckets[b];
+          for (var k = 0; k < idx.length; k++) consider(L2, idx[k]);
         }
-        for (var pi = 0; pi < L.polygons.length; pi++) {
-          var pg = L.polygons[pi];
-          if (pMatcher && !pMatcher(pg.props || {})) continue;
-          var bb = pg._bbox;
-          if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
-          if (!pg._ringsMerc) {
-            pg._ringsMerc = pg.rings.map(function (ring) {
-              return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-            });
-          }
-          if (ptInPoly(mxx, myy, pg._ringsMerc)) { best = { L: L, poly: pg }; break; }
-        }
-        if (best && best.poly) break;
+      } else if (L2.kind === 'site') {
+        for (var k2 = 0; k2 < L2.ds.n; k2++) consider(L2, k2);
       }
-    } else if (L.kind === 'site') {
-      /* 先试扇形命中：点击落在 80 米扇区内则选中该扇区（可能多个重叠） */
-      var secHits = pickSiteSector(L, pixel, t, res);
-      if (secHits.length === 1) { best = { L: L, i: secHits[0], sector: true }; break; }
-      if (secHits.length > 1) { best = { L: L, i: secHits[0], rows: secHits, sector: true }; break; }
-      /* 否则回退到最近中心点（9px） */
-      for (var k2 = 0; k2 < L.ds.n; k2++) consider(L, k2);
     }
-    if (best && best.L === L) break;
+  }
+  if (!best) {
+    for (var li3 = layers.length - 1; li3 >= 0; li3--) {
+      var L3 = layers[li3];
+      if (!L3.visible || !L3.ok || L3.kind !== 'vector' || !L3.polygons) continue;
+      var coord = map.getCoordinateFromPixel(pixel);
+      if (!coord) break;
+      var mxx = coord[0], myy = coord[1];
+      var pMatcher = (L3.citySel && L3.citySel !== '*') ? vecCityMatcher(L3.polygons, L3.citySel, L3.cityCode) : null;
+      var pAny = false;
+      if (pMatcher) {
+        for (var pai = 0; pai < L3.polygons.length; pai++) {
+          if (pMatcher(L3.polygons[pai].props || {})) { pAny = true; break; }
+        }
+        if (!pAny) pMatcher = null;
+      }
+      for (var pi = 0; pi < L3.polygons.length; pi++) {
+        var pg = L3.polygons[pi];
+        if (pMatcher && !pMatcher(pg.props || {})) continue;
+        var bb = pg._bbox;
+        if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
+        if (!pg._ringsMerc) {
+          pg._ringsMerc = pg.rings.map(function (ring) {
+            return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
+          });
+        }
+        if (ptInPoly(mxx, myy, pg._ringsMerc)) { best = { L: L3, poly: pg }; break; }
+      }
+      if (best) break;
+    }
   }
 
   if (!best) { hidePopup(); return; }
