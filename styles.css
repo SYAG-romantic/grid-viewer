@@ -369,9 +369,19 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #topbar{position:absolute;top:10px;left:calc(var(--mleft) + 10px);right:10px;z-index:5;display:flex;gap:6px;
   transition:left .3s cubic-bezier(.22,.61,.36,1);
         align-items:center;pointer-events:none;flex-wrap:nowrap}
-@media (max-width:900px){
+@media (max-width:1400px){
+  #topbar{gap:4px}
+  .dsel-btn{padding:0 7px}
+  .dsel-btn>span{display:none}
+  .dsel-btn b{max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #stLayerCur{max-width:140px}
+  #jumpTypeCur{max-width:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:1240px){
   #topbar{gap:6px;flex-wrap:wrap}
   #searchBox{max-width:none;flex:1 1 100%;order:-1}
+  #statsBox{flex:1 1 100%}
+  #stSearch{max-width:none !important}
 }
 @media (max-width:600px){
   #topbar{top:6px;left:6px;right:6px}
@@ -380,12 +390,12 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 }
 #topbar>*{pointer-events:auto}
 #searchBox{max-width:340px;background:var(--glass);border:1px solid var(--line);border-radius:10px;height:36px;
-  padding:0 8px;display:flex;gap:6px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.28);flex:0 1 auto;min-width:0}
+  padding:0 8px;display:flex;gap:6px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.28);flex:0 1 auto;min-width:178px}
 #searchBox input{width:clamp(76px,7.5vw,110px);min-width:0;background:transparent;border:none;outline:none;
   color:var(--fg);font:inherit;font-size:12.5px;padding:2px}
 #searchBox input::placeholder{color:var(--fg3)}
 #statsBox{background:var(--glass);border:1px solid var(--line);border-radius:10px;height:36px;
-  padding:0 2px;display:flex;gap:6px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.28);flex:0 1 auto;min-width:0}
+  padding:0 2px;display:flex;gap:4px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.28);flex:0 1 auto;min-width:198px}
 #statsBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
   display:flex;align-items:center;justify-content:center}
 #searchBox button{height:27px;padding:0 10px;font-size:12.5px;flex:0 0 auto;white-space:nowrap;
@@ -657,7 +667,11 @@ html.light #btnTheme .ic-sun{display:block}
 .st-btns button:disabled{opacity:.45;cursor:default}
 
 /* 统计图层下拉：名称太长省略 */
-#stLayerCur{max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stLayerCur{max-width:140px;min-width:24px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 顶栏搜索/统计两框：空间不足时只缩内部（图层名省略、输入框变窄），按钮不被挤出盒子 */
+#stLayerBtn{min-width:0;max-width:100%}
+#statsBox{overflow:visible}
+#searchBox{overflow:visible}
 #stSearch{width:clamp(76px,7.5vw,110px)}
 #stLayerPop{min-width:228px}
 #stLayerPop button{padding:8px 10px;gap:8px}
