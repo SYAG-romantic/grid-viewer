@@ -77,6 +77,8 @@ function renderLayerList() {
     if (!L) return;
     el.querySelector('[data-act="vis"]').onchange = function (e) {
       L.visible = e.target.checked; scheduleDraw(); saveViewState();
+      if (typeof ST !== 'undefined') ST.gen = (ST.gen || 0) + 1;
+      if (STATE._ratVisSnap) STATE._ratVisSnap.set(L, !!L.visible);
       /* 统计联动：当前统计图层被取消勾选 → 统计按钮恢复「统计」（重新勾选不自动恢复，要在统计下拉里重选） */
       if (!L.visible && typeof ST !== 'undefined' && ST.layerId >= 0 && layers[ST.layerId] === L) {
         ST.layerId = -1; ST.selScene = -1;
@@ -252,7 +254,10 @@ function searchCellsEx(keyword, limit, jtype) {
     var nameArr = L._nameArr;
     var cgiArr = L._cgiArr;
     var _layerCount = 0;
-    var _perLayer = Math.ceil(_lim / 2);
+    var _nSiteLayers = 0;
+    for (var _sl = 0; _sl < layers.length; _sl++) if (layers[_sl].visible && layers[_sl].ok && layers[_sl].kind === 'site') _nSiteLayers++;
+    var _perLayer = Math.max(2, Math.ceil(_lim / Math.max(1, _nSiteLayers)));
+    /* _fillPass>0 时为第二遍补扫（去掉每层上限），由调用处在第一遍不足时再调一次 */
     for (var i = 0; i < n; i++) {
       if (_layerCount >= _perLayer || results.length >= _lim) break;
       var nmLc = lcNames[i];
@@ -265,6 +270,31 @@ function searchCellsEx(keyword, limit, jtype) {
         var cg = cgiArr[i];
         if (cg && cg.toLowerCase().indexOf(kw) >= 0) {
           results.push({ L: L, i: i, name: nm, cgi: cg }); _layerCount++;
+        }
+      }
+    }
+  }
+  if (results.length < _lim) {
+    var _seen = {};
+    for (var _s0 = 0; _s0 < results.length; _s0++) _seen[results[_s0].L.id + ':' + results[_s0].i] = 1;
+    for (var li2 = 0; li2 < layers.length && results.length < _lim; li2++) {
+      var L2 = layers[li2];
+      if (!L2.ok || L2.kind !== 'site' || !L2.visible) continue;
+      if (ratFilter === '4G' && L2.rat !== '4G') continue;
+      if (ratFilter === '5G' && L2.rat !== '5G') continue;
+      var lc2 = L2._lcNames; if (!lc2) continue;
+      var nmA2 = L2._nameArr, cgA2 = L2._cgiArr;
+      for (var i2 = 0; i2 < L2.ds.n && results.length < _lim; i2++) {
+        if (_seen[L2.id + ':' + i2]) continue;
+        var nmLc2 = lc2[i2];
+        var nm2 = nmA2 ? nmA2[i2] : '';
+        if ((jt === 'auto' || jt === 'cell') && nmLc2.indexOf(kw) >= 0) {
+          results.push({ L: L2, i: i2, name: nm2, cgi: cgA2 ? cgA2[i2] : '' });
+          continue;
+        }
+        if ((jt === 'auto' || jt === 'cgi') && cgA2) {
+          var cg2 = cgA2[i2];
+          if (cg2 && cg2.toLowerCase().indexOf(kw) >= 0) results.push({ L: L2, i: i2, name: nm2, cgi: cg2 });
         }
       }
     }
@@ -306,6 +336,7 @@ function showJumpResults(res, kw) {
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
             STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = getSceneName(_rp) || String(r.name || '');
+            if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
             } catch (e) {}
@@ -412,8 +443,9 @@ function exportSelection() {
     var ws5 = XLSX.utils.aoa_to_sheet([header].concat(rows5g));
     XLSX.utils.book_append_sheet(wb, ws5, '5G');
   }
-  XLSX.writeFile(wb, '框选小区_' + totalRows + '条.xlsx');
-  showErr('已导出 ' + totalRows + ' 条小区（4G ' + rows4g.length + ' 条，5G ' + rows5g.length + ' 条）');
+  var _trunc = totalRows0 >= 50000;
+  XLSX.writeFile(wb, _trunc ? '框选小区_前5万条.xlsx' : '框选小区_' + totalRows + '条.xlsx');
+  showErr('已导出 ' + totalRows + ' 条小区（4G ' + rows4g.length + ' 条，5G ' + rows5g.length + ' 条）' + (_trunc ? '；已达 5 万条上限，仅导出前 5 万条' : ''));
 }
 /* 4G/5G 快捷切换 */
 /* 弹窗 8 方向拉伸 */
@@ -505,11 +537,24 @@ function bindRatToggle() {
   }
   function applyRat(rat) {
     STATE.rat = (rat === '*') ? 'all' : rat;   /* 记下当前制式，统计导出/计算要联动读它 */
+    if (typeof ST !== 'undefined') ST.gen = (ST.gen || 0) + 1;
+    /* 离开「全部」时快照各层勾选；切回「全部」时还原快照——
+       旧行为是无条件全勾上，用户为统计特意关掉的图层会被静默勾回、污染统计范围 */
+    if (rat !== '*' && !STATE._ratVisSnap) {
+      STATE._ratVisSnap = new Map();
+      for (var si2 = 0; si2 < layers.length; si2++) STATE._ratVisSnap.set(layers[si2], !!layers[si2].visible);
+    }
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
       if (!L.rat) continue;
-      L.visible = (rat === '*') || (L.rat === rat);
+      if (rat === '*') {
+        if (STATE._ratVisSnap && STATE._ratVisSnap.has(L)) L.visible = STATE._ratVisSnap.get(L);
+        else L.visible = true;
+      } else {
+        L.visible = (L.rat === rat);
+      }
     }
+    if (rat === '*') STATE._ratVisSnap = null;
     if (cur) cur.textContent = RAT_NAME[rat] || '全部';
     renderLayerList();
     scheduleDraw();
@@ -542,8 +587,15 @@ function removeLayer(L) {
   if (i >= 0) layers.splice(i, 1);
   /* 统计模块的图层选择跟着同步：删掉选中的统计图层→恢复默认；删它之前的图层→下标前移 */
   if (typeof ST !== 'undefined') {
-    if (i >= 0 && ST.layerId === i) { ST.layerId = -1; ST.selScene = -1; }
+    ST.gen = (ST.gen || 0) + 1;
+    var _wasStatsLayer = (i >= 0 && ST.layerId === i);
+    if (_wasStatsLayer) { ST.layerId = -1; ST.selScene = -1; }
     else if (i >= 0 && ST.layerId > i) ST.layerId--;
+    if (_wasStatsLayer || (STATE.hlPoly && STATE.hlPoly.L === L)) {
+      STATE.hlPoly = null; STATE.sceneName = null; STATE.sceneSel = false;
+      STATE.polyPts = []; STATE.polyDone = false; STATE.polyRings = null; STATE.selStats = null;
+      try { updateToolPanel(); } catch (e) {}
+    }
     if (typeof stSyncLayerCur === 'function') stSyncLayerCur();
   }
   if (L && L.glPosBuf && GLR && GLR.gl) {
@@ -913,9 +965,14 @@ async function doPutCache() {
         var vkey = cacheLyId(i) + '/vec';
         // 只存 rings 和 props，去掉 _bbox（恢复时重算）
         var vdata = L.polygons.map(function (pg) { return { rings: pg.rings, props: pg.props }; });
-        await idbGuard(idbSet(vkey, JSON.stringify(vdata), IDB_CACHE), 120000, '写入边界层');
-        ventry.keys = [vkey]; ventry.ok = true;
-        ventry.mb = Math.round(JSON.stringify(vdata).length / 1048576);
+        var vjson = JSON.stringify(vdata);
+        if (total + vjson.length > CACHE_LIMIT) { ventry.err = '超过缓存总量上限（1GB），未缓存'; ventry.skipped = true; }
+        else {
+          await idbGuard(idbSet(vkey, vjson, IDB_CACHE), 120000, '写入边界层');
+          ventry.keys = [vkey]; ventry.ok = true;
+          ventry.mb = Math.round(vjson.length / 1048576);
+          total += vjson.length;
+        }
       } catch (e) {
         ventry.err = (e && e.message) ? e.message : String(e);
       }
@@ -925,6 +982,14 @@ async function doPutCache() {
     if (!L.ds) continue;
     var entry = { id: cacheLyId(i), name: L.name, kind: L.kind, ok: false, err: '', keys: [],
                   rows: L.ds ? L.ds.n : 0, cols: (L.ds && L.ds.columns) ? L.ds.columns.length : 0 };
+    var bEst = 0, kE;
+    if (L.ds) { for (kE in L.ds.num) bEst += L.ds.num[kE].byteLength || 0; if (L.ds.store) bEst += L.ds.store.total * 2; }
+    if (total + bEst > CACHE_LIMIT) {
+      entry.err = '超过缓存总量上限（1GB），未缓存';
+      entry.skipped = true;
+      manifest.layers.push(entry);
+      continue;
+    }
     try {
       var keys = await putLayerRecords(i, L);
       entry.keys = keys; entry.ok = true;
@@ -1017,6 +1082,7 @@ function saveViewState(immediate) {
         c: v.getCenter(), z: v.getZoom(),
         mode: STATE.gridColorMode, city: STATE.cityFilter, band: !!STATE.bandStyle,
         vis: layers.map(function (L) { return !!L.visible; }),
+        visN: (function () { var o = {}; layers.forEach(function (L) { o[L.name] = !!L.visible; }); return o; })(),
         panel: !document.getElementById('panel').classList.contains('hide')
       };
       rflog('vs write ' + (immediate ? 'imm' : 'deb') + ' c=' + JSON.stringify(s.c) + ' z=' + s.z);
@@ -1044,13 +1110,13 @@ function applyViewState(s) {
   }
   if (s.city) {
     STATE.cityFilter = s.city;
-    for (var i = 0; i < layers.length; i++) {
-      var L = layers[i];
-      if (L.kind !== 'grid' || !L.ok) continue;
-      setLayerCity(L, s.city === '*' ? null : s.city);
-    }
+    if (typeof applyCityToAllLayers === 'function') applyCityToAllLayers();
   }
-  if (s.vis && s.vis.length === layers.length) {
+  if (s.visN) {
+    for (var j2 = 0; j2 < layers.length; j2++) {
+      if (layers[j2].name in s.visN) layers[j2].visible = !!s.visN[layers[j2].name];
+    }
+  } else if (s.vis && s.vis.length === layers.length) {
     for (var j = 0; j < layers.length; j++) layers[j].visible = !!s.vis[j];
   }
   renderLayerList();
@@ -1866,6 +1932,7 @@ function applySelection() {
   var counts = [0, 0, 0, 0, 0, 0, 0], total = 0, rsum = 0, rn = 0, ssum = 0, sn = 0;
   var poor = 0;   /* 质差栅格数：5G 栅格105覆盖率<80% 或平均SINR<-3；4G 栅格110覆盖率<80% */
   var mrcnt = 0, mrpass = 0, weakRat = null;   /* 弱覆盖：达标采样数 / 总采样数 */
+  var mrByRat = { '4G': [0, 0], '5G': [0, 0] };   /* 按制式分开：门限不同不能混算 */
   var selMode = 'rsrp';   /* 档位分布按第一个可见栅格图层的着色模式显示 */
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
@@ -1887,7 +1954,7 @@ function applySelection() {
         if (sinr) { var s = sinr[i]; if (isFinite(s)) { ssum += s; sn++; } }
         if (cntAll && cntThr) {
           var a = cntAll[i], t = cntThr[i];
-          if (isFinite(a) && isFinite(t)) { mrcnt += a; mrpass += t; }
+          if (isFinite(a) && isFinite(t)) { mrcnt += a; mrpass += t; var _rb = mrByRat[L.rat === '5G' ? '5G' : '4G']; _rb[0] += a; _rb[1] += t; }
         }
         var _poor = false;
         if (cntAll && cntThr) {
@@ -1903,6 +1970,12 @@ function applySelection() {
     }
   }
   if (mrcnt > 0) weakRat = { pass: mrpass, total: mrcnt, ratio: mrpass / mrcnt };
+  var weakByRat = null;
+  if (mrByRat['4G'][0] > 0 || mrByRat['5G'][0] > 0) {
+    weakByRat = {};
+    if (mrByRat['4G'][0] > 0) weakByRat['4G'] = { pass: mrByRat['4G'][1], total: mrByRat['4G'][0], ratio: mrByRat['4G'][1] / mrByRat['4G'][0] };
+    if (mrByRat['5G'][0] > 0) weakByRat['5G'] = { pass: mrByRat['5G'][1], total: mrByRat['5G'][0], ratio: mrByRat['5G'][1] / mrByRat['5G'][0] };
+  }
   /* 记录制式（用于弱覆盖门限的标签显示） */
   var selRat = null;
   for (var li2 = 0; li2 < layers.length; li2++) {
@@ -1918,6 +1991,7 @@ function applySelection() {
     sampTotal: mrcnt > 0 ? mrcnt : null,
     sampWeak: mrcnt > 0 ? Math.max(0, mrcnt - mrpass) : null,
     weak: weakRat,
+    weakByRat: weakByRat,
     rat: selRat,
     kind: sel.type,
     box: sel.type === 'rect' ? sel.b.slice() : null,
@@ -2037,7 +2111,12 @@ function statTableHtml() {
   if (s.sinrMean !== null) {
     h += '<tr><td class="k">SINR 均值</td><td class="num">' + s.sinrMean.toFixed(2) + ' dB</td></tr>';
   }
-  if (s.weak) {
+  if (s.weakByRat && s.weakByRat['4G'] && s.weakByRat['5G']) {
+    var wl4 = weakLabel(s.weakByRat['4G'], '4G');
+    h += '<tr><td class="k">' + wl4.name + '（4G）</td><td class="num" title="' + wl4.tip + '">' + wl4.ratio + '</td></tr>';
+    var wl5 = weakLabel(s.weakByRat['5G'], '5G');
+    h += '<tr><td class="k">' + wl5.name + '（5G）</td><td class="num" title="' + wl5.tip + '">' + wl5.ratio + '</td></tr>';
+  } else if (s.weak) {
     var wlabel = weakLabel(s.weak, s.rat);
     h += '<tr><td class="k">' + wlabel.name + '</td><td class="num" title="' +
       wlabel.tip + '">' + wlabel.ratio + '</td></tr>';
@@ -2683,6 +2762,10 @@ function initTools() {
     if (t === 'free') {
       if (STATE.polyPts.length >= 3) {
         STATE.polyDone = true; STATE.lastResult = 'select';
+        if (STATE.sceneSel) {
+          STATE.sceneSel = false; STATE.polyRings = null; STATE.selStats = null;
+          if (typeof ST !== 'undefined') ST.selScene = -1;
+        }
         applySelection(); exitTool();
       } else { STATE.polyPts = []; updateToolPanel(); scheduleDraw(); }
       return;
@@ -2713,10 +2796,13 @@ function initTools() {
 
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    var _tg = e.target;
+    if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.tagName === 'SELECT')) return;
     if (STATE.tool) clearTool();
-    else if (STATE.selStats) {
-      STATE.selBox = null; STATE.polyPts = []; STATE.selCircle = null;
-      STATE.selStats = null;
+    else if (STATE.selStats || STATE.sceneSel) {
+      STATE.selBox = null; STATE.polyPts = []; STATE.polyDone = false; STATE.polyRings = null; STATE.selCircle = null;
+      STATE.selStats = null; STATE.hlPoly = null; STATE.sceneName = null; STATE.sceneSel = false;
+      if (typeof ST !== 'undefined') ST.selScene = -1;
       updateToolPanel(); scheduleDraw();
     }
   });
@@ -2744,7 +2830,7 @@ function onToolClick(t, e, p) {
     return;                       /* 拾取工具连续可用，不自动退出 */
   }
   if (t === 'poly') {
-    if (STATE.polyDone) { STATE.polyPts = []; STATE.polyDone = false; STATE.selStats = null; STATE.sceneSel = false; }
+    if (STATE.polyDone) { STATE.polyPts = []; STATE.polyDone = false; STATE.selStats = null; STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
     STATE.polyPts.push(p);
     STATE.polyCursor = null;
     updateToolPanel();
@@ -2825,6 +2911,9 @@ async function geoJsonIsVector(f) {
 }
 
 async function loadFiles(fileList) {
+  if (window._loading) { showErr('正在导入中，请等当前导入完成'); return; }
+  if (typeof restorePhase !== 'undefined' && restorePhase) { showErr('正在恢复上次数据，请等恢复完成后再导入'); return; }
+  window._loading = true;
   rflog('loadFiles begin n=' + (fileList && fileList.length));
   /* 统一导入分发：数据与边界可混选，自动识别——
      tab/shp/kml/mif 等边界格式直接转边界解析；geojson/json 按内容（多边形→边界，点→数据） */
@@ -2909,6 +2998,9 @@ async function loadFiles(fileList) {
     try { await loadVectorFiles(vecFiles); }
     catch (e) { showErr('边界导入失败：' + (e && e.message ? e.message : e)); busyOff(); }
   }
+  /* 导入完成后把当前地市筛选补写到新图层（工参/边界在构建路径里没写） */
+  if (typeof applyCityToAllLayers === 'function') { applyCityToAllLayers(); scheduleDraw(); }
+  window._loading = false;
 }
 
 /* ============================ 14. 事件绑定 ============================ */
@@ -3161,6 +3253,7 @@ function bindUI() {
                 var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
                 var _pg = vL.polygons[pi];
                 STATE.hlPoly = { L: vL, pg: _pg };
+                if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
                 var _pprops = _pg.props || {};
                 /* 优先用 name/NAME 字段，否则用匹配到的值 */
                 var _sn = getSceneName(_pprops);
@@ -3253,6 +3346,7 @@ function bindUI() {
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
             STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = getSceneName(_sp) || String(_sres[0].name || '');
+            if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             scheduleDraw();
             hideJumpResults();
@@ -3315,9 +3409,14 @@ function bindUI() {
     var hadPin = !!STATE.pin;
     STATE.hlCell = null;
     STATE.hlPoly = null; STATE.sceneName = null; STATE.sceneSel = false;
+    STATE.polyPts = []; STATE.polyDone = false; STATE.polyRings = null;
+    STATE.selBox = null; STATE.selCircle = null; STATE.selStats = null;
+    if (typeof ST !== 'undefined') ST.selScene = -1;
+    try { updateToolPanel(); } catch (e) {}
     STATE.pin = null;
     var ji = $('jump');
     if (ji) ji.value = '';
+    if (_jumpDeb) { clearTimeout(_jumpDeb); _jumpDeb = null; }
     hideJumpResults();
     // 直接清 2D 覆盖层并重绘
     try {
@@ -3428,7 +3527,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021v';
+    var workerUrl = 'worker.js?v=1021w';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3486,8 +3585,9 @@ function boot() {
   renderLayerList();
   renderLegend();
   rebuildBase();
-  map.getView().setCenter([lonToMercX(87.6), latToMercY(43.8)]);
-  map.getView().setZoom(6);
+  var _vsBoot = readViewState();
+  if (_vsBoot && _vsBoot.c && isFinite(_vsBoot.z)) applyMapView(_vsBoot);
+  else { map.getView().setCenter([lonToMercX(87.6), latToMercY(43.8)]); map.getView().setZoom(6); }
 
   if (!STATE.tk) {
     setTimeout(function () {
@@ -3718,7 +3818,7 @@ function stRefreshLayers() {
     if (li === ST.layerId) b.classList.add('on');
     b.onclick = function (e) {
       e.stopPropagation();
-      ST.layerId = li;
+      ST.layerId = li; ST.gen = (ST.gen || 0) + 1;
       stDoClear(false);
       stSyncLayerCur();
       document.getElementById('stLayerBox').classList.remove('open');
@@ -3733,8 +3833,11 @@ function stFindScenes(kw) {
   var L = layers[ST.layerId];
   if (!L || !L.polygons) return [];
   kw = (kw || '').trim().toLowerCase();
+  var _cm = (STATE.cityFilter && STATE.cityFilter !== '*' && typeof vecCityMatcher === 'function')
+    ? vecCityMatcher(L.polygons, CITY_NAMES[STATE.cityFilter] || STATE.cityFilter, STATE.cityFilter) : null;
   var out = [];
   for (var i = 0; i < L.polygons.length; i++) {
+    if (_cm && !_cm(L.polygons[i].props || {})) continue;
     var nm = getSceneName(L.polygons[i].props || {}) || '';
     if (!kw || nm.toLowerCase().indexOf(kw) >= 0) out.push(i);
   }
@@ -3742,6 +3845,7 @@ function stFindScenes(kw) {
 }
 
 function stDoQuery() {
+  if (ST.busy) { showErr('正在计算中，请等当前导出完成后再查询'); return; }
   if (!stEnsureLayer()) { showErr('先加载一个边界图层'); return; }
   var kw = document.getElementById('stSearch').value.trim();
   if (!kw) { showErr('先输入要查询的场景名称'); return; }
@@ -3819,16 +3923,15 @@ function stDoClear(keepInput) {
   }
   var list = document.getElementById('stList');
   if (list) list.style.display = 'none';
-  if (STATE.sceneSel || STATE.hlPoly) {
-    STATE.hlPoly = null;
-    STATE.sceneName = null;
-    STATE.sceneSel = false;
-    STATE.polyPts = [];
-    STATE.polyDone = false;
-    STATE.selStats = null;
-    try { updateToolPanel(); } catch (e) {}
-    scheduleDraw();
-  }
+  STATE.hlPoly = null;
+  STATE.sceneName = null;
+  STATE.sceneSel = false;
+  STATE.polyPts = [];
+  STATE.polyDone = false;
+  STATE.polyRings = null;
+  STATE.selStats = null;
+  try { updateToolPanel(); } catch (e) {}
+  scheduleDraw();
 }
 
 /* 异步逐点归类到场景并累计指标；done(rowsByRat, err) */
@@ -3857,6 +3960,7 @@ function stSheetName(g) {
 }
 
 function stCompute(sceneIdxs, done) {
+  var _stGen = ST.gen || 0;
   var L = layers[ST.layerId];
   if (L && !L.visible) L = null;   /* 边界图层未勾选：不参与统计 */
   var ratWant = stRatWant();
@@ -3924,6 +4028,7 @@ function stCompute(sceneIdxs, done) {
   var wi = 0;
 
   function step() {
+    if ((ST.gen || 0) !== _stGen) { done(null, '计算期间图层发生了变化（增删图层、改勾选、切换统计图层或制式），请重新导出'); return; }
     var t0 = Date.now();
     while (wi < work.length && Date.now() - t0 < 40) {
       var w = work[wi], g = w.g, mx = g.mx, my = g.my;
