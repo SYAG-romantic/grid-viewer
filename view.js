@@ -2953,11 +2953,11 @@ function drawLabels() {
       var nm = _sarr ? _sarr[i] : L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 贴边：室分圆边 20/15 米；宏站扇区边缘 80/60 米
+      // 贴边：室分圆边 20/15 米；宏站扇区边缘外 20 米（100/80），避免文字压扇面
       var _sv = stypeArr ? stypeArr[i] : '';
       var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
       var _is5gLb = (L.rat === '5G');
-      var _dist = _isIndoor ? (_is5gLb ? 15 : 20) : (_is5gLb ? 60 : 80);
+      var _dist = _isIndoor ? (_is5gLb ? 15 : 20) : (_is5gLb ? 80 : 100);
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
       var lx = x + Math.sin(rad) * _dist;
