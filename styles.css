@@ -375,7 +375,6 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
   .dsel-btn>span{display:none}
   .dsel-btn b{max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #stLayerCur{max-width:140px}
-  #jumpTypeCur{max-width:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 @media (max-width:1240px){
   #topbar{gap:6px;flex-wrap:wrap}
@@ -668,6 +667,14 @@ html.light #btnTheme .ic-sun{display:block}
 
 /* 统计图层下拉：名称太长省略 */
 #stLayerCur{max-width:140px;min-width:24px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 搜索类型标签可伸缩：最长标签「区域场景名称」也不撑爆搜索框（宽时全显、挤时省略） */
+#jumpTypeBtn{min-width:0}
+#jumpTypeCur{flex:1 1 auto;min-width:30px;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 顶栏全员可收缩自适应：模块→按钮→文字逐级可缩、省略，谁也不许把别人顶出栏外 */
+#topbar .dsel{flex:0 1 auto;min-width:0}
+#topbar .dsel-btn{min-width:0}
+#topbar .dsel-btn b{flex:1 1 auto;min-width:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#btnBand{flex:0 1 auto;min-width:0;overflow:hidden}
 /* 顶栏搜索/统计两框：空间不足时只缩内部（图层名省略、输入框变窄），按钮不被挤出盒子 */
 #stLayerBtn{min-width:0;max-width:100%}
 #statsBox{overflow:visible}
