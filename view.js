@@ -2031,14 +2031,18 @@ function drawSites(c, L, t, w, h, box) {
    扇区为 80 米半径、STATE.beamW 波束的扇形，方位角 0=北顺时针 */
 function pickSiteSector(L, pixel, t, res) {
   if (!L.mx || !L.my) return [];
-  var _dpr3 = Math.min(window.devicePixelRatio || 1, 2);
-  /* 按制式分规格（与 glDrawSites 一致）：4G 80米/35°，5G 60米/45° */
+  /* 半径尺度与绘制严格一致：直接用坐标变换 t 的像素/墨卡托米（t[0]）。
+     旧公式 半径/res×devicePixelRatio 在高分屏下比画出来的扇形大 1.5~2 倍，
+     点在扇形外也会命中——频段模式下表现为点外圈粉色却选中里层小扇区 */
+  var _pxPerMerc = Math.abs(t[0]) || 0;
+  if (!(_pxPerMerc > 0)) _pxPerMerc = 1 / (res || 1);
+  /* 按制式分规格（与绘制一致）：4G 80米/35°，5G 60米/45° */
   var _is5g = (L.rat === '5G');
   var _sectorM = _is5g ? 60 : 80;
   var _beamW = _is5g ? 45 : 35;
   var _indoorM = _is5g ? 25 : 30;
-  var Rpx = _sectorM / (res || 1) * _dpr3;
-  var RpxIndoor = _indoorM / (res || 1) * _dpr3;
+  var Rpx = _sectorM * _pxPerMerc;
+  var RpxIndoor = _indoorM * _pxPerMerc;
   var half = _beamW * Math.PI / 360;
   /* 频段模式：每行按频段表取半径/波束角，与绘制同口径 */
   var _bandKeys = (STATE.bandStyle && L.bandCol) ? buildBandInfo(L) : null;
@@ -2059,7 +2063,7 @@ function pickSiteSector(L, pixel, t, res) {
     var RpxI = Rpx, halfI = half;
     if (_bandKeys) {
       var _bst = _bandKeys[i] ? BAND_STYLE[_bandKeys[i]] : null;
-      if (_bst) { RpxI = _bst.r / (res || 1) * _dpr3; halfI = _bst.beam * Math.PI / 360; }
+      if (_bst) { RpxI = _bst.r * _pxPerMerc; halfI = _bst.beam * Math.PI / 360; }
     }
     if (d2 > RpxI * RpxI) continue;
     var az = azArr ? azArr[i] : NaN;
@@ -2099,29 +2103,6 @@ function ptInPoly(px, py, rings) {
     }
   }
   return inside;
-}
-
-/* 频段模式下多扇区覆盖同一点时选中的那个：按绘制层序取最后画的（视觉最上层，
-   即点到的那块颜色属于哪个扇区就选哪个）。层序按 colorGroups 展平顺序缓存 */
-function pickTopmostHit(L, hits) {
-  if (L._rankFor !== L.colorGroups) {
-    var rank = new Int32Array(L.ds.n);
-    var p = 0;
-    var gs = L.colorGroups || [];
-    for (var gi = 0; gi < gs.length; gi++) {
-      var idx = gs[gi].idx;
-      for (var k = 0; k < idx.length; k++) rank[idx[k]] = p++;
-    }
-    L._renderRank = rank;
-    L._rankFor = L.colorGroups;
-  }
-  var rank2 = L._renderRank;
-  var bestI = hits[0], bestRank = -1;
-  for (var h = 0; h < hits.length; h++) {
-    var rk = rank2 ? rank2[hits[h]] : 0;
-    if (rk > bestRank) { bestRank = rk; bestI = hits[h]; }
-  }
-  return bestI;
 }
 
 function pickAt(pixel) {
@@ -2181,12 +2162,7 @@ function pickAt(pixel) {
       /* 先试扇形命中：点击落在 80 米扇区内则选中该扇区（可能多个重叠） */
       var secHits = pickSiteSector(L, pixel, t, res);
       if (secHits.length === 1) { best = { L: L, i: secHits[0], sector: true }; break; }
-      if (secHits.length > 1) {
-        /* 频段模式：不弹重叠列表，直接选最上层（半径最小）的那个；制式模式保持列表 */
-        if (STATE.bandStyle) best = { L: L, i: pickTopmostHit(L, secHits), sector: true };
-        else best = { L: L, i: secHits[0], rows: secHits, sector: true };
-        break;
-      }
+      if (secHits.length > 1) { best = { L: L, i: secHits[0], rows: secHits, sector: true }; break; }
       /* 否则回退到最近中心点（9px） */
       for (var k2 = 0; k2 < L.ds.n; k2++) consider(L, k2);
     }
@@ -2782,7 +2758,7 @@ function renderLegend() {
         var bk = bgv.key || 'rat';
         if (seenB[bk]) continue;
         seenB[bk] = 1;
-        var blab = (bk === 'rat') ? '其他频段（制式）' : (bk + ' · ' + (bgv.rM || '') + 'm / ' + (bgv.beam || '') + '°');
+        var blab = (bk === 'rat') ? '其他频段' : bk;
         bhtml += '<div class="li"><i style="background:' + bgv.color + ';border-radius:0;' +
           'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + blab + '</span></div>';
       }
