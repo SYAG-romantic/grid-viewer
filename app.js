@@ -3394,7 +3394,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021n';
+    var workerUrl = 'worker.js?v=1021o';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3813,6 +3813,14 @@ function stRatWant() {
   return 'all';
 }
 
+/* 统计 sheet 名：优先「运营商+制式」（如 移动4G、联通5G），识别不出运营商时用图层名 */
+function stSheetName(g) {
+  var nm = String(g.name || '');
+  var m = /(移动|电信|联通|广电)/.exec(nm);
+  if (m) return m[1] + (g.rat === '5G' ? '5G' : '4G');
+  return nm.replace(/\.(csv|txt|tsv|xlsx|xls)$/i, '') || (g.rat || '栅格');
+}
+
 function stCompute(sceneIdxs, done) {
   var L = layers[ST.layerId];
   if (L && !L.visible) L = null;   /* 边界图层未勾选：不参与统计 */
@@ -3873,8 +3881,9 @@ function stCompute(sceneIdxs, done) {
   });
 
   function newAcc() { return { total: 0, poor: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
-  var acc = { '4G': scenes.map(newAcc), '5G': scenes.map(newAcc) };
-  var work = grids.map(function (g) { return { g: g, i: 0, n: g.mx.length }; });
+  /* 按栅格图层分别累计：多个运营商/制式的栅格不再汇总到一起，导出时一层一个 sheet */
+  var acc = grids.map(function () { return scenes.map(newAcc); });
+  var work = grids.map(function (g, gi2) { return { g: g, gi: gi2, i: 0, n: g.mx.length }; });
   var totalPts = 0;
   work.forEach(function (w) { totalPts += w.n; });
   var wi = 0;
@@ -3886,7 +3895,7 @@ function stCompute(sceneIdxs, done) {
       var rsrp = g.ds.num[g.rsrpCol], sinr = g.ds.num[g.sinrCol];
       var cntAll = g.ds.num[g.cntCol];
       var cntThr = g.ds.num[(g.rat === '5G' ? g.cnt105Col : g.cnt110Col)];
-      var accR = acc[g.rat === '5G' ? '5G' : '4G'];
+      var accR = acc[w.gi];
       var end = Math.min(w.n, w.i + 60000);
       for (; w.i < end; w.i++) {
         var x = mx[w.i], y = my[w.i];
@@ -3924,10 +3933,10 @@ function stCompute(sceneIdxs, done) {
     for (var _wi = 0; _wi < work.length; _wi++) donePts += (_wi < wi ? work[_wi].n : (_wi === wi ? work[_wi].i : 0));
     stShowStatus('计算中… ' + Math.min(99, Math.round(donePts / Math.max(1, totalPts) * 100)) + '%');
     if (wi < work.length) { setTimeout(step, 0); return; }
-    function rowsFor(rat) {
+    function rowsFor(gi) {
       var rows = [];
       for (var i = 0; i < scenes.length; i++) {
-        var sc = scenes[i], a = acc[rat][i];
+        var sc = scenes[i], a = acc[gi][i];
         var props = sc.pg.props || {};
         var cov = a.mrcnt > 0 ? (a.mrpass / a.mrcnt * 100) : null;
         rows.push([
@@ -3946,11 +3955,9 @@ function stCompute(sceneIdxs, done) {
       }
       return rows;
     }
-    var out = {};
-    var has4 = grids.some(function (g) { return g.rat !== '5G'; });
-    var has5 = grids.some(function (g) { return g.rat === '5G'; });
-    if (has4) out['4G'] = rowsFor('4G');
-    if (has5) out['5G'] = rowsFor('5G');
+    var out = { sheets: grids.map(function (g, gi3) {
+      return { name: stSheetName(g), rat: (g.rat === '5G' ? '5G' : '4G'), rows: rowsFor(gi3) };
+    }) };
     done(out, null);
   }
   setTimeout(step, 0);
@@ -4006,27 +4013,32 @@ function stExport(all) {
     }
     var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
     var H5 = H4.slice(); H5[10] = '覆盖率≥-105dBm(%)';
-    var rats = [];
-    if (res['4G']) rats.push('4G');
-    if (res['5G']) rats.push('5G');
-    if (!rats.length) { showErr('没有可导出的数据'); stInfoMsg(); return; }
-    var total = res[rats[0]].length;
+    var sheets = (res.sheets || []).filter(function (sh) { return sh.rows && sh.rows.length; });
+    if (!sheets.length) { showErr('没有可导出的数据'); stInfoMsg(); return; }
+    var total = sheets[0].rows.length;
     var base = (L.name || '场景统计').replace(/[\\/:*?"<>|]/g, '_');
     if (all && cityFilter && cityFilter !== '*') base += '_' + (CITY_NAMES[cityFilter] || cityFilter);
-    if (rats.length === 1) base += '_' + rats[0];
+    if (sheets.length === 1) base += '_' + sheets[0].name;
+    /* sheet 名合法化 + 去重（Excel 上限 31 字符，禁 []:*?/\） */
+    var usedNm = {};
+    sheets.forEach(function (sh) {
+      var nm = String(sh.name || '栅格').replace(/[\[\]\:\*\?\/\\]/g, '_').slice(0, 31) || '栅格';
+      if (usedNm[nm]) { var kk = 2; while (usedNm[nm + '_' + kk]) kk++; nm = nm + '_' + kk; }
+      usedNm[nm] = 1; sh._sheet = nm;
+    });
     try {
       if (total <= 1000000 && typeof XLSX !== 'undefined') {
         var wb = XLSX.utils.book_new();
-        rats.forEach(function (rt) {
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([(rt === '5G' ? H5 : H4)].concat(res[rt])), rt);
+        sheets.forEach(function (sh) {
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([(sh.rat === '5G' ? H5 : H4)].concat(sh.rows)), sh._sheet);
         });
         XLSX.writeFile(wb, base + '_场景指标.xlsx');
       } else {
-        rats.forEach(function (rt, ri) {
-          setTimeout(function () { stDownloadCsv(base + '_' + rt + '.csv', rt === '5G' ? H5 : H4, res[rt]); }, ri * 400);
+        sheets.forEach(function (sh, ri) {
+          setTimeout(function () { stDownloadCsv(base + '_' + sh._sheet + '.csv', sh.rat === '5G' ? H5 : H4, sh.rows); }, ri * 400);
         });
       }
-      stShowStatus('已导出 ' + total + ' 个场景');
+      stShowStatus('已导出 ' + total + ' 个场景（' + sheets.length + ' 个图层）');
       setTimeout(function () { var l = document.getElementById('stList'); if (l) l.style.display = 'none'; }, 2500);
     } catch (e) {
       showErr('导出失败：' + e.message);
