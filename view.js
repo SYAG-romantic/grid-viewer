@@ -113,7 +113,9 @@ function setLayerCity(L, cityId) {
   return true;
 }
 
-function applyToolbarCity() {
+/* 把当前地市筛选写到三类图层（工具栏点击、导入完成、恢复完成共用；
+   栅格已在构建时写过时 setLayerCity 返回未变化，不会重复重建 buckets） */
+function applyCityToAllLayers() {
   var v = STATE.cityFilter || '*';
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
@@ -129,6 +131,11 @@ function applyToolbarCity() {
       L.cityCode = (v === '*') ? '*' : v;
     }
   }
+}
+
+function applyToolbarCity() {
+  var v = STATE.cityFilter || '*';
+  applyCityToAllLayers();
   if (v && v !== '*') zoomToCity();
   else if (v === '*') zoomToAll();
   /* 选区还开着时重算统计（地市变了点数就变了） */
@@ -668,12 +675,13 @@ function drawHlCell(c, t, w, h) {
   var sv = stypeArr ? stypeArr[i] : '';
   var isIndoor = typeof sv === 'string' && /室分|室内/.test(sv);
   var is5g = (L.rat === '5G');
-  // 实地半径转像素
-  var res = 0;
-  try { res = map.getView().getResolution() || 0; } catch (e) {}
-  var dpr = 1;
-  try { dpr = window.devicePixelRatio || 1; } catch (e) {}
   var mR = isIndoor ? (is5g ? 15 : 20) : (is5g ? 60 : 80);
+  var beamHl = is5g ? 45 : 35;
+  if (!isIndoor && STATE.bandStyle) {
+    var _bkHl = buildBandInfo(L);
+    var _bstHl = _bkHl && _bkHl[i] ? BAND_STYLE[_bkHl[i]] : null;
+    if (_bstHl) { mR = _bstHl.r; beamHl = _bstHl.beam; }
+  }
   var rp = mR * Math.abs(t[0]);   /* 与扇形绘制同尺度（CSS 像素），旧式多乘设备倍率会画大 */
   if (!(rp > 0)) rp = 40;
   if (px < -rp - 20 || py < -rp - 20 || px > w + rp + 20 || py > h + rp + 20) return;
@@ -685,7 +693,7 @@ function drawHlCell(c, t, w, h) {
   } else {
     var azArr = L.azCol ? L.ds.num[L.azCol] : null;
     var az = azArr ? azArr[i] : 0;
-    var beam = is5g ? 45 : 35;
+    var beam = beamHl;
     // 方位角 0=北顺时针，转 canvas 弧度（0=东逆时针为正？canvas 用 0=东顺时针）
     // 统一：azDeg 北起顺时针 → canvas 角 = azDeg*PI/180 - PI/2
     var a0 = (az - beam / 2) * Math.PI / 180 - Math.PI / 2;
@@ -987,6 +995,17 @@ function glrInit() {
       e.preventDefault();
       GLR.ok = false;
     });
+    cv.addEventListener('webglcontextrestored', function () {
+      /* 旧上下文的程序/缓冲已全部失效：删掉旧画布，从零重建并重跑各栅格层缓冲 */
+      var old = document.getElementById('glpts');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      GLR = null;
+      for (var gi = 0; gi < layers.length; gi++) {
+        var gL = layers[gi];
+        if (gL.kind === 'grid' && gL.buckets) { gL.glOk = false; try { buildGridGL(gL); } catch (e2) { gL.glOk = false; } }
+      }
+      scheduleDraw();
+    });
 
     GLR.cv = cv; GLR.gl = gl; GLR.prog = prog; GLR.loc = loc;
     GLR.cornerBuf = cornerBuf; GLR.ok = true;
@@ -1013,7 +1032,7 @@ function buildGridGL(L) {
   var sx = 0, sy = 0, sc = 0, mx = L.mx, my = L.my;
   for (b = 0; b < nb; b++) {
     var idx0 = L.buckets[b];
-    for (k = 0; k < idx0.length; k += 97) { sx += mx[idx0[k]]; sy += my[idx0[k]]; sc++; }
+    for (k = 0; k < idx0.length; k += 97) { var _cx = mx[idx0[k]], _cy = my[idx0[k]]; if (!isFinite(_cx) || !isFinite(_cy)) continue; sx += _cx; sy += _cy; sc++; }
   }
   var refX = sc ? sx / sc : 0, refY = sc ? sy / sc : 0;
   L.glRefX = refX; L.glRefY = refY;
@@ -1116,6 +1135,20 @@ function glsInit() {
     cv.style.zIndex = '2';   /* 站点画在栅格上层 */
     var wrap = document.getElementById('mapwrap');
     wrap.appendChild(cv);
+    cv.addEventListener('webglcontextlost', function (e) {
+      e.preventDefault();
+      if (GLS) GLS.ok = false;   /* glDrawSites/glsInit 返回 false → drawAll 回退 Canvas 画扇区 */
+    });
+    cv.addEventListener('webglcontextrestored', function () {
+      var oldS = document.getElementById('glsites');
+      if (oldS && oldS.parentNode) oldS.parentNode.removeChild(oldS);
+      GLS = null;
+      for (var si = 0; si < layers.length; si++) {
+        var sL = layers[si];
+        if (sL.kind === 'site' && sL.mx) { sL.siteGlOk = false; try { buildSiteGL(sL); } catch (e3) { sL.siteGlOk = false; } }
+      }
+      setTimeout(scheduleDraw, 600);
+    });
     var gl = cv.getContext('webgl2', {
       antialias: false, alpha: true, depth: false,
       stencil: false, powerPreference: 'high-performance'
@@ -1278,6 +1311,7 @@ function parseRgba(str) {
 /* 构建站点 WebGL 实例缓冲：从 colorGroups 展平（异步分块，不堵主线程） */
 async function buildSiteGL(L) {
 
+  var _glGen = (L._glGen = (L._glGen || 0) + 1);   /* 代次守卫：频段连点/恢复并发时旧结果作废 */
   L.siteGlOk = false;
   L.siteGlCount = 0;
   if (!glsInit()) return;
@@ -1330,7 +1364,9 @@ async function buildSiteGL(L) {
           gl.bufferData(gl.ARRAY_BUFFER, _res.rb, gl.STATIC_DRAW);
           L.siteRbBuf = rbb;
         }
-        L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
+        if (_glGen !== L._glGen) return;
+        if (_glGen !== L._glGen) return;
+  L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
         L.siteRefX = _res.refX; L.siteRefY = _res.refY;
         L.siteAlpha = _res.alpha;
         L.siteGlCount = _res.count;
@@ -1435,6 +1471,7 @@ async function buildSiteGL(L) {
   gl.bindBuffer(gl.ARRAY_BUFFER, rbb2);
   gl.bufferData(gl.ARRAY_BUFFER, rbA, gl.STATIC_DRAW);
   L.siteRbBuf = rbb2;
+  if (_glGen !== L._glGen) return;
   L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
   L.siteGlCount = p;
   L.siteGlOk = true;
@@ -1511,7 +1548,10 @@ function glDrawSites(L, t, w, h, box, dpr) {
   glsBindInst(gl, loc.a_pos, L.sitePosBuf, 2);
   glsBindInst(gl, loc.a_col, L.siteColBuf, 3);
   glsBindInst(gl, loc.a_azk, L.siteAzkBuf, 2);
-  if (loc.a_rb >= 0 && L.siteRbBuf) glsBindInst(gl, loc.a_rb, L.siteRbBuf, 2);
+  if (loc.a_rb >= 0) {
+    if (L.siteRbBuf) glsBindInst(gl, loc.a_rb, L.siteRbBuf, 2);
+    else { gl.disableVertexAttribArray(loc.a_rb); gl.vertexAttrib2f(loc.a_rb, 0, 0); }
+  }
   if (loc.a_city >= 0 && L.siteCityBuf) glsBindInst(gl, loc.a_city, L.siteCityBuf, 1);
   /* 扇形几何（非实例） */
   gl.bindBuffer(gl.ARRAY_BUFFER, GLS.fanBuf);
@@ -1823,12 +1863,12 @@ function drawVector(c, L, t, w, h, box) {
       return;
     }
     if (dragging && !vecIntersects(vc, box)) {
-      renderVectorInto(c, L, t, w, h, box);
+      /* 缓存完全不覆盖当前视野：拖动中逐帧全量画 7 万多边形必卡死，
+         拖动期跳过本层，停稳后由下面的分片任务补画（高亮照常） */
       drawVectorHighlight(c, L, t, box);
       return;
     }
   } else if (dragging) {
-    renderVectorInto(c, L, t, w, h, box);
     drawVectorHighlight(c, L, t, box);
     return;
   }
@@ -2076,8 +2116,8 @@ function pickSiteSector(L, pixel, t, res) {
       continue;
     }
     if (!isFinite(az)) {
-      /* 无方位角：按圆处理 */
-      hits.push({ i: i, d2: d2 });
+      /* 无方位角：GL 只画小点，拾取同步为小圆（9px），不按整扇区半径吞掉下层点击 */
+      if (d2 <= 81) hits.push({ i: i, d2: d2 });
       continue;
     }
     var clickAng = Math.atan2(dx, -dy);
@@ -2136,17 +2176,32 @@ function pickAt(pixel) {
     else if (secHits.length > 1) best = { L: L, i: secHits[0], rows: secHits, sector: true };
   }
   if (!best) {
-    for (var li2 = layers.length - 1; li2 >= 0; li2--) {
+    /* 预筛：先用墨卡托距离把点击容差外的点挡在 consider（逐点仿射变换）之外，
+       千万级栅格/19 万工参点击时不再全量扫描；bestD 已 ≤1px 时不可能更优，提前收工 */
+    var _cc = map.getCoordinateFromPixel(pixel);
+    var _tolM = (tol + 2) * (res || 1);
+    for (var li2 = layers.length - 1; li2 >= 0 && !best; li2--) {
       var L2 = layers[li2];
       if (!L2.visible || !L2.ok) continue;
       if (L2.kind === 'grid' && L2.buckets) {
-        for (var b = 0; b < (L2.bandCount || 6); b++) {
+        for (var b = 0; b < (L2.bandCount || 6) && !best; b++) {
           var idx = L2.buckets[b];
-          for (var k = 0; k < idx.length; k++) consider(L2, idx[k]);
+          for (var k = 0; k < idx.length; k++) {
+            var _gi = idx[k];
+            if (_cc && (Math.abs(L2.mx[_gi] - _cc[0]) > _tolM || Math.abs(L2.my[_gi] - _cc[1]) > _tolM)) continue;
+            consider(L2, _gi);
+            if (bestD <= 1) { best = best || null; break; }
+          }
         }
       } else if (L2.kind === 'site') {
-        for (var k2 = 0; k2 < L2.ds.n; k2++) consider(L2, k2);
+        for (var k2 = 0; k2 < L2.ds.n; k2++) {
+          if (_cc && (Math.abs(L2.mx[k2] - _cc[0]) > _tolM || Math.abs(L2.my[k2] - _cc[1]) > _tolM)) continue;
+          consider(L2, k2);
+          if (bestD <= 1) break;
+        }
       }
+      if (bestD <= 1 && !best) { /* bestD 已最优但本层未命中时 best 仍为 null：用 bestD 标记收工 */ }
+      if (bestD <= 1) break;
     }
   }
   if (!best) {
@@ -2878,9 +2933,12 @@ function drawLabels() {
   if (!cv) return;
   var wrap = document.getElementById('mapwrap');
   var W = wrap.clientWidth, H = wrap.clientHeight;
-  if (cv.width !== W) cv.width = W;
-  if (cv.height !== H) cv.height = H;
+  var _ldpr = Math.min(window.devicePixelRatio || 1, 2);
+  var _bw = Math.round(W * _ldpr), _bh = Math.round(H * _ldpr);
+  if (cv.width !== _bw) cv.width = _bw;
+  if (cv.height !== _bh) cv.height = _bh;
   var ctx = cv.getContext('2d');
+  ctx.setTransform(_ldpr, 0, 0, _ldpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if ((!LABEL_4G && !LABEL_5G && !LABEL_SCENE) || !map) return;
   var zoom = map.getView().getZoom();
