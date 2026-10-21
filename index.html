@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>图层查看</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10/ol.css">
-<link rel="stylesheet" href="styles.css?v=r4">
+<link rel="stylesheet" href="styles.css?v=r6">
 </head>
 <body>
 <div id="app" class="panelopen">
@@ -110,7 +110,7 @@
         </svg>
       </button>
       <div id="searchBox" style="position:relative;display:flex;align-items:center;gap:4px;padding:0 2px">
-        <div class="dsel" id="jumpTypeBox" style="flex:0 0 auto">
+        <div class="dsel" id="jumpTypeBox" style="flex:0 1 auto;min-width:0">
           <button type="button" id="jumpTypeBtn" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false">
             <b id="jumpTypeCur">全部</b>
             <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
@@ -450,10 +450,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/ol@10/dist/ol.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="data.js?v=1021v"></script>
-<script src="vector.js?v=1021v"></script>
-<script src="view.js?v=1021v"></script>
-<script src="app.js?v=1021v"></script>
+<script src="data.js?v=1021w"></script>
+<script src="vector.js?v=1021w"></script>
+<script src="view.js?v=1021w"></script>
+<script src="app.js?v=1021w"></script>
 <script>
 /* 页面版本号显示 + 版本自检：服务器上有新版本时自动刷新一次到新版，终结缓存卡旧页 */
 (function () {
