@@ -239,7 +239,16 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 
 /* ---------- 图层列表 ---------- */
 #layerList{margin-top:4px}
-.layer{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin-bottom:6px}
+.layer{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:9px;padding:5px 8px;margin-bottom:5px}
+/* 图层分组模块：工参/栅格/边界各一组，组头点击折叠 */
+.lgroup{margin-bottom:9px}
+.lg-head{display:flex;align-items:center;gap:7px;padding:1px 2px 5px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.lg-head .tag{font-size:11.5px;padding:1px 6px;border-radius:4px;flex:0 0 auto}
+.lg-count{font-size:11.5px;color:var(--fg3)}
+.lg-chev{margin-left:auto;color:var(--fg3);display:inline-flex;transition:transform .2s ease}
+.lg-head:hover .lg-chev{transform:scale(1.18)}
+.lgroup.closed .lg-chev{transform:rotate(-90deg)}
+.lgroup.closed .lg-body{display:none}
 .layer.sel{border-color:var(--accent)}
 .layer .lt{display:flex;align-items:center;gap:7px}
 .layer .lt input{accent-color:var(--accent);margin:0;cursor:pointer}
@@ -248,8 +257,8 @@ button.panbtn.closed svg{transform:rotate(180deg)}
 .tag.grid{background:var(--tagGridBg);color:var(--tagGridFg)}
 .tag.site{background:var(--tagSiteBg);color:var(--tagSiteFg)}
 .tag.vector{background:var(--tagVecBg);color:var(--tagVecFg)}
-.layer .meta{font-size:12px;color:var(--fg3);margin-top:3px;padding-left:21px}
-.layer .ops{display:flex;gap:5px;margin-top:6px;padding-left:21px}
+.layer .meta{font-size:11.5px;color:var(--fg3);margin-top:1px;padding-left:21px}
+.layer .ops{display:flex;gap:4px;flex:0 0 auto}
 .layer .ops button{padding:2px 7px;font-size:12px;transition:transform .12s ease}
 .layer .ops button:hover{transform:scale(1.05)!important;color:inherit!important;background:var(--soft)!important}
 .layer .ops button:active{transform:scale(.8)!important;color:var(--accent)!important}
