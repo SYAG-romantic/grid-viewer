@@ -474,11 +474,11 @@ function bindPopupResize(popupId) {
 }
 /* 频段样式开关（顶部）：扇区颜色/半径/波束角按频段表（BAND_STYLE）切换 */
 function syncBandBtn() {
-  var b = $('btnBand');
+  var b = document.getElementById('btnBand');
   if (b) b.classList.toggle('on', !!STATE.bandStyle);
 }
 function bindBandToggle() {
-  var b = $('btnBand');
+  var b = document.getElementById('btnBand');
   if (!b) return;
   syncBandBtn();
   b.addEventListener('click', function () {
@@ -3392,7 +3392,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021b';
+    var workerUrl = 'worker.js?v=1021c';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
