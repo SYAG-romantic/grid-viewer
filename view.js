@@ -2294,7 +2294,15 @@ function showPopup(L, i, pixel) {
   var title = ds.name;
   if (L.kind === 'site' && L.nameCol) {
     var nv = ds.value(i, L.nameCol);
-    if (nv) title = String(nv);
+    /* 兜底：名字值是纯数字（数值列）时不当标题，退到 CGI，再退到文件名 */
+    if (nv && typeof nv !== 'number' && !/^-?\d+(\.\d+)?$/.test(String(nv).trim())) {
+      title = String(nv);
+    } else {
+      for (var _ci = 0; _ci < ds.columns.length; _ci++) {
+        var _cn = String(ds.columns[_ci]).toLowerCase();
+        if (_cn === 'cgi' || _cn === 'ecgi') { var _cv2 = cells[_ci]; if (_cv2) title = String(_cv2); break; }
+      }
+    }
   } else if (L.kind === 'grid') {
     /* 标题跟随着色模式：RSRP / SINR / 覆盖率 */
     var gmode = L.bandMode || 'rsrp';
