@@ -2913,6 +2913,40 @@ async function loadFiles(fileList) {
 
 /* ============================ 14. 事件绑定 ============================ */
 
+/* 顶栏下拉互斥：任意时刻只开一个弹窗。捕获阶段统一处理——打开新的先关掉其他，
+   点在某个弹窗内部不误关它自己；点到顶栏外全部关闭；Esc 全部关闭。
+   搜索结果/统计场景列表两个浮层也纳入互斥。 */
+function initTopbarPopMutex() {
+  if (window.__popMutex) return;
+  window.__popMutex = true;
+  function closeDsel(d) {
+    d.classList.remove('open');
+    var b = d.querySelector('.dsel-btn');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  }
+  document.addEventListener('click', function (e) {
+    var bar = document.getElementById('topbar');
+    if (!bar) return;
+    var t = e.target;
+    var ds = (t.closest) ? t.closest('.dsel') : null;
+    bar.querySelectorAll('.dsel.open').forEach(function (d) { if (d !== ds) closeDsel(d); });
+    if (!(t.closest && t.closest('#statsBox'))) {
+      var sl = document.getElementById('stList');
+      if (sl && ds) sl.style.display = 'none';
+    }
+    if (!(t.closest && t.closest('#searchBox'))) {
+      var jr = document.getElementById('jumpResults');
+      if (jr && ds) jr.style.display = 'none';
+    }
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('#topbar .dsel.open').forEach(closeDsel);
+    var sl = document.getElementById('stList'); if (sl) sl.style.display = 'none';
+    var jr = document.getElementById('jumpResults'); if (jr) jr.style.display = 'none';
+  });
+}
+
 function bindUI() {
   var $ = function (id) { return document.getElementById(id); };
 
@@ -3394,7 +3428,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021t';
+    var workerUrl = 'worker.js?v=1021u';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3439,6 +3473,7 @@ function workerCall(type, payload, transfer) {
 function boot() {
   initMap();
   bindUI();
+  initTopbarPopMutex();
   bindRatToggle();
   bindBandToggle();
   bindLabelToggle();
