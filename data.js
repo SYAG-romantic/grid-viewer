@@ -553,16 +553,31 @@ function parseXlsx(file, name) {
 }
 
 /* ---- 类型判别 / 字段识别 ---- */
-/* 文本列专用挑选：与 pickColumn 同口径，但跳过数值列。
-   名字类列若选到数值列（如数值型的同名列），弹窗标题/注记/搜索索引都会变成一串数字 */
+/* 一列的内容是否"全是纯数字"：数值列集合里有它，或抽样 30 个非空值全是纯数字。
+   （有的数值列混了空值/个别文本，解析时没进 ds.num，只能靠内容抽样识别；
+   CGI 这类带横杠的值不算纯数字，不会被误判） */
+function colLooksNumeric(ds, col) {
+  if (ds.num[col]) return true;
+  var chk = 0;
+  for (var i = 0; i < ds.n && chk < 30; i++) {
+    var v = ds.value(i, col);
+    if (v === '' || v == null) continue;
+    chk++;
+    if (typeof v !== 'number' && !/^-?\d+(\.\d+)?$/.test(String(v).trim())) return false;
+  }
+  return chk >= 5;
+}
+
+/* 文本列专用挑选：与 pickColumn 同口径，但跳过内容全是数字的列。
+   名字类列若选到数字列，弹窗标题/注记/搜索索引都会变成一串数字 */
 function pickTextColumn(ds, keys) {
   var low = ds.columns.map(function (c) { return String(c).trim().toLowerCase(); });
   for (var i = 0; i < keys.length; i++) {
     for (var j = 0; j < low.length; j++) {
-      if (low[j] === keys[i] && !ds.num[ds.columns[j]]) return ds.columns[j];
+      if (low[j] === keys[i] && !colLooksNumeric(ds, ds.columns[j])) return ds.columns[j];
     }
     for (var j2 = 0; j2 < low.length; j2++) {
-      if (ds.num[ds.columns[j2]]) continue;
+      if (colLooksNumeric(ds, ds.columns[j2])) continue;
       if (keys[i].length >= 2 ? (low[j2].indexOf(keys[i]) >= 0) : (low[j2].indexOf(keys[i]) === 0)) return ds.columns[j2];
     }
   }
@@ -653,9 +668,12 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
-    /* 名字列绝不能是数值列：同名数值列（如数值型的「小区名」）会抢占，
-       真名字往往在「小区名-CU」等文本列里；选到数值列就按别名重找文本列 */
-    if (L.nameCol && ds.num[L.nameCol]) L.nameCol = pickTextColumn(ds, ALIAS.name);
+    /* 名字列绝不能是数字列：同名的数字列会抢占（如某列值全是 4.85/14.758991 这类数），
+       真名字往往在「小区名-CU」等文本列里；靠内容抽样判定，选到数字列就按别名重找文本列 */
+    if (L.nameCol && colLooksNumeric(ds, L.nameCol)) {
+      var _textName = pickTextColumn(ds, ALIAS.name);
+      if (_textName) L.nameCol = _textName;
+    }
     /* 同步建搜索索引：精确哈希 + 模糊用的小写名字数组 + CGI 数组，一次建好。
        注意 ds.str 在 CSV 解析时并不填充（只有站型列存了数组），旧代码逐行
        ds.value() 取名字/CGI，每行都 splitRow 整行（31 列）——模糊搜索每敲
