@@ -553,6 +553,22 @@ function parseXlsx(file, name) {
 }
 
 /* ---- 类型判别 / 字段识别 ---- */
+/* 文本列专用挑选：与 pickColumn 同口径，但跳过数值列。
+   名字类列若选到数值列（如数值型的同名列），弹窗标题/注记/搜索索引都会变成一串数字 */
+function pickTextColumn(ds, keys) {
+  var low = ds.columns.map(function (c) { return String(c).trim().toLowerCase(); });
+  for (var i = 0; i < keys.length; i++) {
+    for (var j = 0; j < low.length; j++) {
+      if (low[j] === keys[i] && !ds.num[ds.columns[j]]) return ds.columns[j];
+    }
+    for (var j2 = 0; j2 < low.length; j2++) {
+      if (ds.num[ds.columns[j2]]) continue;
+      if (keys[i].length >= 2 ? (low[j2].indexOf(keys[i]) >= 0) : (low[j2].indexOf(keys[i]) === 0)) return ds.columns[j2];
+    }
+  }
+  return null;
+}
+
 function pickColumn(columns, keys) {
   var low = columns.map(function (c) { return String(c).trim().toLowerCase(); });
   // 按 key 优先级：每个 key 先精确再模糊，避免低优先级精确抢占高优先级模糊
@@ -637,6 +653,9 @@ function makeLayer(ds, kind, skipCity) {
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
     L.nameCol = pickColumn(ds.columns, ALIAS.name);
+    /* 名字列绝不能是数值列：同名数值列（如数值型的「小区名」）会抢占，
+       真名字往往在「小区名-CU」等文本列里；选到数值列就按别名重找文本列 */
+    if (L.nameCol && ds.num[L.nameCol]) L.nameCol = pickTextColumn(ds, ALIAS.name);
     /* 同步建搜索索引：精确哈希 + 模糊用的小写名字数组 + CGI 数组，一次建好。
        注意 ds.str 在 CSV 解析时并不填充（只有站型列存了数组），旧代码逐行
        ds.value() 取名字/CGI，每行都 splitRow 整行（31 列）——模糊搜索每敲
