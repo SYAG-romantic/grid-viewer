@@ -328,7 +328,7 @@ async function parseDelimited(src, name, onProgress) {
   var delim = detectDelim(headerLine);
   if (delim === null) delim = ',';
   ds.delim = delim;
-  var columns = splitRow(headerLine, delim).map(function (s) { return s.trim().replace(/^"|"$/g, ''); });
+  var columns = dedupeColumns(splitRow(headerLine, delim).map(function (s) { return s.trim().replace(/^"|"$/g, ''); }));
   var nCols = columns.length;
   ds.columns = columns;
 
@@ -367,6 +367,7 @@ async function parseDelimited(src, name, onProgress) {
   var rowCount = 0;
   var headerDone = false;
   var lineStartGlobal = 0;
+  var _inQ = false;   /* 引号内换行不作行结束（与 splitRow 的引号感知口径一致） */
   var delimCharCode = delim.charCodeAt(0);
   var avgLine = Math.max(24, headerLine.length + 16);
   var totalChars = 0;
@@ -447,7 +448,15 @@ async function parseDelimited(src, name, onProgress) {
 
     var hasQ = s.indexOf('"') !== -1;
     var localStart = 0, k2;
-    while ((k2 = s.indexOf('\n', localStart)) !== -1) {
+    function nextNl(from) {
+      for (var p = from; p < s.length; p++) {
+        var ch = s.charCodeAt(p);
+        if (ch === 34) _inQ = !_inQ;
+        else if (ch === 10 && !_inQ) return p;
+      }
+      return -1;
+    }
+    while ((k2 = nextNl(localStart)) !== -1) {
       if (lineStartGlobal >= gb) {
         emit(s, localStart, k2, hasQ);
       } else {
@@ -493,7 +502,7 @@ function parseXlsx(file, name) {
         var ws = wb.Sheets[wb.SheetNames[0]];
         var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
         if (!aoa.length) { reject(new Error('工作表为空')); return; }
-        var columns = aoa[0].map(function (v) { return String(v).trim(); });
+        var columns = dedupeColumns(aoa[0].map(function (v) { return String(v).trim(); }));
         var nCols = columns.length;
         var data = aoa.slice(1).filter(function (r) {
           return r.some(function (v) { return v !== '' && v !== null && v !== undefined; });
@@ -628,11 +637,24 @@ function pickColumn(columns, keys) {
 
 /* 从文件名/列名判断制式：'5G' | '4G' | null。
    弱覆盖门限分制式：5G = -105，4G = -110，对应 cnt105Col / cnt110Col */
+/* 表头重名去重：同名列在 ds.num 里按列名存会互相覆盖（后者赢），而 pickColumn
+   取的是首个同名列 → 经纬度/RSRP/频段会静默读到另一列的数据。解析时把重名列
+   改成「名#2」式唯一名（首个保持原名），弹窗里也能看出是重复列 */
+function dedupeColumns(cols) {
+  var seen = {}, out = [];
+  for (var i = 0; i < cols.length; i++) {
+    var c = String(cols[i]);
+    if (seen[c]) { var k = 2; while (seen[c + '#' + k]) k++; c = c + '#' + k; }
+    seen[c] = 1; out.push(c);
+  }
+  return out;
+}
+
 function detectRat(ds) {
   /* 文件名优先：列名里出现「5G共站」之类字样不能把 4G 文件误判成 5G（门限列会跟着选错） */
-  var name = String(ds.name || '').toLowerCase();
-  if (name.indexOf('5g') >= 0 || name.indexOf('5 g') >= 0) return '5G';
-  if (name.indexOf('4g') >= 0 || name.indexOf('4 g') >= 0) return '4G';
+  var name = String(ds.name || '').toLowerCase().replace(/(19|20)\d{2}/g, ' ');
+  if (/(^|[^0-9a-z])5\s?g(?![0-9a-z])/.test(name)) return '5G';
+  if (/(^|[^0-9a-z])4\s?g(?![0-9a-z])/.test(name)) return '4G';
   var cols = ds.columns.map(function (c) { return String(c).toLowerCase(); }).join(' ');
   if (cols.indexOf('5g') >= 0 || cols.indexOf('5 g') >= 0) return '5G';
   if (cols.indexOf('4g') >= 0 || cols.indexOf('4 g') >= 0) return '4G';
@@ -721,7 +743,7 @@ function makeLayer(ds, kind, skipCity) {
           _nmArr[_j] = String(_raw || '');
           var _nm2 = _nmArr[_j].toLowerCase();
           _lc2[_j] = _nm2;
-          if (_nm2) _map[_nm2] = _j;
+          if (_nm2 && !(_nm2 in _map)) _map[_nm2] = _j;
           if (_cgArr) _cgArr[_j] = String((_cc >= 0 && _cc < _cells.length) ? (_cells[_cc] || '') : '');
         }
         L._nameMap = _map;
@@ -956,11 +978,11 @@ function bandKeyOf(text, num) {
   }
   var t = String(text == null ? '' : text).toUpperCase().replace(/\s+/g, '');
   if (!t) return null;
-  if (t.indexOf('1800') >= 0) return 'FDD1800';
-  if (t.indexOf('900') >= 0) return 'FDD900';
-  if (t.indexOf('700') >= 0) return '700M';
+  if (t.indexOf('1800') >= 0 || t.indexOf('1700') >= 0 || t.indexOf('1900') >= 0) return 'FDD1800';
   if (t.indexOf('2.6') >= 0 || t.indexOf('2600') >= 0) return '2.6G';
   if (t.indexOf('4.9') >= 0 || t.indexOf('4900') >= 0) return '4.9G';
+  if (t.indexOf('900') >= 0) return 'FDD900';
+  if (t.indexOf('700') >= 0) return '700M';
   if (t.indexOf('F频') >= 0 || /^F\d*$/.test(t)) return 'F';
   if (t.indexOf('A/D/E') >= 0 || t.indexOf('A频') >= 0 || t.indexOf('D频') >= 0 || t.indexOf('E频') >= 0 ||
       t === 'A' || t === 'D' || t === 'E') return 'ADE';
@@ -1181,6 +1203,7 @@ function rebuildBuckets(L, skipGL) {
   var bbuf = new Int8Array(n);   /* 每行档位缓存，避免第二遍重算 */
 
   for (i = 0; i < n; i++) {
+    if (L.mx && (!isFinite(L.mx[i]) || !isFinite(L.my[i]))) continue;
     if (cityOk && L.cityIdx[i] !== cityWant) continue;
     if (hasFilter && !matchConds(L, i)) continue;
     var v;
