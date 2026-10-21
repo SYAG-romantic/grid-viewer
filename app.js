@@ -853,8 +853,10 @@ function dsSnapshot(L) {
   if (ds.str) { str = {}; for (k in ds.str) { str[k] = ds.str[k]; bytes += (ds.str[k].length || 0) * 2; } }
   var extra = null, ecount = 0;
   if (ds.extra) { for (k in ds.extra) { if (ds.extra[k]) { ecount++; bytes += 48 * (ds.extra[k].length || 0); } } if (ecount) extra = ds.extra; }
+  var aoa = ds.aoa || null;
+  if (aoa) bytes += aoa.length * (ds.columns.length || 0) * 16;
   return { __ds: true, name: L.name, kind: L.kind,
-           n: ds.n, columns: ds.columns, num: num, str: str, extra: extra, bytes: bytes };
+           n: ds.n, columns: ds.columns, num: num, str: str, extra: extra, aoa: aoa, bytes: bytes };
 }
 
 /* 快照 → Dataset（num 直用；文本列走 str；cells/value 全兜底） */
@@ -863,8 +865,10 @@ function dsFromSnapshot(s) {
   ds.n = s.n; ds.columns = s.columns; ds.num = s.num || {};
   if (s.str) ds.str = s.str;
   if (s.extra) ds.extra = s.extra;
+  if (s.aoa) { ds.aoa = s.aoa; if (!ds.extra) ds.extra = {}; }
   ds.lineOff = null; ds.store = null;
   ds.lineText = function () { return ''; };
+  if (s.aoa) return ds;   /* cells 用原型实现（aoa 按需转换），下面的 override 只服务旧快照 */
   ds.cells = function (i) {
     if (this.extra && this.extra[i]) return this.extra[i];
     var out = new Array(this.columns.length);
@@ -933,7 +937,10 @@ async function putLayerRecords(i, L) {
       keys.push(k2);
     }
   }
-  if (ds.extra) {
+  if (ds.aoa) {
+    await idbGuard(idbSet(cacheLyId(i) + '/extra', ds.aoa, IDB_CACHE), 120000, '写入单元格原文');
+    keys.push(cacheLyId(i) + '/extra');
+  } else if (ds.extra) {
     await idbGuard(idbSet(cacheLyId(i) + '/extra', ds.extra, IDB_CACHE), 120000, '写入单元格文本');
     keys.push(cacheLyId(i) + '/extra');
   }
@@ -1430,7 +1437,10 @@ async function restoreFromCache(cache) {
             }
           }
           var extra = await idbGet(e.id + '/extra', IDB_CACHE);
-          if (extra) ds.extra = extra;
+          if (extra) {
+            if (Array.isArray(extra)) { ds.aoa = extra; ds.extra = {}; }
+            else ds.extra = extra;
+          }
           if (meta.kind === 'site') {
             var sn = pickColumn(ds.columns, ALIAS.stype);
             ds.stypeIdx = sn ? ds.columns.indexOf(sn) : -1;
@@ -3527,7 +3537,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021w';
+    var workerUrl = 'worker.js?v=1021x';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
