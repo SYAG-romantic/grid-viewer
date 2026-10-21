@@ -2752,17 +2752,20 @@ function renderLegend() {
       title.textContent = '工参 · 频段';
       var bhtml = '';
       var seenB = {};
+      var indoorColor = null;
       for (var bg = 0; bg < (L.colorGroups || []).length; bg++) {
         var bgv = L.colorGroups[bg];
-        if (bgv.indoor) continue;
+        if (bgv.indoor) { indoorColor = bgv.color; continue; }
         var bk = bgv.key || 'rat';
+        if (bk === 'rat') continue;   /* 未识别频段不在图例单列（用户定） */
         if (seenB[bk]) continue;
         seenB[bk] = 1;
-        var blab = (bk === 'rat') ? '其他频段' : bk;
         bhtml += '<div class="li"><i style="background:' + bgv.color + ';border-radius:0;' +
-          'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + blab + '</span></div>';
+          'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + bk + '</span></div>';
       }
-      bhtml += '<div class="li"><i style="background:rgba(120,120,120,0.55);border-radius:50%"></i><span>室分（圆点）</span></div>';
+      /* 室分：用图层里室分的实际颜色（与扇区同制式色，4G 红 / 5G 蓝），不再用灰色 */
+      if (!indoorColor) indoorColor = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
+      bhtml += '<div class="li"><i style="background:' + indoorColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
       body.innerHTML = bhtml;
       sub.textContent = '';
       return;
