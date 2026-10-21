@@ -933,6 +933,52 @@ function detectGridStep(L) {
   L.latMean = latMean;
 }
 
+/* 频段样式表（用户定版）：颜色 RGB / 半径（米） / 波束角（度） */
+var BAND_STYLE = {
+  '700M':    { c: '231,76,60',   r: 120, beam: 30 },
+  '2.6G':    { c: '52,152,219',  r: 80,  beam: 40 },
+  '4.9G':    { c: '230,126,34',  r: 60,  beam: 50 },
+  'F':       { c: '52,152,219',  r: 80,  beam: 40 },
+  'FDD1800': { c: '255,123,172', r: 100, beam: 30 },
+  'FDD900':  { c: '231,76,60',   r: 120, beam: 20 },
+  'ADE':     { c: '230,126,34',  r: 40,  beam: 50 }
+};
+/* 原始频段值 → 标准频段键。文本如 "700MHz"/"FDD1800"/"F频段"；数值按 MHz（<10 视为 GHz） */
+function bandKeyOf(text, num) {
+  if (num != null && isFinite(num) && num > 0) {
+    var mhz = num < 10 ? num * 1000 : num;
+    if (mhz >= 640 && mhz <= 760) return '700M';
+    if (mhz >= 2400 && mhz <= 2780) return '2.6G';
+    if (mhz >= 4600 && mhz <= 5200) return '4.9G';
+    if (mhz >= 850 && mhz <= 960) return 'FDD900';
+    if (mhz >= 1700 && mhz <= 1980) return 'FDD1800';
+    return null;
+  }
+  var t = String(text == null ? '' : text).toUpperCase().replace(/\s+/g, '');
+  if (!t) return null;
+  if (t.indexOf('1800') >= 0) return 'FDD1800';
+  if (t.indexOf('900') >= 0) return 'FDD900';
+  if (t.indexOf('700') >= 0) return '700M';
+  if (t.indexOf('2.6') >= 0 || t.indexOf('2600') >= 0) return '2.6G';
+  if (t.indexOf('4.9') >= 0 || t.indexOf('4900') >= 0) return '4.9G';
+  if (t.indexOf('F频') >= 0 || /^F\d*$/.test(t)) return 'F';
+  if (t.indexOf('A/D/E') >= 0 || t.indexOf('A频') >= 0 || t.indexOf('D频') >= 0 || t.indexOf('E频') >= 0 ||
+      t === 'A' || t === 'D' || t === 'E') return 'ADE';
+  return null;
+}
+/* 每行的标准频段键（缓存）：绘制/拾取共用 */
+function buildBandInfo(L) {
+  if (L.bandKeys) return L.bandKeys;
+  var ds = L.ds, n = ds.n, out = new Array(n);
+  var bandArr = L.bandCol ? ds.num[L.bandCol] : null;
+  var bandTextArr = (L.bandCol && !bandArr) ? ds.columnText(L.bandCol) : null;
+  for (var i = 0; i < n; i++) {
+    out[i] = L.bandCol ? bandKeyOf(bandTextArr ? bandTextArr[i] : null, bandArr ? bandArr[i] : null) : null;
+  }
+  L.bandKeys = out;
+  return out;
+}
+
 function buildSiteColors(L) {
   var ds = L.ds, n = ds.n;
   var mode = STATE.siteColor;
@@ -970,24 +1016,47 @@ function buildSiteColors(L) {
     return base + (h % half);
   }
 
-  for (var i = 0; i < n; i++) {
-    var key = keyOf(i);
-    if (!groups[key]) { groups[key] = []; order.push(key); }
-    groups[key].push(i);
+  if (STATE.bandStyle) {
+    /* 按频段样式：颜色/半径/波束角查 BAND_STYLE；识别不出的频段回退制式样式；室分仍画圆 */
+    var bkeys = buildBandInfo(L);
+    var bgroups = {}, border = [];
+    for (var bi = 0; bi < n; bi++) {
+      var bk = isIndoor(bi) ? 'indoor' : (bkeys[bi] || 'rat');
+      if (!bgroups[bk]) { bgroups[bk] = []; border.push(bk); }
+      bgroups[bk].push(bi);
+    }
+    var defR = (L.rat === '5G') ? 60 : 80, defBeam = (L.rat === '5G') ? 45 : 35;
+    L.colorGroups = border.map(function (k) {
+      var st = (k !== 'indoor' && k !== 'rat') ? BAND_STYLE[k] : null;
+      return {
+        key: k,
+        indoor: (k === 'indoor'),
+        color: st ? ('rgba(' + st.c + ',0.7)') : ratColor,
+        rM: st ? st.r : defR,
+        beam: st ? st.beam : defBeam,
+        idx: new Uint32Array(bgroups[k])
+      };
+    });
+  } else {
+    for (var i = 0; i < n; i++) {
+      var key = keyOf(i);
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(i);
+    }
+    order.sort(function (a, b) { return a - b; });
+    L.colorGroups = order.map(function (k) {
+      var col;
+      if (k === 'indoor' || mode === 'rat') col = ratColor;      /* 室分/制式模式：同制式一色 */
+      else if (mode === 'one') col = 'rgba(56,132,255,0.55)';
+      else col = 'rgba(' + SITE_PALETTE[k % SITE_PALETTE.length].join(',') + ',0.55)';
+      return {
+        key: k,
+        indoor: (k === 'indoor'),
+        color: col,
+        idx: new Uint32Array(groups[k])
+      };
+    });
   }
-  order.sort(function (a, b) { return a - b; });
-  L.colorGroups = order.map(function (k) {
-    var col;
-    if (k === 'indoor' || mode === 'rat') col = ratColor;      /* 室分/制式模式：同制式一色 */
-    else if (mode === 'one') col = 'rgba(56,132,255,0.55)';
-    else col = 'rgba(' + SITE_PALETTE[k % SITE_PALETTE.length].join(',') + ',0.55)';
-    return {
-      key: k,
-      indoor: (k === 'indoor'),
-      color: col,
-      idx: new Uint32Array(groups[k])
-    };
-  });
   /* 室内行标记（点击时按圆处理，不按扇区角度） */
   try {
     var _indoor = new Uint8Array(n);
@@ -1165,6 +1234,7 @@ var STATE = {
   beamW: 65,
   siteR: 34,
   siteColor: 'rat',
+  bandStyle: false,          /* 按频段样式（颜色/半径/波束角查 BAND_STYLE 表） */
   gridColorMode: 'rsrp',   /* 栅格着色：rsrp | sinr | cov（字段缺失的图层自动回退 rsrp） */
   cityFilter: '*',         /* 顶部城市按钮：'*'=全疆，或 CityID 字符串 */
   pin: null,
