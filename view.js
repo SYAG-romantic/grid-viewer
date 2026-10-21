@@ -2743,6 +2743,26 @@ function renderLegend() {
     return;
   }
   if (L && L.kind === 'site') {
+    /* 工参图层：频段模式下图例跟随频段表（每频段一行：色 + 半径/波束角） */
+    if (STATE.bandStyle) {
+      title.textContent = '工参 · 频段';
+      var bhtml = '';
+      var seenB = {};
+      for (var bg = 0; bg < (L.colorGroups || []).length; bg++) {
+        var bgv = L.colorGroups[bg];
+        if (bgv.indoor) continue;
+        var bk = bgv.key || 'rat';
+        if (seenB[bk]) continue;
+        seenB[bk] = 1;
+        var blab = (bk === 'rat') ? '其他频段（制式）' : (bk + ' · ' + (bgv.rM || '') + 'm / ' + (bgv.beam || '') + '°');
+        bhtml += '<div class="li"><i style="background:' + bgv.color + ';border-radius:0;' +
+          'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + blab + '</span></div>';
+      }
+      bhtml += '<div class="li"><i style="background:rgba(120,120,120,0.55);border-radius:50%"></i><span>室分（圆点）</span></div>';
+      body.innerHTML = bhtml;
+      sub.textContent = '';
+      return;
+    }
     /* 工参图层：显示制式色 + 形状说明（圆=室分，扇区=宏站） */
     title.textContent = '工参';
     var ratColor = 'rgba(56,132,255,0.6)';
