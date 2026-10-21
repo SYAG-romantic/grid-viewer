@@ -674,7 +674,8 @@ function drawHlCell(c, t, w, h) {
   var dpr = 1;
   try { dpr = window.devicePixelRatio || 1; } catch (e) {}
   var mR = isIndoor ? (is5g ? 15 : 20) : (is5g ? 60 : 80);
-  var rp = (res > 0) ? mR / res * dpr : 40;
+  var rp = mR * Math.abs(t[0]);   /* 与扇形绘制同尺度（CSS 像素），旧式多乘设备倍率会画大 */
+  if (!(rp > 0)) rp = 40;
   if (px < -rp - 20 || py < -rp - 20 || px > w + rp + 20 || py > h + rp + 20) return;
   c.strokeStyle = '#e74c3c';
   c.lineWidth = 2.5;
@@ -1472,10 +1473,11 @@ function glDrawSites(L, t, w, h, box, dpr) {
   var _beamW = _is5g ? 45 : 35;
   var R, dotR;
   if (_res > 0 && isFinite(_res)) {
-    /* 分辨率校准：getResolution 返回值与设备像素比有关，乘 dpr 修正（用户实测约 1.6） */
-    var _dpr2 = (isFinite(dpr) && dpr > 0) ? dpr : 1;
-    R = _sectorM / _res * _dpr2;
-    dotR = _dotM / _res * _dpr2;
+    /* 半径必须是 CSS 像素（着色器 u_size 是 CSS 尺寸、实例坐标也是 CSS 像素）：
+       旧公式多乘了设备倍率，高分屏上扇形画大 1.5~2 倍、拾取按真实米数算 → 点不中。
+       频段模式走 a_rb×t[0] 没被乘，所以只有制式模式出问题 */
+    R = _sectorM / _res;
+    dotR = _dotM / _res;
     /* 钳位：太小看不见，太大卡死 */
     if (R < 2) R = 2; if (R > 500) R = 500;
     if (dotR < 2) dotR = 2; if (dotR > 200) dotR = 200;
