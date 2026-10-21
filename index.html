@@ -450,18 +450,29 @@
 
 <script src="https://cdn.jsdelivr.net/npm/ol@10/dist/ol.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="data.js?v=1021r"></script>
-<script src="vector.js?v=1021r"></script>
-<script src="view.js?v=1021r"></script>
-<script src="app.js?v=1021r"></script>
+<script src="data.js?v=1021s"></script>
+<script src="vector.js?v=1021s"></script>
+<script src="view.js?v=1021s"></script>
+<script src="app.js?v=1021s"></script>
 <script>
-/* 左侧面板显示当前页面版本号：与脚本 ?v= 一致，缓存卡住时一眼可见 */
+/* 页面版本号显示 + 版本自检：服务器上有新版本时自动刷新一次到新版，终结缓存卡旧页 */
 (function () {
   var el = document.getElementById('buildTag');
-  if (!el) return;
   var m = document.querySelector('script[src*="app.js?v="]');
   var v = m ? (m.getAttribute('src').split('v=')[1] || '') : '';
-  if (v) el.textContent = ' 页面版本 ' + v + '。';
+  if (el && v) el.textContent = ' 页面版本 ' + v + '。';
+  if (!v || location.protocol === 'file:') return;
+  fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.v || j.v === v) return;
+      try {
+        if (sessionStorage.getItem('__vchk') === j.v) return;
+        sessionStorage.setItem('__vchk', j.v);
+      } catch (e) {}
+      location.replace(location.pathname + '?_v=' + j.v);
+    })
+    .catch(function () {});
 })();
 </script>
 </body>
