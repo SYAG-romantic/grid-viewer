@@ -64,6 +64,7 @@ function buildSiteArrays(data) {
   var pos = new Float32Array(total * 2);
   var col = new Float32Array(total * 3);
   var azk = new Float32Array(total * 2);
+  var rb = new Float32Array(total * 2);   /* 每实例（半径米, 半波束角弧度）：频段样式用，0=用制式 uniform */
   var cityA = new Float32Array(total);
   var p = 0, alpha = 0.6;
 
@@ -90,12 +91,14 @@ function buildSiteArrays(data) {
         else kind = 2;
       }
       azk[p * 2] = azr; azk[p * 2 + 1] = kind;
+      rb[p * 2] = grp.rM || 0;
+      rb[p * 2 + 1] = grp.beam ? grp.beam * DEG * 0.5 : 0;
       p++;
     }
   }
 
   return {
-    pos: pos, col: col, azk: azk, cityA: cityA,
+    pos: pos, col: col, azk: azk, cityA: cityA, rb: rb,
     count: p, refX: refX, refY: refY, alpha: alpha
   };
 }
@@ -181,8 +184,8 @@ self.onmessage = function (e) {
           id: msg.id,
           count: arrResult.count,
           refX: arrResult.refX, refY: arrResult.refY, alpha: arrResult.alpha,
-          pos: arrResult.pos, col: arrResult.col, azk: arrResult.azk, cityA: arrResult.cityA
-        }, [arrResult.pos.buffer, arrResult.col.buffer, arrResult.azk.buffer, arrResult.cityA.buffer]);
+          pos: arrResult.pos, col: arrResult.col, azk: arrResult.azk, cityA: arrResult.cityA, rb: arrResult.rb
+        }, [arrResult.pos.buffer, arrResult.col.buffer, arrResult.azk.buffer, arrResult.cityA.buffer, arrResult.rb.buffer]);
       }
     } else if (msg.type === 'projectGrid') {
       var projResult = projectGrid(msg.data);
