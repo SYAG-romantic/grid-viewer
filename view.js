@@ -2101,8 +2101,8 @@ function ptInPoly(px, py, rings) {
   return inside;
 }
 
-/* 频段模式下多扇区覆盖同一点时选中的那个：半径最小优先（最贴合的扇区），
-   同半径按绘制层序取最后画的（视觉最上层）。层序按 colorGroups 展平顺序缓存 */
+/* 频段模式下多扇区覆盖同一点时选中的那个：按绘制层序取最后画的（视觉最上层，
+   即点到的那块颜色属于哪个扇区就选哪个）。层序按 colorGroups 展平顺序缓存 */
 function pickTopmostHit(L, hits) {
   if (L._rankFor !== L.colorGroups) {
     var rank = new Int32Array(L.ds.n);
@@ -2116,19 +2116,10 @@ function pickTopmostHit(L, hits) {
     L._rankFor = L.colorGroups;
   }
   var rank2 = L._renderRank;
-  var bestI = hits[0], bestR = Infinity, bestRank = -1;
+  var bestI = hits[0], bestRank = -1;
   for (var h = 0; h < hits.length; h++) {
-    var i = hits[h];
-    var r;
-    if (L.bandCol) {
-      var keys = buildBandInfo(L);
-      var st = keys[i] ? BAND_STYLE[keys[i]] : null;
-      r = st ? st.r : ((L.rat === '5G') ? 60 : 80);
-    } else {
-      r = (L.rat === '5G') ? 60 : 80;
-    }
-    var rk = rank2 ? rank2[i] : 0;
-    if (r < bestR - 1e-9 || (Math.abs(r - bestR) <= 1e-9 && rk > bestRank)) { bestR = r; bestRank = rk; bestI = i; }
+    var rk = rank2 ? rank2[hits[h]] : 0;
+    if (rk > bestRank) { bestRank = rk; bestI = hits[h]; }
   }
   return bestI;
 }
