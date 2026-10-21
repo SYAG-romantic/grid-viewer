@@ -1,6 +1,9 @@
 'use strict';
 /* ============================ 12. 图层列表 UI ============================ */
 
+/* 图层列表按类型分组折叠状态（重渲染时保留） */
+var layerGroupClosed = {};
+
 function renderLayerList() {
   syncLegendFold();
   var box = document.getElementById('layerList');
@@ -8,31 +11,64 @@ function renderLayerList() {
     box.innerHTML = '<div class="empty">还没有加载数据</div>';
     return;
   }
+  /* 按类型分组：工参 / 栅格 / 边界 各一个小模块，组头可点击折叠 */
+  var KIND_ORDER = [
+    { kind: 'site', label: '工参', tagCls: 'site' },
+    { kind: 'grid', label: '栅格', tagCls: 'grid' },
+    { kind: 'vector', label: '边界', tagCls: 'vector' },
+    { kind: 'other', label: '未识别', tagCls: 'site' }
+  ];
+  var groups = {};
+  for (var gi = 0; gi < layers.length; gi++) {
+    var gk = layers[gi].kind;
+    if (gk !== 'site' && gk !== 'grid' && gk !== 'vector') gk = 'other';
+    (groups[gk] = groups[gk] || []).push(layers[gi]);
+  }
+  var FIT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg>';
+  var DEL_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg>';
   var html = '';
-  for (var i = 0; i < layers.length; i++) {
-    var L = layers[i];
-    var tag = L.kind === 'grid' ? '<span class="tag grid">栅格</span>'
-      : L.kind === 'site' ? '<span class="tag site">工参</span>'
-      : L.kind === 'vector' ? '<span class="tag vector">边界</span>'
-        : '<span class="tag site">未识别</span>';
-    var meta = L.ok
-      ? (L.kind === 'vector'
-          ? (L.polygons ? L.polygons.length.toLocaleString() : 0) + ' 个多边形'
-          : L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列')
-      : (L.error || '无法解析');
-    html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
-      '<div class="lt">' +
-      '<input type="checkbox" ' + (L.visible ? 'checked' : '') + ' data-act="vis">' +
-      '<span class="nm" data-act="sel" title="' + esc(L.name) + '">' + esc(shortName(L.name)) + '</span>' +
-      tag +
-      '</div>' +
-      '<div class="meta">' + esc(meta) + '</div>' +
-      '<div class="ops">' +
-      '<button data-act="fit" class="icobtn" title="缩放到范围"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg></button>' +
-      '<button data-act="del" class="icobtn" title="移除"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg></button>' +
-      '</div></div>';
+  for (var ki = 0; ki < KIND_ORDER.length; ki++) {
+    var ko = KIND_ORDER[ki];
+    var gLayers = groups[ko.kind];
+    if (!gLayers || !gLayers.length) continue;
+    var closed = !!layerGroupClosed[ko.kind];
+    html += '<div class="lgroup' + (closed ? ' closed' : '') + '" data-kind="' + ko.kind + '">' +
+      '<div class="lg-head" data-kind="' + ko.kind + '">' +
+      '<span class="tag ' + ko.tagCls + '">' + ko.label + '</span>' +
+      '<span class="lg-count">' + gLayers.length + ' 个图层</span>' +
+      '<span class="lg-chev"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>' +
+      '</div><div class="lg-body">';
+    for (var i = 0; i < gLayers.length; i++) {
+      var L = gLayers[i];
+      var meta = L.ok
+        ? (L.kind === 'vector'
+            ? (L.polygons ? L.polygons.length.toLocaleString() : 0) + ' 个多边形'
+            : L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列')
+        : (L.error || '无法解析');
+      html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
+        '<div class="lt">' +
+        '<input type="checkbox" ' + (L.visible ? 'checked' : '') + ' data-act="vis">' +
+        '<span class="nm" data-act="sel" title="' + esc(L.name) + '">' + esc(shortName(L.name)) + '</span>' +
+        '<span class="ops">' +
+        '<button data-act="fit" class="icobtn" title="缩放到范围">' + FIT_SVG + '</button>' +
+        '<button data-act="del" class="icobtn" title="移除">' + DEL_SVG + '</button>' +
+        '</span>' +
+        '</div>' +
+        '<div class="meta">' + esc(meta) + '</div>' +
+        '</div>';
+    }
+    html += '</div></div>';
   }
   box.innerHTML = html;
+
+  Array.prototype.forEach.call(box.querySelectorAll('.lg-head'), function (hd) {
+    hd.onclick = function () {
+      var k = hd.getAttribute('data-kind');
+      layerGroupClosed[k] = !layerGroupClosed[k];
+      var g = hd.parentNode;
+      if (g) g.classList.toggle('closed', !!layerGroupClosed[k]);
+    };
+  });
 
   Array.prototype.forEach.call(box.querySelectorAll('.layer'), function (el) {
     var id = el.getAttribute('data-id');
@@ -2951,8 +2987,7 @@ function bindUI() {
     restoreSources().then(function () {
       if (layers.length <= nBefore) return;   /* 没加载到任何新图层（取消/无源）：保留现状 */
       for (var oi = 0; oi < oldLayers.length; oi++) {
-        var ix = layers.indexOf(oldLayers[oi]);
-        if (ix >= 0) removeLayer(ix);
+        if (layers.indexOf(oldLayers[oi]) >= 0) removeLayer(oldLayers[oi]);
       }
       restoreSessionState();
     }).catch(function () { });
