@@ -410,6 +410,7 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 #statsBox.open #btnStats .chev{transform:rotate(180deg)}
 #btnLabel:active{transform:translateY(0) scale(.97)}
 #btnLabel.on{background:var(--glass);border-color:var(--accent2);color:var(--accent2)}
+#btnBand.on{background:var(--glass);border-color:var(--accent2);color:var(--accent2)}
 .dsel.open .dsel-btn{border-color:var(--accent)}
 .dsel.open .dsel-btn .chev{transform:rotate(180deg)}
 /* 图标按钮 */
