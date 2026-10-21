@@ -2101,6 +2101,38 @@ function ptInPoly(px, py, rings) {
   return inside;
 }
 
+/* 频段模式下多扇区覆盖同一点时选中的那个：半径最小优先（最贴合的扇区），
+   同半径按绘制层序取最后画的（视觉最上层）。层序按 colorGroups 展平顺序缓存 */
+function pickTopmostHit(L, hits) {
+  if (L._rankFor !== L.colorGroups) {
+    var rank = new Int32Array(L.ds.n);
+    var p = 0;
+    var gs = L.colorGroups || [];
+    for (var gi = 0; gi < gs.length; gi++) {
+      var idx = gs[gi].idx;
+      for (var k = 0; k < idx.length; k++) rank[idx[k]] = p++;
+    }
+    L._renderRank = rank;
+    L._rankFor = L.colorGroups;
+  }
+  var rank2 = L._renderRank;
+  var bestI = hits[0], bestR = Infinity, bestRank = -1;
+  for (var h = 0; h < hits.length; h++) {
+    var i = hits[h];
+    var r;
+    if (L.bandCol) {
+      var keys = buildBandInfo(L);
+      var st = keys[i] ? BAND_STYLE[keys[i]] : null;
+      r = st ? st.r : ((L.rat === '5G') ? 60 : 80);
+    } else {
+      r = (L.rat === '5G') ? 60 : 80;
+    }
+    var rk = rank2 ? rank2[i] : 0;
+    if (r < bestR - 1e-9 || (Math.abs(r - bestR) <= 1e-9 && rk > bestRank)) { bestR = r; bestRank = rk; bestI = i; }
+  }
+  return bestI;
+}
+
 function pickAt(pixel) {
   var t = transformOf(map, map.getSize());
   if (!t) return;
@@ -2158,7 +2190,12 @@ function pickAt(pixel) {
       /* 先试扇形命中：点击落在 80 米扇区内则选中该扇区（可能多个重叠） */
       var secHits = pickSiteSector(L, pixel, t, res);
       if (secHits.length === 1) { best = { L: L, i: secHits[0], sector: true }; break; }
-      if (secHits.length > 1) { best = { L: L, i: secHits[0], rows: secHits, sector: true }; break; }
+      if (secHits.length > 1) {
+        /* 频段模式：不弹重叠列表，直接选最上层（半径最小）的那个；制式模式保持列表 */
+        if (STATE.bandStyle) best = { L: L, i: pickTopmostHit(L, secHits), sector: true };
+        else best = { L: L, i: secHits[0], rows: secHits, sector: true };
+        break;
+      }
       /* 否则回退到最近中心点（9px） */
       for (var k2 = 0; k2 < L.ds.n; k2++) consider(L, k2);
     }
