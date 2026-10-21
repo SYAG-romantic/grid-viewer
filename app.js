@@ -242,7 +242,7 @@ function searchCellsEx(keyword, limit, jtype) {
   var results = [];
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
-    if (!L.ok || L.kind !== 'site') continue;
+    if (!L.ok || L.kind !== 'site' || !L.visible) continue;
     /* 制式过滤：4G 只搜 4G 层，5G 只搜 5G 层 */
     if (ratFilter === '4G' && L.rat !== '4G') continue;
     if (ratFilter === '5G' && L.rat !== '5G') continue;
@@ -3170,7 +3170,7 @@ function bindUI() {
     var _ratF = (typeof STATE !== 'undefined' && STATE.rat) ? STATE.rat : 'all';
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
-      if (!L.ok || L.kind !== 'site' || !L._nameMap) continue;
+      if (!L.ok || L.kind !== 'site' || !L.visible || !L._nameMap) continue;
       if (_ratF === '4G' && L.rat !== '4G') continue;
       if (_ratF === '5G' && L.rat !== '5G') continue;
       var _idx = L._nameMap[kwLow];
@@ -3394,7 +3394,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021e';
+    var workerUrl = 'worker.js?v=1021k';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3815,15 +3815,16 @@ function stRatWant() {
 
 function stCompute(sceneIdxs, done) {
   var L = layers[ST.layerId];
+  if (L && !L.visible) L = null;   /* 边界图层未勾选：不参与统计 */
   var ratWant = stRatWant();
   var grids = [];
   for (var gi = 0; gi < layers.length; gi++) {
     var g = layers[gi];
-    if (!g.ok || g.kind !== 'grid' || !g.ds || !g.mx || !g.my) continue;
+    if (!g.ok || g.kind !== 'grid' || !g.visible || !g.ds || !g.mx || !g.my) continue;   /* 只统计勾选的栅格图层 */
     if ((ratWant === '4G' || ratWant === '5G') && g.rat !== ratWant) continue;
     grids.push(g);
   }
-  if (!L || !grids.length) { done(null, !grids.length ? '未加载栅格图层' : '未选择边界图层'); return; }
+  if (!L || !grids.length) { done(null, !grids.length ? '没有勾选的栅格图层' : '未选择边界图层'); return; }
 
   var scenes = [];
   for (var si = 0; si < sceneIdxs.length; si++) {
