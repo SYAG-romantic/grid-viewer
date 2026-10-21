@@ -3394,7 +3394,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021k';
+    var workerUrl = 'worker.js?v=1021m';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3824,7 +3824,7 @@ function stCompute(sceneIdxs, done) {
     if ((ratWant === '4G' || ratWant === '5G') && g.rat !== ratWant) continue;
     grids.push(g);
   }
-  if (!L || !grids.length) { done(null, !grids.length ? '没有勾选的栅格图层' : '未选择边界图层'); return; }
+  if (!L) { done(null, '未选择边界图层'); return; }
 
   var scenes = [];
   for (var si = 0; si < sceneIdxs.length; si++) {
@@ -3840,6 +3840,20 @@ function stCompute(sceneIdxs, done) {
     scenes.push({ idx: sceneIdxs[si], pg: pg, rings: pg._ringsMerc, bb: bb });
   }
   if (!scenes.length) { done(null, '所选场景无有效边界'); return; }
+  /* 没有勾选任何栅格图层：不算指标，只返回场景自身信息（地市/名称/范围/面积） */
+  if (!grids.length) {
+    var infoRows = scenes.map(function (sc) {
+      var props = sc.pg.props || {};
+      return [
+        stCityName(props),
+        getSceneName(props) || ('场景 ' + (sc.idx + 1)),
+        stRangeStr(sc.bb),
+        Math.round(stPolyAreaKm2(sc.rings && sc.rings[0]) * 100) / 100
+      ];
+    });
+    done({ info: infoRows }, null);
+    return;
+  }
 
   var gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
   scenes.forEach(function (sc) {
@@ -3920,7 +3934,7 @@ function stCompute(sceneIdxs, done) {
           stCityName(props),
           getSceneName(props) || ('场景 ' + (sc.idx + 1)),
           stRangeStr(sc.bb),
-          Math.round(stPolyAreaKm2(sc.ring) * 100) / 100,
+          Math.round(stPolyAreaKm2(sc.rings && sc.rings[0]) * 100) / 100,
           a.total,
           a.poor,
           a.mrcnt > 0 ? a.mrcnt : 0,
@@ -3972,6 +3986,24 @@ function stExport(all) {
     ST.busy = false;
     if (bq) bq.disabled = false; if (bc) bc.disabled = false; if (be) be.disabled = false;
     if (err || !res) { showErr(err || '统计失败'); stInfoMsg(); return; }
+    if (res.info) {
+      /* 未勾选栅格：只导出场景自身信息 */
+      var IH = ['地市名', '区域场景名称', '范围', '面积(km²)'];
+      var baseI = (L.name || '场景统计').replace(/[\\/:*?"<>|]/g, '_');
+      if (all && cityFilter && cityFilter !== '*') baseI += '_' + (CITY_NAMES[cityFilter] || cityFilter);
+      try {
+        if (res.info.length <= 1000000 && typeof XLSX !== 'undefined') {
+          var wbI = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wbI, XLSX.utils.aoa_to_sheet([IH].concat(res.info)), '场景信息');
+          XLSX.writeFile(wbI, baseI + '_场景信息.xlsx');
+        } else {
+          stDownloadCsv(baseI + '_场景信息.csv', IH, res.info);
+        }
+        stShowStatus('已导出 ' + res.info.length + ' 个场景（仅场景信息，未勾选栅格图层）');
+        setTimeout(function () { var l2 = document.getElementById('stList'); if (l2) l2.style.display = 'none'; }, 2500);
+      } catch (eI) { showErr('导出失败：' + eI.message); stInfoMsg(); }
+      return;
+    }
     var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
     var H5 = H4.slice(); H5[10] = '覆盖率≥-105dBm(%)';
     var rats = [];
