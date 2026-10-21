@@ -488,6 +488,7 @@ function bindBandToggle() {
       if (layers[i].kind === 'site' && layers[i].ok) { try { buildSiteColors(layers[i]); } catch (e) {} }
     }
     scheduleDraw();
+    renderLegend();
     saveViewState();
   });
 }
@@ -1039,6 +1040,7 @@ function applyViewState(s) {
     for (var bi2 = 0; bi2 < layers.length; bi2++) {
       if (layers[bi2].kind === 'site' && layers[bi2].ok) { try { buildSiteColors(layers[bi2]); } catch (e) {} }
     }
+    if (typeof renderLegend === 'function') renderLegend();
   }
   if (s.city) {
     STATE.cityFilter = s.city;
@@ -3392,7 +3394,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021c';
+    var workerUrl = 'worker.js?v=1021d';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
