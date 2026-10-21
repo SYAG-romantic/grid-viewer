@@ -673,7 +673,7 @@ function drawHlCell(c, t, w, h) {
   try { res = map.getView().getResolution() || 0; } catch (e) {}
   var dpr = 1;
   try { dpr = window.devicePixelRatio || 1; } catch (e) {}
-  var mR = isIndoor ? (is5g ? 25 : 30) : (is5g ? 60 : 80);
+  var mR = isIndoor ? (is5g ? 15 : 20) : (is5g ? 60 : 80);
   var rp = (res > 0) ? mR / res * dpr : 40;
   if (px < -rp - 20 || py < -rp - 20 || px > w + rp + 20 || py > h + rp + 20) return;
   c.strokeStyle = '#e74c3c';
@@ -1462,13 +1462,13 @@ function glDrawSites(L, t, w, h, box, dpr) {
   if (!L.siteGlOk || !glsInit()) return false;
   var gl = GLS.gl;
 
-  /* 实地尺寸：宏站 80 米，室分 30 米。直接用 view 分辨率（米/像素） */
+  /* 实地尺寸：宏站 80 米，室分 4G 20 米 / 5G 15 米。直接用 view 分辨率（米/像素） */
   var _res = 0;
   try { _res = map.getView().getResolution() || 0; } catch (e) {}
   /* 4G/5G 分规格：4G 80米/35°，5G 60米/45°，室分按比例 */
   var _is5g = (L.rat === '5G');
   var _sectorM = _is5g ? 60 : 80;
-  var _dotM = _is5g ? 25 : 30;
+  var _dotM = _is5g ? 15 : 20;
   var _beamW = _is5g ? 45 : 35;
   var R, dotR;
   if (_res > 0 && isFinite(_res)) {
@@ -1480,7 +1480,7 @@ function glDrawSites(L, t, w, h, box, dpr) {
     if (R < 2) R = 2; if (R > 500) R = 500;
     if (dotR < 2) dotR = 2; if (dotR > 200) dotR = 200;
   } else {
-    R = STATE.siteR; dotR = Math.max(4, R * 0.35);
+    R = STATE.siteR; dotR = Math.max(4, R * 0.25);
   }
   var half = _beamW * Math.PI / 180 * 0.5;
 
@@ -2001,7 +2001,7 @@ function drawSites(c, L, t, w, h, box) {
       if (px < -gR || py < -gR || px > w + gR || py > h + gR) continue;
       if (g.indoor) {
         /* 室分：无方向性，画明显圆点 */
-        var cr = Math.max(4, R * 0.35);
+        var cr = Math.max(4, R * 0.25);
         c.moveTo(px + cr, py);
         c.arc(px, py, cr, 0, Math.PI * 2);
         c.closePath();
@@ -2040,7 +2040,7 @@ function pickSiteSector(L, pixel, t, res) {
   var _is5g = (L.rat === '5G');
   var _sectorM = _is5g ? 60 : 80;
   var _beamW = _is5g ? 45 : 35;
-  var _indoorM = _is5g ? 25 : 30;
+  var _indoorM = _is5g ? 15 : 20;
   var Rpx = _sectorM * _pxPerMerc;
   var RpxIndoor = _indoorM * _pxPerMerc;
   var half = _beamW * Math.PI / 360;
@@ -2069,7 +2069,7 @@ function pickSiteSector(L, pixel, t, res) {
     var az = azArr ? azArr[i] : NaN;
     var indoor = L.isIndoor && L.isIndoor[i];
     if (indoor) {
-      /* 室分：按圆处理，半径 4G 30米 / 5G 25米 */
+      /* 室分：按圆处理，半径 4G 20米 / 5G 15米 */
       if (d2 <= RpxIndoor * RpxIndoor) hits.push({ i: i, d2: d2 });
       continue;
     }
@@ -2953,11 +2953,11 @@ function drawLabels() {
       var nm = _sarr ? _sarr[i] : L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 贴边：室分圆边 30/25 米；宏站扇区边缘 80/60 米
+      // 贴边：室分圆边 20/15 米；宏站扇区边缘 80/60 米
       var _sv = stypeArr ? stypeArr[i] : '';
       var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
       var _is5gLb = (L.rat === '5G');
-      var _dist = _isIndoor ? (_is5gLb ? 25 : 30) : (_is5gLb ? 60 : 80);
+      var _dist = _isIndoor ? (_is5gLb ? 15 : 20) : (_is5gLb ? 60 : 80);
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
       var lx = x + Math.sin(rad) * _dist;
