@@ -1127,6 +1127,7 @@ function glsInit() {
       'in vec2 a_pos;\n' +
       'in vec3 a_col;\n' +
       'in vec2 a_azk;\n' +
+      'in vec2 a_rb;\n' +
       'in float a_city;\n' +
       'in float a_t;\n' +
       'uniform vec4 u_t0;\n' +
@@ -1136,6 +1137,7 @@ function glsInit() {
       'uniform float u_half;\n' +
       'uniform float u_dotR;\n' +
       'uniform float u_citySel;\n' +
+      'uniform float u_band;\n' +
       'uniform float u_sub;\n' +
       'out vec3 v_col;\n' +
       'void main() {\n' +
@@ -1151,8 +1153,9 @@ function glsInit() {
       '  if (a_t > -0.5) {\n' +
       '    float ang, rad;\n' +
       '    if (a_azk.y < 0.5) {\n' +
-      '      ang = a_azk.x - u_half - 1.5707963 + a_t*u_half*2.0;\n' +
-      '      rad = u_R;\n' +
+      '      float hb = (u_band > 0.5 && a_rb.y > 0.0) ? a_rb.y : u_half;\n' +
+      '      ang = a_azk.x - hb - 1.5707963 + a_t*hb*2.0;\n' +
+      '      rad = (u_band > 0.5 && a_rb.x > 0.0) ? a_rb.x*u_t0.x : u_R;\n' +
       '    } else if (a_azk.y < 1.5) {\n' +
       '      ang = a_t*6.2831853;\n' +
       '      rad = u_dotR;\n' +
@@ -1237,6 +1240,7 @@ function glsInit() {
         a_pos: gl.getAttribLocation(progFan, 'a_pos'),
         a_col: gl.getAttribLocation(progFan, 'a_col'),
         a_azk: gl.getAttribLocation(progFan, 'a_azk'),
+        a_rb: gl.getAttribLocation(progFan, 'a_rb'),
         a_city: gl.getAttribLocation(progFan, 'a_city'),
         a_t: gl.getAttribLocation(progFan, 'a_t'),
         u_t0: gl.getUniformLocation(progFan, 'u_t0'),
@@ -1247,7 +1251,8 @@ function glsInit() {
         u_dotR: gl.getUniformLocation(progFan, 'u_dotR'),
         u_alpha: gl.getUniformLocation(progFan, 'u_alpha'),
         u_citySel: gl.getUniformLocation(progFan, 'u_citySel'),
-        u_sub: gl.getUniformLocation(progFan, 'u_sub')
+        u_sub: gl.getUniformLocation(progFan, 'u_sub'),
+        u_band: gl.getUniformLocation(progFan, 'u_band')
       },
       progPt: progPt,
       locPt: {
@@ -1287,7 +1292,7 @@ async function buildSiteGL(L) {
       // groups 精简（只传需要的）
       var _groups = groups.map(function (g) {
         var _rgba = parseRgba(g.color);
-        return { color: _rgba, indoor: !!g.indoor, idx: g.idx };
+        return { color: _rgba, indoor: !!g.indoor, idx: g.idx, rM: g.rM || 0, beam: g.beam || 0 };
       });
       var _res = await workerCall('siteArrays', {
         data: {
@@ -1304,6 +1309,7 @@ async function buildSiteGL(L) {
           try { gl.deleteBuffer(L.sitePosBuf); gl.deleteBuffer(L.siteColBuf); gl.deleteBuffer(L.siteAzkBuf); } catch (e) {}
           L.sitePosBuf = null; L.siteColBuf = null; L.siteAzkBuf = null;
           if (L.siteCityBuf) { try { gl.deleteBuffer(L.siteCityBuf); } catch (e2) {} L.siteCityBuf = null; }
+          if (L.siteRbBuf) { try { gl.deleteBuffer(L.siteRbBuf); } catch (e4) {} L.siteRbBuf = null; }
         }
         var pb = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, pb);
@@ -1317,6 +1323,12 @@ async function buildSiteGL(L) {
         var cib = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, cib);
         gl.bufferData(gl.ARRAY_BUFFER, _res.cityA, gl.STATIC_DRAW);
+        if (_res.rb) {
+          var rbb = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, rbb);
+          gl.bufferData(gl.ARRAY_BUFFER, _res.rb, gl.STATIC_DRAW);
+          L.siteRbBuf = rbb;
+        }
         L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
         L.siteRefX = _res.refX; L.siteRefY = _res.refY;
         L.siteAlpha = _res.alpha;
@@ -1359,6 +1371,7 @@ async function buildSiteGL(L) {
   var pos = new Float32Array(total * 2);
   var col = new Float32Array(total * 3);
   var azk = new Float32Array(total * 2);
+  var rbA = new Float32Array(total * 2);
   var cityA = new Float32Array(total);
   var alpha = 0.6;
   var p = 0;
@@ -1392,6 +1405,7 @@ async function buildSiteGL(L) {
         else kind = 2;
       }
       azk[p * 2] = azr; azk[p * 2 + 1] = kind;
+      rbA[p * 2] = g.rM || 0; rbA[p * 2 + 1] = g.beam ? g.beam * DEG * 0.5 : 0;
       p++;
     }
   }
@@ -1402,6 +1416,7 @@ async function buildSiteGL(L) {
     try { gl.deleteBuffer(L.sitePosBuf); gl.deleteBuffer(L.siteColBuf); gl.deleteBuffer(L.siteAzkBuf); } catch (e) {}
     L.sitePosBuf = null; L.siteColBuf = null; L.siteAzkBuf = null;
     if (L.siteCityBuf) { try { gl.deleteBuffer(L.siteCityBuf); } catch (e) {} L.siteCityBuf = null; }
+    if (L.siteRbBuf) { try { gl.deleteBuffer(L.siteRbBuf); } catch (e) {} L.siteRbBuf = null; }
   }
   var pb = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, pb);
@@ -1415,6 +1430,10 @@ async function buildSiteGL(L) {
   var cib = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, cib);
   gl.bufferData(gl.ARRAY_BUFFER, cityA, gl.STATIC_DRAW);
+  var rbb2 = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, rbb2);
+  gl.bufferData(gl.ARRAY_BUFFER, rbA, gl.STATIC_DRAW);
+  L.siteRbBuf = rbb2;
   L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
   L.siteGlCount = p;
   L.siteGlOk = true;
@@ -1485,10 +1504,12 @@ function glDrawSites(L, t, w, h, box, dpr) {
   var _sub = 1;
   if (R < 6) _sub = Math.min(32, Math.ceil(12 / Math.max(0.5, R)));
   if (loc.u_sub) gl.uniform1f(loc.u_sub, _sub);
+  if (loc.u_band) gl.uniform1f(loc.u_band, STATE.bandStyle ? 1 : 0);
 
   glsBindInst(gl, loc.a_pos, L.sitePosBuf, 2);
   glsBindInst(gl, loc.a_col, L.siteColBuf, 3);
   glsBindInst(gl, loc.a_azk, L.siteAzkBuf, 2);
+  if (loc.a_rb >= 0 && L.siteRbBuf) glsBindInst(gl, loc.a_rb, L.siteRbBuf, 2);
   if (loc.a_city >= 0 && L.siteCityBuf) glsBindInst(gl, loc.a_city, L.siteCityBuf, 1);
   /* 扇形几何（非实例） */
   gl.bindBuffer(gl.ARRAY_BUFFER, GLS.fanBuf);
@@ -1503,6 +1524,7 @@ function glDrawSites(L, t, w, h, box, dpr) {
   gl.vertexAttribDivisor(loc.a_col, 0);
   if (loc.a_city >= 0) gl.vertexAttribDivisor(loc.a_city, 0);
   gl.vertexAttribDivisor(loc.a_azk, 0);
+  if (loc.a_rb >= 0) gl.vertexAttribDivisor(loc.a_rb, 0);
   return true;
 }
 
@@ -1964,6 +1986,9 @@ function drawSites(c, L, t, w, h, box) {
     c.strokeStyle = 'rgba(0,0,0,0.5)';
     c.lineWidth = 0.6;
     idx = g.idx;
+    /* 频段模式：按组半径/波束角（R 对应制式半径，按比例换算，继承钳位） */
+    var gR = (g.rM != null) ? R * g.rM / (_is5gCv ? 60 : 80) : R;
+    var gHalf = (g.beam != null) ? g.beam * DEG * 0.5 : half;
     c.beginPath();
     for (k = 0; k < idx.length; k++) {
       i = idx[k];
@@ -1973,7 +1998,7 @@ function drawSites(c, L, t, w, h, box) {
       if (x < b0 || x > b2 || y < b1 || y > b3) continue;
       px = t0 * x + t2 * y + t4;
       py = t1 * x + t3 * y + t5;
-      if (px < -R || py < -R || px > w + R || py > h + R) continue;
+      if (px < -gR || py < -gR || px > w + gR || py > h + gR) continue;
       if (g.indoor) {
         /* 室分：无方向性，画明显圆点 */
         var cr = Math.max(4, R * 0.35);
@@ -1984,10 +2009,10 @@ function drawSites(c, L, t, w, h, box) {
       }
       var az = azArr ? azArr[i] : NaN;
       if (isFinite(az)) {
-        var a0 = az * DEG - half - Math.PI / 2;
-        var a1 = az * DEG + half - Math.PI / 2;
+        var a0 = az * DEG - gHalf - Math.PI / 2;
+        var a1 = az * DEG + gHalf - Math.PI / 2;
         c.moveTo(px, py);
-        c.arc(px, py, R, a0, a1);
+        c.arc(px, py, gR, a0, a1);
         c.closePath();
       } else {
         c.moveTo(px + 1, py);
@@ -2015,6 +2040,8 @@ function pickSiteSector(L, pixel, t, res) {
   var Rpx = _sectorM / (res || 1) * _dpr3;
   var RpxIndoor = _indoorM / (res || 1) * _dpr3;
   var half = _beamW * Math.PI / 360;
+  /* 频段模式：每行按频段表取半径/波束角，与绘制同口径 */
+  var _bandKeys = (STATE.bandStyle && L.bandCol) ? buildBandInfo(L) : null;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var n = L.ds.n, mx = L.mx, my = L.my;
   /* 地市口径与绘制一致：被地市筛掉的扇区不可点（citySel 是城市索引；'none' 表示该层无此地市） */
@@ -2029,7 +2056,12 @@ function pickSiteSector(L, pixel, t, res) {
     var sy = t[1] * x + t[3] * y + t[5];
     var dx = pixel[0] - sx, dy = pixel[1] - sy;
     var d2 = dx * dx + dy * dy;
-    if (d2 > Rpx * Rpx) continue;
+    var RpxI = Rpx, halfI = half;
+    if (_bandKeys) {
+      var _bst = _bandKeys[i] ? BAND_STYLE[_bandKeys[i]] : null;
+      if (_bst) { RpxI = _bst.r / (res || 1) * _dpr3; halfI = _bst.beam * Math.PI / 360; }
+    }
+    if (d2 > RpxI * RpxI) continue;
     var az = azArr ? azArr[i] : NaN;
     var indoor = L.isIndoor && L.isIndoor[i];
     if (indoor) {
@@ -2047,7 +2079,7 @@ function pickSiteSector(L, pixel, t, res) {
     var diff = clickAng - azRad;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    if (Math.abs(diff) <= half) hits.push({ i: i, d2: d2 });
+    if (Math.abs(diff) <= halfI) hits.push({ i: i, d2: d2 });
   }
   hits.sort(function (a, b) { return a.d2 - b.d2; });
   return hits.map(function (h) { return h.i; });
