@@ -2958,17 +2958,22 @@ function drawLabels() {
     var stypeArr = L.ds.stype;
     /* 预取名字数组，避免内层逐行 ds.value() 的函数调用开销 */
     var _sarr = (L.ds.str && L.ds.str[nameCol]) ? L.ds.str[nameCol] : null;
+    /* 频段模式：注记锚点/颜色按每行频段走（与绘制同口径） */
+    var _bandKeysL = (STATE.bandStyle && L.bandCol && typeof buildBandInfo === 'function') ? buildBandInfo(L) : null;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
       var nm = _sarr ? _sarr[i] : L.ds.value(i, nameCol);
       if (!nm) continue;
       nm = String(nm);
-      // 贴边：室分圆边 20/15 米；宏站扇区边缘外 20 米（100/80），避免文字压扇面
+      // 贴边：锚点 = 该行实际绘制半径 + 小间隙（宏站 6 米 / 室分 5 米），文字紧贴扇区边缘；
+      // 频段模式按频段半径（700M 120 / A 频段 40 等），不再用制式固定距离——旧值会压扇面或飘远
       var _sv = stypeArr ? stypeArr[i] : '';
       var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
       var _is5gLb = (L.rat === '5G');
-      var _dist = _isIndoor ? (_is5gLb ? 15 : 20) : (_is5gLb ? 80 : 100);
+      var _bstL = _bandKeysL ? (_bandKeysL[i] ? BAND_STYLE[_bandKeysL[i]] : null) : null;
+      var _rM = _isIndoor ? (_is5gLb ? 15 : 20) : (_bstL ? _bstL.r : (_is5gLb ? 60 : 80));
+      var _dist = _rM + (_isIndoor ? 5 : 6);
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
       var lx = x + Math.sin(rad) * _dist;
@@ -3013,7 +3018,12 @@ function drawLabels() {
       ctx.strokeStyle = 'rgba(255,255,255,.95)';
       ctx.lineJoin = 'round';
       ctx.strokeText(nm, fpx, fpy);
-      ctx.fillStyle = is5g ? '#2471a3' : '#b03a2e';
+      if (!_isIndoor && _bstL && _bstL.c) {
+        var _rgbL = _bstL.c.split(',');
+        ctx.fillStyle = 'rgb(' + Math.round(_rgbL[0] * 0.72) + ',' + Math.round(_rgbL[1] * 0.72) + ',' + Math.round(_rgbL[2] * 0.72) + ')';
+      } else {
+        ctx.fillStyle = is5g ? '#2471a3' : '#b03a2e';
+      }
       ctx.fillText(nm, fpx, fpy);
       drawn++;
     }
