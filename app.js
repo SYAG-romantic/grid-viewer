@@ -472,6 +472,26 @@ function bindPopupResize(popupId) {
     })(handles[hi]);
   }
 }
+/* 频段样式开关（顶部）：扇区颜色/半径/波束角按频段表（BAND_STYLE）切换 */
+function syncBandBtn() {
+  var b = $('btnBand');
+  if (b) b.classList.toggle('on', !!STATE.bandStyle);
+}
+function bindBandToggle() {
+  var b = $('btnBand');
+  if (!b) return;
+  syncBandBtn();
+  b.addEventListener('click', function () {
+    STATE.bandStyle = !STATE.bandStyle;
+    syncBandBtn();
+    for (var i = 0; i < layers.length; i++) {
+      if (layers[i].kind === 'site' && layers[i].ok) { try { buildSiteColors(layers[i]); } catch (e) {} }
+    }
+    scheduleDraw();
+    saveViewState();
+  });
+}
+
 function bindRatToggle() {
   var box = document.getElementById('ratBox');
   var btn = document.getElementById('ratBtn');
@@ -535,8 +555,9 @@ function removeLayer(L) {
       GLS.gl.deleteBuffer(L.siteColBuf);
       GLS.gl.deleteBuffer(L.siteAzkBuf);
       if (L.siteCityBuf) GLS.gl.deleteBuffer(L.siteCityBuf);
+      if (L.siteRbBuf) GLS.gl.deleteBuffer(L.siteRbBuf);
     } catch (e) {}
-    L.sitePosBuf = null; L.siteCityBuf = null; L.siteGlOk = false;
+    L.sitePosBuf = null; L.siteCityBuf = null; L.siteRbBuf = null; L.siteGlOk = false;
   }
   if (selected === L) selected = layers.length ? layers[layers.length - 1] : null;
   renderLayerList(); renderLegend();
@@ -993,7 +1014,7 @@ function saveViewState(immediate) {
       var v = map.getView();
       var s = {
         c: v.getCenter(), z: v.getZoom(),
-        mode: STATE.gridColorMode, city: STATE.cityFilter,
+        mode: STATE.gridColorMode, city: STATE.cityFilter, band: !!STATE.bandStyle,
         vis: layers.map(function (L) { return !!L.visible; }),
         panel: !document.getElementById('panel').classList.contains('hide')
       };
@@ -1012,6 +1033,13 @@ function applyViewState(s) {
   if (!s) s = readViewState();
   if (!s) return;
   if (s.mode && s.mode !== STATE.gridColorMode) applyGridColorMode(s.mode);
+  if (typeof s.band === 'boolean' && s.band !== !!STATE.bandStyle) {
+    STATE.bandStyle = s.band;
+    if (typeof syncBandBtn === 'function') syncBandBtn();
+    for (var bi2 = 0; bi2 < layers.length; bi2++) {
+      if (layers[bi2].kind === 'site' && layers[bi2].ok) { try { buildSiteColors(layers[bi2]); } catch (e) {} }
+    }
+  }
   if (s.city) {
     STATE.cityFilter = s.city;
     for (var i = 0; i < layers.length; i++) {
@@ -3410,6 +3438,7 @@ function boot() {
   initMap();
   bindUI();
   bindRatToggle();
+  bindBandToggle();
   bindLabelToggle();
   initStatsPanel();
   bindPopupResize('popup');
