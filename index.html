@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>图层查看</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10/ol.css">
-<link rel="stylesheet" href="styles.css?v=r6">
+<link rel="stylesheet" href="vendor/ol.css">
+<link rel="stylesheet" href="styles.css?v=1105h">
 </head>
 <body>
 <div id="app" class="panelopen">
@@ -88,7 +88,10 @@
             边界图层：一次选中同名 .tab/.dat/.map/.id（MapInfo）或 .shp/.dbf/.prj（Shapefile），也支持 kml / geojson。<span id="buildTag" style="opacity:.55"></span>
           </div>
 
-<div id="layerList" style="margin-top:9px"></div>
+          <div id="foldAllRow" style="display:none;justify-content:flex-end;margin-top:7px">
+            <button id="btnFoldAll" class="lnkbtn">收起全部</button>
+          </div>
+<div id="layerList" style="margin-top:4px"></div>
         </div>
       </details>
 
@@ -282,19 +285,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l5-4v17"/><path d="M9 21V4l6 3v14"/><path d="M15 21v-8l5 2v6"/><path d="M2 21h20"/></svg>
             <span>石河子</span>
           </button>
-        </div>
       </div>
-      <div class="dsel" id="labelBox">
-        <button type="button" id="btnLabel" class="toolbtn dsel-btn" aria-haspopup="listbox" aria-expanded="false" title="注记显示">
-          <b>注记</b>
-          <svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-        <div class="dsel-pop" id="labelPop" role="listbox">
-          <div class="dsel-h">注记显示</div>
-          <button type="button" role="option" data-v="4g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18v-6a2 2 0 012-2h12a2 2 0 012 2v6"/><path d="M2 18h20"/></svg><span>4G小区名称</span></button>
-          <button type="button" role="option" data-v="5g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18v-6a2 2 0 012-2h12a2 2 0 012 2v6"/><path d="M2 18h20"/></svg><span>5G小区名称</span></button>
-          <button type="button" role="option" data-v="scene"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><span>区域场景名称</span></button>
-        </div>
       </div>
       <div class="dsel" id="bandBox">
         <button type="button" id="btnBand" class="toolbtn dsel-btn" title="按频段样式：扇区的颜色/半径/波束角按频段表切换（开/关）"><b>频段</b></button>
@@ -435,6 +426,8 @@
       <div class="pfoot" id="popFoot" style="display:none"></div>
     </div>
 
+    <div id="mapHint"></div>
+
     <div id="err"><span id="errMsg"></span><button id="errX" title="关闭" aria-label="关闭">✕</button></div>
 
     <div id="busy" class="hide">
@@ -446,14 +439,38 @@
     </div>
   </main>
 
+  <!-- 图层属性：左右分栏（导航 / 内容），可拖动可缩放 -->
+  <div id="fieldMask"></div>
+  <div id="fieldPop" class="lyr-dlg">
+    <div class="ld-head" id="fldHead">
+      <b class="ld-title" id="fldTitle">图层属性</b>
+      <span class="ld-sub" id="fldSub"></span>
+      <button id="fldClose" title="关闭">×</button>
+    </div>
+    <div class="ld-body">
+      <nav class="ld-nav" id="fldNav"></nav>
+      <div class="ld-pane" id="fldBody"></div>
+    </div>
+    <div class="ld-foot">
+      <button id="fldReset">恢复默认</button>
+      <span class="ld-sp"></span>
+      <button id="fldCancel">取消</button>
+      <button id="fldApply" class="pri">应用</button>
+    </div>
+    <div class="rsz rsz-n" data-dir="n"></div><div class="rsz rsz-s" data-dir="s"></div>
+    <div class="rsz rsz-w" data-dir="w"></div><div class="rsz rsz-e" data-dir="e"></div>
+    <div class="rsz rsz-nw" data-dir="nw"></div><div class="rsz rsz-ne" data-dir="ne"></div>
+    <div class="rsz rsz-sw" data-dir="sw"></div><div class="rsz rsz-se" data-dir="se"></div>
+  </div>
+
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/ol@10/dist/ol.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="data.js?v=1021x"></script>
-<script src="vector.js?v=1021x"></script>
-<script src="view.js?v=1021x"></script>
-<script src="app.js?v=1021x"></script>
+<script src="vendor/ol.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="data.js?v=1105h"></script>
+<script src="vector.js?v=1105h"></script>
+<script src="view.js?v=1105h"></script>
+<script src="app.js?v=1105h"></script>
 <script>
 /* 页面版本号显示 + 版本自检：服务器上有新版本时自动刷新一次到新版，终结缓存卡旧页 */
 (function () {
