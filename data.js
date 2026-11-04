@@ -338,7 +338,12 @@ async function parseDelimited(src, name, onProgress) {
   var delim = detectDelim(headerLine);
   if (delim === null) delim = ',';
   ds.delim = delim;
-  var columns = dedupeColumns(splitRow(headerLine, delim).map(function (s) { return s.trim().replace(/^"|"$/g, ''); }));
+  /* 表头里的空列名（连续逗号、行尾多逗号、Excel 导出留白列）给个占位名，
+     否则下拉/表头里会出现一行空白，看不出那是哪一列 */
+  var columns = dedupeColumns(splitRow(headerLine, delim).map(function (s, ci) {
+    var v = s.trim().replace(/^"|"$/g, '');
+    return v || ('未命名列' + (ci + 1));
+  }));
   var nCols = columns.length;
   ds.columns = columns;
 
@@ -512,7 +517,11 @@ function parseXlsx(file, name) {
         var ws = wb.Sheets[wb.SheetNames[0]];
         var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
         if (!aoa.length) { reject(new Error('工作表为空')); return; }
-        var columns = dedupeColumns(aoa[0].map(function (v) { return String(v).trim(); }));
+        var columns = dedupeColumns(aoa[0].map(function (v, ci) {
+          /* v 可能是 null（空单元格）：直接 String(null) 会得到字面量 "null" 当列名 */
+          var s = (v == null) ? '' : String(v).trim();
+          return s || ('未命名列' + (ci + 1));
+        }));
         var nCols = columns.length;
         var data = aoa.slice(1).filter(function (r) {
           return r.some(function (v) { return v !== '' && v !== null && v !== undefined; });
@@ -597,6 +606,44 @@ function pickNameColumn(ds) {
   return best;
 }
 
+/* 建工参图层的名称搜索索引：精确哈希 + 小写名字数组 + CGI 数组，一次建好。
+   名称列可被用户手动改（L.nameCol），改完要重新调一次本函数重建。
+   注意 ds.str 在 CSV 解析时不填充，逐行 ds.value() 等于每行 splitRow 整列，
+   31 列 × 33 万行时模糊搜索会卡三四秒；所以这里每行只 cells() 一次，同批取名字与 CGI。 */
+function buildNameIndex(L) {
+  var ds = L && L.ds;
+  if (!ds || !L.nameCol) return;
+  try {
+    var n = ds.n;
+    var map = {}, lc = new Array(n), nmArr = new Array(n);
+    var nc = ds.columns.indexOf(L.nameCol);
+    /* CGI 列（cgi/ecgi）：模糊搜索的第二匹配列，同批建好 */
+    var cgiCol = null;
+    for (var scc = 0; scc < ds.columns.length; scc++) {
+      var scn = String(ds.columns[scc] || '').toLowerCase();
+      if (scn === 'cgi' || scn === 'ecgi') { cgiCol = ds.columns[scc]; break; }
+    }
+    /* 名称列本身就是 CGI 列时，不再单独建 CGI 索引——否则搜索同一行会被两个数组各命中一次 */
+    if (cgiCol === L.nameCol) cgiCol = null;
+    var cc = cgiCol ? ds.columns.indexOf(cgiCol) : -1;
+    var cgArr = cgiCol ? new Array(n) : null;
+    for (var j = 0; j < n; j++) {
+      var cells = ds.cells(j);
+      var raw = (nc >= 0 && nc < cells.length) ? cells[nc] : '';
+      nmArr[j] = String(raw == null ? '' : raw);
+      var nm = nmArr[j].toLowerCase();
+      lc[j] = nm;
+      if (nm && !(nm in map)) map[nm] = j;
+      if (cgArr) cgArr[j] = String((cc >= 0 && cc < cells.length) ? (cells[cc] == null ? '' : cells[cc]) : '');
+    }
+    L._nameMap = map;
+    L._lcNames = lc;
+    L._nameArr = nmArr;
+    L._cgiCol = cgiCol;
+    L._cgiArr = cgArr;
+  } catch (e) { }
+}
+
 /* 一列的内容是否"全是纯数字"：数值列集合里有它，或抽样 30 个非空值全是纯数字。
    （有的数值列混了空值/个别文本，解析时没进 ds.num，只能靠内容抽样识别；
    CGI 这类带横杠的值不算纯数字，不会被误判） */
@@ -659,13 +706,20 @@ function dedupeColumns(cols) {
 }
 
 function detectRat(ds) {
-  /* 文件名优先：列名里出现「5G共站」之类字样不能把 4G 文件误判成 5G（门限列会跟着选错） */
-  var name = String(ds.name || '').toLowerCase().replace(/(19|20)\d{2}/g, ' ');
-  if (/(^|[^0-9a-z])5\s?g(?![0-9a-z])/.test(name)) return '5G';
-  if (/(^|[^0-9a-z])4\s?g(?![0-9a-z])/.test(name)) return '4G';
-  var cols = ds.columns.map(function (c) { return String(c).toLowerCase(); }).join(' ');
+  /* 文件名优先：列名里出现「5G共站」之类字样不能把 4G 文件误判成 5G（门限列会跟着选错）。
+     识别范围要覆盖业界常见写法：5G / NR / NR5G / 5GNR / 5G-NR / LTE / 4G。
+     「5G共站」「5G共址」只是标注，先整体剔掉再判断 */
+  var name = String(ds.name || '').toLowerCase()
+    .replace(/(19|20)\d{2}/g, ' ')
+    .replace(/5\s?g\s*共\s*[站址]/g, ' ');
+  if (/5\s?g/.test(name) || /(^|[^a-z])nr(?![a-z])/.test(name)) return '5G';
+  if (/4\s?g/.test(name) || /(^|[^a-z])lte(?![a-z])/.test(name)) return '4G';
+  var cols = ds.columns.map(function (c) { return String(c).toLowerCase(); }).join(' ')
+    .replace(/5\s?g\s*共\s*[站址]/g, ' ');
   if (cols.indexOf('5g') >= 0 || cols.indexOf('5 g') >= 0) return '5G';
+  if (/(^|[^a-z])nr(?![a-z])/.test(cols)) return '5G';
   if (cols.indexOf('4g') >= 0 || cols.indexOf('4 g') >= 0) return '4G';
+  if (/(^|[^a-z])lte(?![a-z])/.test(cols)) return '4G';
   return null;
 }
 
@@ -697,6 +751,17 @@ function makeLayer(ds, kind, skipCity) {
     kind: kind,
     ds: ds,
     visible: true,
+    labelOn: false,   /* 是否在地图上显示该图层的名称注记（按图层开关，见注记下拉） */
+    /* 图层级符号化（null = 跟随全局默认）：
+       site  → styleMode: 'rat' | 'single' | 'field'
+       vector→ strokeColor / fillColor / lineWidth */
+    styleMode: null,
+    singleColor: null,
+    colorField: null,
+    colorMap: null,
+    strokeColor: null,
+    fillColor: null,
+    lineWidth: null,
     ok: true,
     mx: null, my: null,
     lonCol: null, latCol: null,
@@ -724,43 +789,11 @@ function makeLayer(ds, kind, skipCity) {
     L.rat = detectRat(ds);            /* '5G' | '4G' | null，决定弱覆盖门限字段 */
   } else if (kind === 'site') {
     L.azCol = pickColumn(ds.columns, ALIAS.az);
-    /* 名字列：列名打分 + 内容验证（数字/CGI 内容的同名列会被否决），找不到再退回别名表 */
+    /* 名字列：列名打分 + 内容验证（数字/CGI 内容的同名列会被否决），找不到再退回别名表。
+       用户可在图层面板里手工改 L.nameCol，改完调 buildNameIndex 重建索引 */
     L.nameCol = pickNameColumn(ds) || pickColumn(ds.columns, ALIAS.name);
-    /* 同步建搜索索引：精确哈希 + 模糊用的小写名字数组 + CGI 数组，一次建好。
-       注意 ds.str 在 CSV 解析时并不填充（只有站型列存了数组），旧代码逐行
-       ds.value() 取名字/CGI，每行都 splitRow 整行（31 列）——模糊搜索每敲
-       一次键就要 330k 次 splitRow，这就是下拉要三四秒的根因。
-       这里每行只 cells() 一次（一次 splitRow），名字/CGI 同批取出：加载
-       耗时与原来相当，但之后每次模糊搜索只是数组 indexOf，毫秒级。 */
-    if (L.nameCol) {
-      try {
-        var _n2 = ds.n;
-        var _map = {}, _lc2 = new Array(_n2), _nmArr = new Array(_n2);
-        var _nc = ds.columns.indexOf(L.nameCol);
-        /* CGI 列（cgi/ecgi）：模糊搜索第二匹配列，同批一次建好 */
-        var _cgiCol = null;
-        for (var _scc = 0; _scc < ds.columns.length; _scc++) {
-          var _scn = String(ds.columns[_scc] || '').toLowerCase();
-          if (_scn === 'cgi' || _scn === 'ecgi') { _cgiCol = ds.columns[_scc]; break; }
-        }
-        var _cc = _cgiCol ? ds.columns.indexOf(_cgiCol) : -1;
-        var _cgArr = _cgiCol ? new Array(_n2) : null;
-        for (var _j = 0; _j < _n2; _j++) {
-          var _cells = ds.cells(_j);
-          var _raw = (_nc >= 0 && _nc < _cells.length) ? _cells[_nc] : '';
-          _nmArr[_j] = String(_raw || '');
-          var _nm2 = _nmArr[_j].toLowerCase();
-          _lc2[_j] = _nm2;
-          if (_nm2 && !(_nm2 in _map)) _map[_nm2] = _j;
-          if (_cgArr) _cgArr[_j] = String((_cc >= 0 && _cc < _cells.length) ? (_cells[_cc] || '') : '');
-        }
-        L._nameMap = _map;
-        L._lcNames = _lc2;
-        L._nameArr = _nmArr;
-        L._cgiCol = _cgiCol;
-        L._cgiArr = _cgArr;
-      } catch (e) {}
-    }
+    L._nameColAuto = L.nameCol;   /* 自动识别的原始值：用户手工改过后，「恢复自动识别」回落到这里 */
+    buildNameIndex(L);
     L.bandCol = pickColumn(ds.columns, ALIAS.band);
     L.tiltCol = pickColumn(ds.columns, ALIAS.tilt);
     L.hgtCol = pickColumn(ds.columns, ALIAS.hgt);
@@ -1011,9 +1044,11 @@ function buildBandInfo(L) {
 
 function buildSiteColors(L) {
   var ds = L.ds, n = ds.n;
-  var mode = STATE.siteColor;
+  var mode = L.styleMode || STATE.siteColor;   /* 图层级样式优先于全局 */
   var groups = {}, order = [];
   var bandArr = L.bandCol ? ds.num[L.bandCol] : null;
+  /* 按字段分类时的整列取值：一次性提取，避免十几万行逐行 value() */
+  var fieldArr = (mode === 'field' && L.colorField) ? ds.columnText(L.colorField) : null;
   /* 文本频段列（如 4G 的「频段」= FDD900/F1）一次性提取整列，别逐行 value() */
   var bandTextArr = (L.bandCol && !bandArr) ? ds.columnText(L.bandCol) : null;
   var stypeArr = L.ds.stype;   /* 解析时已存成字符串数组，O(1) 读 */
@@ -1029,6 +1064,12 @@ function buildSiteColors(L) {
     if (isIndoor(i)) return 'indoor';            /* 室分独立分组（画圆用） */
     if (mode === 'rat') return 'rat';
     if (mode === 'one') return 0;
+    if (mode === 'single') return 'one';
+    /* 按字段分类：分组键就是该列的取值（空值单独归一类） */
+    if (mode === 'field') {
+      var fv = fieldArr ? fieldArr[i] : '';
+      return String(fv == null || fv === '' ? '（空）' : fv);
+    }
     if (mode === 'az') {
       var a = L.azCol ? ds.num[L.azCol][i] : NaN;
       if (!isFinite(a)) return SITE_PALETTE.length - 1;
@@ -1073,12 +1114,17 @@ function buildSiteColors(L) {
       if (!groups[key]) { groups[key] = []; order.push(key); }
       groups[key].push(i);
     }
-    order.sort(function (a, b) { return a - b; });
-    L.colorGroups = order.map(function (k) {
+    /* 按字段分类时保持出现顺序（便于和表格对照），其余模式按键排序 */
+    if (mode !== 'field') order.sort(function (a, b) { return a - b; });
+    L.colorGroups = order.map(function (k, ki) {
       var col;
-      if (k === 'indoor' || mode === 'rat') col = ratColor;      /* 室分/制式模式：同制式一色 */
-      else if (mode === 'one') col = 'rgba(56,132,255,0.55)';
-      else col = 'rgba(' + SITE_PALETTE[k % SITE_PALETTE.length].join(',') + ',0.55)';
+      if (k === 'indoor') col = ratColor;                       /* 室分始终跟制式色，靠形状区分 */
+      else if (mode === 'rat') col = ratColor;
+      else if (mode === 'one' || mode === 'single') col = L.singleColor || 'rgba(56,132,255,0.55)';
+      else if (mode === 'field') {
+        col = (L.colorMap && L.colorMap[k]) ||
+          ('rgba(' + SITE_PALETTE[ki % SITE_PALETTE.length].join(',') + ',0.55)');
+      } else col = 'rgba(' + SITE_PALETTE[k % SITE_PALETTE.length].join(',') + ',0.55)';
       return {
         key: k,
         indoor: (k === 'indoor'),
@@ -1191,7 +1237,8 @@ function rebuildBuckets(L, skipGL) {
   var cityWant = cityOk ? parseInt(L.citySel, 10) : -1;
 
   /* 着色模式：全局选择，字段缺失的图层自动回退 RSRP */
-  var mode = STATE.gridColorMode;
+  var modeWant = STATE.gridColorMode;
+  var mode = modeWant;
   var sinr = (mode === 'sinr') ? ds.num[L.sinrCol] : null;
   var cntAll = (mode === 'cov') ? ds.num[L.cntCol] : null;
   /* 覆盖率门限分制式：5G 用 cnt105，4G/未知用 cnt110 */
@@ -1199,6 +1246,9 @@ function rebuildBuckets(L, skipGL) {
   if (mode === 'sinr' && !sinr) mode = 'rsrp';
   if (mode === 'cov' && (!cntAll || !cntThr)) mode = 'rsrp';
   L.bandMode = mode;
+  /* 被回退过：下拉选的是 SINR，这层却按 RSRP 上色。图层条目上会标出来，
+     否则同一张图上两套配色、图例只解释一套，看着像数据坏了 */
+  L.bandFallback = (mode !== modeWant);
   L.bandCount = bandCountOf(mode);
   var bfn = mode === 'sinr' ? bandOfSINR : (mode === 'cov' ? bandOfCov : bandOf);
   var nb = L.bandCount;
@@ -1267,6 +1317,8 @@ var STATE = {
   siteColor: 'rat',
   bandStyle: false,          /* 按频段样式（颜色/半径/波束角查 BAND_STYLE 表） */
   gridColorMode: 'rsrp',   /* 栅格着色：rsrp | sinr | cov（字段缺失的图层自动回退 rsrp） */
+  bandFilter: -1,          /* 图例点选过滤：-1=不过滤，>=0 只突出该档（其余压暗） */
+  statLabel: false,        /* 把场景统计结果（覆盖率）直接标在地图上 */
   cityFilter: '*',         /* 顶部城市按钮：'*'=全疆，或 CityID 字符串 */
   pin: null,
   fastDraw: false,
