@@ -26,6 +26,7 @@ function renderLayerList() {
   }
   var FIT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg>';
   var DEL_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg>';
+  var TAG_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6M14 7h6M4 17h10M18 17h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg>';
   var html = '';
   for (var ki = 0; ki < KIND_ORDER.length; ki++) {
     var ko = KIND_ORDER[ki];
@@ -45,11 +46,24 @@ function renderLayerList() {
             ? (L.polygons ? L.polygons.length.toLocaleString() : 0) + ' 个多边形'
             : L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列')
         : (L.error || '无法解析');
+      /* 显示当前用的名称字段：自动识别时标「自动」，一眼能看出是不是在按数字认场景 */
+      if (L.kind === 'vector' && L.polygons && L.polygons.length) {
+        meta += ' · 名称：' + (L.nameField || '自动');
+      } else if (L.kind === 'site' && L.ds && L.ds.columns) {
+        meta += ' · 名称：' + (L.nameCol || '自动');
+      }
+      /* 切到 SINR / 覆盖率后，缺字段的图层会退回 RSRP 上色，在这里标出来 */
+      if (L.kind === 'grid' && L.bandFallback) {
+        meta += ' · 缺' + (STATE.gridColorMode === 'sinr' ? 'SINR' : '采样列') + '，按 RSRP 着色';
+      }
       html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
         '<div class="lt">' +
         '<input type="checkbox" ' + (L.visible ? 'checked' : '') + ' data-act="vis">' +
         '<span class="nm" data-act="sel" title="' + esc(L.name) + '">' + esc(shortName(L.name)) + '</span>' +
         '<span class="ops">' +
+        (((L.kind === 'vector' && L.polygons && L.polygons.length) ||
+          (L.kind === 'site' && L.ds && L.ds.columns && L.ds.columns.length))
+          ? '<button data-act="fld" class="icobtn" title="图层属性（名称 / 配色 / 线宽）">' + TAG_SVG + '</button>' : '') +
         '<button data-act="fit" class="icobtn" title="缩放到范围">' + FIT_SVG + '</button>' +
         '<button data-act="del" class="icobtn" title="移除">' + DEL_SVG + '</button>' +
         '</span>' +
@@ -79,16 +93,404 @@ function renderLayerList() {
       L.visible = e.target.checked; scheduleDraw(); saveViewState();
       if (typeof ST !== 'undefined') ST.gen = (ST.gen || 0) + 1;
       if (STATE._ratVisSnap) STATE._ratVisSnap.set(L, !!L.visible);
-      /* 统计联动：当前统计图层被取消勾选 → 统计按钮恢复「统计」（重新勾选不自动恢复，要在统计下拉里重选） */
-      if (!L.visible && typeof ST !== 'undefined' && ST.layerId >= 0 && layers[ST.layerId] === L) {
-        ST.layerId = -1; ST.selScene = -1;
-        stSyncLayerCur();
-      }
+      scheduleCacheUi();   /* 勾选状态记进缓存清单，刷新后能恢复 */
+      scheduleLabels();    /* 注记跟着显隐走：不重绘的话要缩放一次才消失 */
+      /* 边界图层的显隐只决定画不画，与「统计用哪一层」无关，所以不再清空统计选择；
+         栅格图层的显隐仍然决定统计范围（见 stCompute 里对 !g.visible 的过滤） */
     };
     el.querySelector('[data-act="sel"]').onclick = function () { selectLayer(L); };
     el.querySelector('[data-act="del"]').onclick = function () { removeLayer(L); };
     el.querySelector('[data-act="fit"]').onclick = function () { fitLayer(L); };
+    var _fldBtn = el.querySelector('[data-act="fld"]');
+    if (_fldBtn) _fldBtn.onclick = function (e) { e.stopPropagation(); openFieldPop(L); };
   });
+
+  /* 「收起全部」的文字跟实际分组状态走（用户单独点过某个分组标题也会同步）；
+     没加载图层时整行隐藏，避免点了没反应 */
+  var _fa = document.getElementById('btnFoldAll');
+  var _faRow = document.getElementById('foldAllRow');
+  if (_faRow) _faRow.style.display = layers.length ? 'flex' : 'none';
+  if (_fa) {
+    var _allClosed = true;
+    for (var _ki = 0; _ki < KIND_ORDER.length; _ki++) {
+      var _kd = KIND_ORDER[_ki].kind;
+      if (groups[_kd] && groups[_kd].length && !layerGroupClosed[_kd]) { _allClosed = false; break; }
+    }
+    _fa.textContent = _allClosed ? '展开全部' : '收起全部';
+  }
+}
+
+/* ==================== 图层属性：名称字段 + 符号化 ====================
+   QGIS 那种图层级设置：名称用哪一列、点/扇区什么颜色、边界线多粗。
+   设置全挂在图层对象上，改完同步进缓存清单，刷新后保留。 */
+var FIELD_L = null;
+var FIELD_TMP = null;
+var FIELD_PAGE = 'info';   /* 属性面板当前页：info / name / style / border / label */
+
+function hexToRgba(hex, a) {
+  var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return null;
+  var n = parseInt(m[1], 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+function rgbaToHex(s) {
+  var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(String(s || ''));
+  if (!m) return '#888888';
+  return '#' + [1, 2, 3].map(function (i) { return ('0' + (+m[i]).toString(16)).slice(-2); }).join('');
+}
+
+function openFieldPop(L) {
+  var isVec = !!(L && L.kind === 'vector' && L.polygons && L.polygons.length);
+  var isSite = !!(L && L.kind === 'site' && L.ds && L.ds.columns && L.ds.columns.length);
+  if (!isVec && !isSite) { showErr('只有边界图层和工参图层可以设置属性'); return; }
+  FIELD_L = L;
+  FIELD_TMP = {
+    styleMode: L.styleMode || 'rat',
+    single: rgbaToHex(L.singleColor || 'rgba(231,76,60,0.7)'),
+    colorField: L.colorField || null,
+    colorMap: L.colorMap ? JSON.parse(JSON.stringify(L.colorMap)) : {},
+    stroke: rgbaToHex(L.strokeColor || '#c86bff'),
+    lineWidth: L.lineWidth || 2.5,
+    nameField: (isVec ? L.nameField : L.nameCol) || '',
+    labelOn: !!L.labelOn
+  };
+  var t = document.getElementById('fldTitle');
+  if (t) t.textContent = isSite ? '工参图层属性' : '边界图层属性';
+  var sub = document.getElementById('fldSub');
+  if (sub) sub.textContent = L.name;
+  renderFieldBody();
+  document.getElementById('fieldMask').classList.add('show');
+  var el = document.getElementById('fieldPop');
+  el.classList.add('show');
+  placeFieldPop();
+}
+
+/* 首次打开居中；之后沿用用户拖动/缩放后的位置与大小 */
+function placeFieldPop() {
+  var el = document.getElementById('fieldPop');
+  if (!el || el._placed) return;
+  var w = el.offsetWidth || 560, h = el.offsetHeight || 420;
+  el.style.left = Math.max(12, Math.round((window.innerWidth - w) / 2)) + 'px';
+  el.style.top = Math.max(12, Math.round((window.innerHeight - h) / 2)) + 'px';
+  el._placed = true;
+}
+
+/* 弹窗拖动：按住标题栏移动，位置限制在视口内 */
+function bindDlgDrag(el, head) {
+  if (!el || !head || head._dragBound) return;
+  head._dragBound = true;
+  head.addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || (e.target.closest && e.target.closest('button'))) return;
+    e.preventDefault();
+    var sx = e.clientX, sy = e.clientY;
+    var ol = el.offsetLeft, ot = el.offsetTop;
+    function mv(ev) {
+      var nl = ol + (ev.clientX - sx), nt = ot + (ev.clientY - sy);
+      nl = Math.max(-el.offsetWidth + 90, Math.min(nl, window.innerWidth - 90));
+      nt = Math.max(0, Math.min(nt, window.innerHeight - 40));
+      el.style.left = nl + 'px';
+      el.style.top = nt + 'px';
+    }
+    function up() {
+      document.removeEventListener('mousemove', mv);
+      document.removeEventListener('mouseup', up);
+    }
+    document.addEventListener('mousemove', mv);
+    document.addEventListener('mouseup', up);
+  });
+}
+
+function fieldKeys(L) {
+  var keys = [];
+  if (L.kind === 'vector') {
+    var p = (L.polygons[0] && L.polygons[0].props) || {};
+    for (var k in p) keys.push(k);
+  } else {
+    keys = L.ds.columns.slice();
+  }
+  keys.sort();
+  return keys;
+}
+
+function fieldPages(L) {
+  var a = [{ k: 'info', t: '信息' }, { k: 'name', t: '名称' }];
+  if (L.kind === 'site') a.push({ k: 'style', t: '符号化' });
+  if (L.kind === 'vector') a.push({ k: 'border', t: '边框' });
+  return a;   /* 注记开关并进「名称」页：名称和"要不要显示"本来是一个动作 */
+}
+
+/* 右栏内容：只渲染当前页，避免一长条堆到底 */
+function renderFieldPane(L, T) {
+  var isSite = L.kind === 'site';
+  var isVec = L.kind === 'vector';
+  var h = '', i;
+
+  if (FIELD_PAGE === 'info') {
+    h += '<div class="fld"><span>图层名</span><div class="fld-layer">' + esc(L.name) + '</div></div>';
+    h += '<div class="fld"><span>规模</span><div class="fld-layer">' +
+      (isVec ? (L.polygons.length.toLocaleString() + ' 个场景')
+             : (L.ds.n.toLocaleString() + ' 行 · ' + L.ds.columns.length + ' 列')) + '</div></div>';
+    if (isSite) {
+      h += '<div class="fld"><span>制式</span><div class="fld-layer">' +
+        (L.rat === '5G' ? '5G' : (L.rat === '4G' ? '4G' : '未识别')) + '</div></div>';
+    }
+    h += '<div class="fld"><span>当前名称字段</span><div class="fld-layer">' +
+      esc((isSite ? L.nameCol : L.nameField) || '自动识别') + '</div></div>';
+    h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
+      (isSite ? '工参图层：按扇区/圆点绘制，颜色由「符号化」页决定。'
+              : '边界图层：场景统计的底图，样式见「边框」页。') + '</div>';
+    return h;
+  }
+
+  if (FIELD_PAGE === 'name') {
+    var keys = fieldKeys(L);
+    h += '<div class="fld"><span>名称字段（注记 / 搜索 / 导出用）</span><select id="fldSel">' +
+      '<option value="">（自动识别）</option>';
+    for (i = 0; i < keys.length; i++) {
+      h += '<option value="' + esc(keys[i]) + '"' + (T.nameField === keys[i] ? ' selected' : '') +
+        '>' + esc(keys[i]) + '</option>';
+    }
+    h += '</select><div id="fldPrev"></div></div>';
+    h += '<div class="fld"><label class="fld-chk"><input type="checkbox" id="fldLabelOn"' +
+      (T.labelOn ? ' checked' : '') + '> 在地图上显示名称</label></div>';
+    h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
+      '缩放 14 级以上才显示。多图层要同时开关注记时，需逐层在此勾选。</div>';
+    return h;
+  }
+
+  if (FIELD_PAGE === 'style' && isSite) {
+    h += '<div class="fld"><span>着色方式</span><select id="fldMode">' +
+      '<option value="rat"' + (T.styleMode === 'rat' ? ' selected' : '') + '>按制式（4G 红 / 5G 蓝）</option>' +
+      '<option value="single"' + (T.styleMode === 'single' ? ' selected' : '') + '>单色</option>' +
+      '<option value="field"' + (T.styleMode === 'field' ? ' selected' : '') + '>按字段分类</option>' +
+      '</select></div>';
+    if (T.styleMode === 'single') {
+      h += '<div class="fld"><span>颜色</span><div class="fld-color">' +
+        '<input type="color" id="fldColor" value="' + T.single + '">' +
+        '<b id="fldColorTxt">' + T.single + '</b></div></div>';
+      h += '<div class="fld"><span>常用颜色</span><div class="sw-row">';
+      var SW = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db',
+                '#9b59b6','#e84393','#795548','#7f8c8d','#2c3e50','#ffffff'];
+      for (var si = 0; si < SW.length; si++) {
+        h += '<i class="sw' + (String(T.single).toLowerCase() === SW[si] ? ' on' : '') +
+          '" data-c="' + SW[si] + '" style="background:' + SW[si] + '"></i>';
+      }
+      h += '</div></div>';
+    }
+    if (T.styleMode === 'field') {
+      var keys2 = fieldKeys(L);
+      h += '<div class="fld"><span>分类字段</span><select id="fldCField"><option value="">（选择字段）</option>';
+      for (i = 0; i < keys2.length; i++) {
+        h += '<option value="' + esc(keys2[i]) + '"' + (T.colorField === keys2[i] ? ' selected' : '') +
+          '>' + esc(keys2[i]) + '</option>';
+      }
+      h += '</select></div><div id="fldClassList"></div>';
+    }
+    return h;
+  }
+
+  if (FIELD_PAGE === 'border' && isVec) {
+    h += '<div class="fld"><span>边框颜色</span><div class="fld-color">' +
+      '<input type="color" id="fldStroke" value="' + T.stroke + '">' +
+      '<b id="fldStrokeTxt">' + T.stroke + '</b></div></div>';
+    h += '<div class="fld"><span>线宽 <b id="fldLWTxt">' + T.lineWidth + '</b> px</span>' +
+      '<input type="range" id="fldLW" min="0.5" max="8" step="0.5" value="' + T.lineWidth + '"></div>';
+    return h;
+  }
+
+  if (FIELD_PAGE === 'label') {
+    h += '<div class="fld"><label class="fld-chk"><input type="checkbox" id="fldLabelOn"' +
+      (T.labelOn ? ' checked' : '') + '> 在地图上显示名称</label></div>';
+    h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
+      '名称取自「名称」页指定的字段；地图缩放 14 级以上才显示。</div>';
+    return h;
+  }
+  return h;
+}
+
+function renderFieldBody() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var nav = document.getElementById('fldNav');
+  var body = document.getElementById('fldBody');
+  if (!L || !T || !nav || !body) return;
+  var pages = fieldPages(L);
+  var okPage = false;
+  for (var p = 0; p < pages.length; p++) if (pages[p].k === FIELD_PAGE) okPage = true;
+  if (!okPage) FIELD_PAGE = 'info';
+
+  var nh = '';
+  for (var i = 0; i < pages.length; i++) {
+    nh += '<button type="button" data-pg="' + pages[i].k + '"' +
+      (FIELD_PAGE === pages[i].k ? ' class="on"' : '') + '>' + pages[i].t + '</button>';
+  }
+  nav.innerHTML = nh;
+  Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
+    b.onclick = function () { FIELD_PAGE = b.getAttribute('data-pg'); renderFieldBody(); };
+  });
+
+  body.innerHTML = renderFieldPane(L, T);
+  bindFieldEvents();
+  if (FIELD_PAGE === 'name') updateFieldPreview();
+  if (FIELD_PAGE === 'style') renderClassList();
+}
+
+function bindFieldEvents() {
+  var T = FIELD_TMP;
+  var $ = function (id) { return document.getElementById(id); };
+  if (T === null) return;
+  if ($('fldSel')) $('fldSel').onchange = function () { T.nameField = this.value; updateFieldPreview(); };
+  if ($('fldMode')) $('fldMode').onchange = function () { T.styleMode = this.value; renderFieldBody(); };
+  if ($('fldColor')) $('fldColor').oninput = function () {
+    T.single = this.value;
+    var t = $('fldColorTxt'); if (t) t.textContent = this.value;
+  };
+  if ($('fldCField')) $('fldCField').onchange = function () {
+    T.colorField = this.value || null; T.colorMap = {}; renderFieldBody();
+  };
+  if ($('fldStroke')) $('fldStroke').oninput = function () {
+    T.stroke = this.value;
+    var t = $('fldStrokeTxt'); if (t) t.textContent = this.value;
+  };
+  if ($('fldLW')) $('fldLW').oninput = function () {
+    T.lineWidth = parseFloat(this.value);
+    var t = $('fldLWTxt'); if (t) t.textContent = this.value;
+  };
+  if ($('fldLabelOn')) $('fldLabelOn').onchange = function () { T.labelOn = this.checked; };
+  Array.prototype.forEach.call(document.querySelectorAll('#fldBody .sw'), function (el) {
+    el.onclick = function () {
+      T.single = el.getAttribute('data-c');
+      renderFieldBody();
+    };
+  });
+  if ($('fldReset')) $('fldReset').onclick = function () {
+    T.styleMode = 'rat'; T.single = '#e74c3c'; T.colorField = null; T.colorMap = {};
+    T.stroke = '#c86bff'; T.lineWidth = 2.5; T.nameField = ''; T.labelOn = false;
+    renderFieldBody();
+  };
+  if ($('fldApply')) $('fldApply').onclick = applyFieldPop;
+}
+
+/* 按字段分类时的分类清单：每类一个颜色块，改完立即写进临时表 */
+function renderClassList() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var box = document.getElementById('fldClassList');
+  if (!box) return;
+  if (!L || L.kind !== 'site' || T.styleMode !== 'field' || !T.colorField) { box.innerHTML = ''; return; }
+  var arr = null;
+  try { arr = L.ds.columnText(T.colorField); } catch (e) { arr = null; }
+  if (!arr) { box.innerHTML = ''; return; }
+  var seen = {}, order = [];
+  for (var i = 0; i < arr.length && order.length < 60; i++) {
+    var v = (arr[i] == null || arr[i] === '') ? '（空）' : String(arr[i]);
+    if (seen[v]) continue;
+    seen[v] = 1; order.push(v);
+  }
+  var h = '<div class="fld-lbl">共 ' + order.length + (order.length >= 60 ? '+ ' : ' ') + '类，点色块可改</div>';
+  for (var j = 0; j < order.length; j++) {
+    var v2 = order[j];
+    var hex = rgbaToHex(T.colorMap[v2] || ('rgba(' + SITE_PALETTE[j % SITE_PALETTE.length].join(',') + ',1)'));
+    h += '<div class="fld-cls"><input type="color" value="' + hex + '" data-cls="' + esc(v2) + '">' +
+      '<span>' + esc(v2) + '</span></div>';
+  }
+  box.innerHTML = h;
+  Array.prototype.forEach.call(box.querySelectorAll('input[type=color]'), function (inp) {
+    inp.oninput = function () {
+      T.colorMap[inp.getAttribute('data-cls')] = hexToRgba(inp.value, 0.7);
+    };
+  });
+}
+
+/* 预览前 3 个取值：选完立刻能看出对不对，不必等导出才发现 */
+function updateFieldPreview() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var prev = document.getElementById('fldPrev');
+  var sel = document.getElementById('fldSel');
+  if (!L || !T || !prev || !sel) return;
+  var field = sel.value || '';
+  var vals = [];
+  if (L.kind === 'site') {
+    var col = field || L._nameColAuto;
+    if (!col) { prev.innerHTML = '<span class="warn">没有识别出名称列，请在下拉里指定</span>'; return; }
+    var lim = Math.min(L.ds.n, 3000);
+    for (var i = 0; i < lim && vals.length < 3; i++) {
+      var sv = L.ds.value(i, col);
+      sv = sv == null ? '' : String(sv).trim();
+      if (sv) vals.push(sv);
+    }
+  } else {
+    for (var j = 0; j < L.polygons.length && vals.length < 3; j++) {
+      var p = (L.polygons[j] && L.polygons[j].props) || {};
+      var v = field ? (p[field] == null ? '' : String(p[field]).trim()) : getSceneName(p, L);
+      if (v) vals.push(v);
+    }
+  }
+  if (!vals.length) { prev.innerHTML = '<span class="warn">该字段没有有效值，请换一个</span>'; return; }
+  prev.innerHTML = vals.map(function (v) { return '<i>' + esc(v) + '</i>'; }).join('　/　');
+}
+
+function applyFieldPop() {
+  var L = FIELD_L, T = FIELD_TMP;
+  if (!L || !T) return;
+  if (L.kind === 'site') {
+    var wantCol = T.nameField || L._nameColAuto || null;
+    if (wantCol !== L.nameCol) {
+      L.nameCol = wantCol;
+      if (typeof buildNameIndex === 'function') buildNameIndex(L);
+    }
+    L.styleMode = T.styleMode;
+    L.singleColor = hexToRgba(T.single, 0.7) || 'rgba(231,76,60,0.7)';
+    L.colorField = T.colorField || null;
+    L.colorMap = T.colorMap ? JSON.parse(JSON.stringify(T.colorMap)) : null;
+    if (typeof buildSiteColors === 'function') buildSiteColors(L);
+    if (typeof buildSiteGL === 'function') { try { buildSiteGL(L).catch(function () { L.siteGlOk = false; }); } catch (e) { L.siteGlOk = false; } }
+  } else {
+    L.nameField = T.nameField || null;
+    L.strokeColor = T.stroke;
+    L.lineWidth = T.lineWidth;
+  }
+  L.labelOn = !!T.labelOn;
+  closeFieldPop();
+  renderLayerList();
+  if (typeof scheduleLabels === 'function') scheduleLabels();
+  scheduleCacheUi();
+  scheduleDraw();
+  showErr('图层属性已更新');
+}
+
+function closeFieldPop() {
+  document.getElementById('fieldMask').classList.remove('show');
+  document.getElementById('fieldPop').classList.remove('show');
+  FIELD_L = null;
+  FIELD_TMP = null;
+}
+
+function initFieldPop() {
+  var pop = document.getElementById('fieldPop');
+  if (!pop || pop._init) return;
+  pop._init = true;
+  document.getElementById('fldClose').onclick = closeFieldPop;
+  document.getElementById('fieldMask').onclick = closeFieldPop;
+  var _c = document.getElementById('fldCancel');
+  if (_c) _c.onclick = closeFieldPop;
+  bindDlgDrag(pop, document.getElementById('fldHead'));
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && pop.classList.contains('show')) closeFieldPop();
+  });
+}
+
+/* 图层分组全部收起 / 展开：图层多的时候省得一直滚 */
+function bindFoldAll() {
+  var b = document.getElementById('btnFoldAll');
+  if (!b || b._inited) return;
+  b._inited = true;
+  b.onclick = function () {
+    var kinds = ['site', 'grid', 'vector', 'other'];
+    var anyOpen = false;
+    for (var i = 0; i < kinds.length; i++) { if (!layerGroupClosed[kinds[i]]) { anyOpen = true; break; } }
+    for (var j = 0; j < kinds.length; j++) layerGroupClosed[kinds[j]] = anyOpen;
+    b.textContent = anyOpen ? '展开全部' : '收起全部';
+    renderLayerList();
+  };
 }
 
 function shortName(n) {
@@ -165,8 +567,18 @@ function selectLayer(L) {
    不再逐行 ds.value()（旧代码每行 splitRow 整行，33 万行要三四秒）。 */
 /* 场景名称模糊搜索 */
 /* 自适应取场景名称 */
-function getSceneName(props) {
+/* 自适应取场景名称。
+   优先级：用户指定字段 → 含「唯一」字段 → 名称类字段（排除地市/区县等行政字段）
+           → OBJECTID（部分图层场景名直接存这列）→ 兜底第一个像名称的值。
+   用户指定字段取值为空时继续走自动规则，避免选错字段后整个图层没名字。
+   调用方尽量把图层对象传进第二参数，才能用上手工指定的字段。 */
+function getSceneName(props, L) {
   if (!props) return '';
+  if (L && L.nameField) {
+    var vf = props[L.nameField];
+    var sf = vf == null ? '' : String(vf).trim();
+    if (sf) return sf;
+  }
   var keys = Object.keys(props);
   var i, k, kl;
   /* 编号型的值（如 CJ0001454）不是名称，哪怕装在「唯一名称」这种字段里 */
@@ -176,32 +588,46 @@ function getSceneName(props) {
     if (/^[A-Z0-9\-_]+$/i.test(v) && v.length > 10 && /\d/.test(v)) return true;
     return false;
   }
+  /* 行政区划字段：值是地名但不是场景名。注意不能用单字「县/省」，否则「县城场景名」会被误伤 */
+  function isAdmName(nm) {
+    return /地市|地州|城市|区县|行政区|省份|街道|乡镇|镇名|乡名|^city|^province|^county|^district/i.test(nm);
+  }
   /* 有「唯一」类字段（如唯一名称）的图层以它为准：普通名称字段（村名等）会重名，统计/导出按名字认场景会串 */
   for (i = 0; i < keys.length; i++) {
     if (keys[i].indexOf('唯一') >= 0) {
-      var v0 = String(props[keys[i]] || '').trim();
+      var v0 = props[keys[i]] == null ? '' : String(props[keys[i]]).trim();
       if (v0) return v0;
     }
   }
-  /* ArcGIS 的 OBJECTID 列：有些图层（如新疆图层）区域场景名称就存这一列，优先级高于普通名称字段 */
+  /* 名称类字段：含「场景」的最优先，其次含 name/名称，再次以「名」结尾。
+     同一档内按字段原始顺序取第一个，保证结果稳定可复现 */
+  var cand = null;
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i]; kl = k.toLowerCase();
+    if (isAdmName(k)) continue;
+    var score = 0;
+    if (k.indexOf('场景') >= 0) score = 3;
+    else if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0) score = 2;
+    else if (/名$/.test(k)) score = 1;
+    if (!score) continue;
+    var v = props[k] == null ? '' : String(props[k]).trim();
+    if (!v || v.indexOf('\uFFFD') >= 0 || isIdVal(v)) continue;
+    if (!cand || score > cand.s) cand = { v: v, s: score };
+    if (score === 3) break;
+  }
+  if (cand) return cand.v;
+  /* ArcGIS 的 OBJECTID 列：部分图层（如新疆 AOI）场景名直接存在这列，放到名称字段之后兜底，
+     否则任何带 OBJECTID 的标准 SHP 都会把场景名变成一串数字 */
   for (i = 0; i < keys.length; i++) {
     if (/^objectid/i.test(keys[i])) {
-      var vObj = String(props[keys[i]] || '').trim();
+      var vObj = props[keys[i]] == null ? '' : String(props[keys[i]]).trim();
       if (vObj) return vObj;
     }
   }
-  /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
-  for (i = 0; i < keys.length; i++) {
-    k = keys[i]; kl = k.toLowerCase();
-    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0 || /名$/.test(k)) {
-      var v = String(props[k] || '').trim();
-      if (v && v.indexOf('\uFFFD') < 0 && !isIdVal(v)) return v;
-    }
-  }
-  /* 第二遍兜底：第一个像名称的字符串 */
+  /* 兜底：第一个像名称的字符串 */
   for (i = 0; i < keys.length; i++) {
     k = keys[i];
-    var v2 = String(props[k] || '').trim();
+    var v2 = props[k] == null ? '' : String(props[k]).trim();
     if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
     if (/^[\d\-\.]+$/.test(v2)) continue;
     if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
@@ -226,7 +652,7 @@ function searchScenes(keyword, limit) {
         var pv = String(props[pk] || '');
         if (pv.toLowerCase().indexOf(kw) >= 0) {
           /* 显示名必须是场景名字段的值（getSceneName），不能是恰好命中关键词的那个字段值 */
-          results.push({ L: L, pg: L.polygons[pi], name: getSceneName(props) || pv });
+          results.push({ L: L, pg: L.polygons[pi], name: getSceneName(props, L) || pv });
           break;
         }
       }
@@ -335,7 +761,7 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
-            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = getSceneName(_rp) || String(r.name || '');
+            STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = getSceneName(_rp, r.L) || String(r.name || '');
             if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
             try {
               map.getView().animate({ center: [cx, cy], zoom: 14, duration: 400 });
@@ -444,7 +870,7 @@ function exportSelection() {
     XLSX.utils.book_append_sheet(wb, ws5, '5G');
   }
   var _trunc = totalRows0 >= 50000;
-  XLSX.writeFile(wb, _trunc ? '框选小区_前5万条.xlsx' : '框选小区_' + totalRows + '条.xlsx');
+  XLSX.writeFile(wb, stampDate() + '_' + (_trunc ? '框选小区_前5万条.xlsx' : '框选小区_' + totalRows + '条.xlsx'));
   showErr('已导出 ' + totalRows + ' 条小区（4G ' + rows4g.length + ' 条，5G ' + rows5g.length + ' 条）' + (_trunc ? '；已达 5 万条上限，仅导出前 5 万条' : ''));
 }
 /* 4G/5G 快捷切换 */
@@ -544,9 +970,10 @@ function bindRatToggle() {
       STATE._ratVisSnap = new Map();
       for (var si2 = 0; si2 < layers.length; si2++) STATE._ratVisSnap.set(layers[si2], !!layers[si2].visible);
     }
+    var _noRatN = 0;
     for (var li = 0; li < layers.length; li++) {
       var L = layers[li];
-      if (!L.rat) continue;
+      if (!L.rat) { if (L.ok) _noRatN++; continue; }
       if (rat === '*') {
         if (STATE._ratVisSnap && STATE._ratVisSnap.has(L)) L.visible = STATE._ratVisSnap.get(L);
         else L.visible = true;
@@ -560,6 +987,10 @@ function bindRatToggle() {
     scheduleDraw();
     scheduleLabels();
     saveViewState();
+    /* 未识别制式的图层不参与筛选，会一直留在图上；不明说的话用户会以为筛选没生效 */
+    if (rat !== '*' && _noRatN > 0) {
+      showErr('有 ' + _noRatN + ' 个图层未能识别 4G/5G（文件名里没有制式标识），未参与筛选，仍按原状态显示。');
+    }
   }
   btn.onclick = function (e) {
     e.stopPropagation();
@@ -619,6 +1050,7 @@ function removeLayer(L) {
   saveViewState();
   refreshSessionCache();   /* 删层后同步缓存：全删空则清缓存 */
   scheduleDraw();
+  scheduleLabels();        /* 图层删了，它的小区名注记也要立刻消失 */
 }
 
 /* ---- 面板与当前图层联动 ---- */
@@ -641,7 +1073,22 @@ function refreshActive() {
 
 var IDB_NAME = (typeof global !== 'undefined' && global.__IDB_NAME) || 'raster-viewer', IDB_STORE = 'src', IDB_CACHE = 'cache';
 var MAX_FILES = 40;
-var CACHE_LIMIT = 1024 * 1024 * 1024;   /* 数据缓存总量上限 1GB，超出则不缓存（避免撑爆配额） */
+var CACHE_LIMIT = 1024 * 1024 * 1024;   /* 缓存总量上限，实际值由 refreshCacheLimit 按浏览器配额动态调整 */
+function fmtMB(n) { return Math.round((n || 0) / 1048576) + ' MB'; }
+/* 按浏览器实际配额定上限。原来硬编码 1GB：单个大栅格估算就要 600MB 左右，
+   两个栅格必然撑爆，排在后面的图层被静默跳过——表现就是刷新后少了一层。
+   Chrome 一般给磁盘可用空间的 60%，这里取其 40%，下限 1GB、上限 8GB。 */
+async function refreshCacheLimit() {
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      var est = await navigator.storage.estimate();
+      if (est && est.quota) {
+        var want = Math.floor(est.quota * 0.4);
+        CACHE_LIMIT = Math.max(1024 * 1024 * 1024, Math.min(want, 8 * 1024 * 1024 * 1024));
+      }
+    }
+  } catch (e) { }
+}
 var ACCEPT_RE = /\.(csv|txt|tsv|json|geojson|xlsx|xls|tab|dat|map|id|shp|shx|dbf|prj|cpg|kml|mif|mid)$/i;
 var FSA_OK = (typeof window !== 'undefined') && !!window.showDirectoryPicker &&
   (typeof window.isSecureContext === 'undefined' || window.isSecureContext);
@@ -699,6 +1146,19 @@ function idbDel(key, store) {
   });
 }
 
+/* 缓存写入时间的人话表述（恢复条上用，让"上次数据"有个明确的时间锚点） */
+function fmtAgo(ts) {
+  if (!ts) return '';
+  var d = Date.now() - ts;
+  if (d < 0) d = 0;
+  var m = Math.floor(d / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + ' 分钟前';
+  var h = Math.floor(m / 60);
+  if (h < 24) return h + ' 小时前';
+  return Math.floor(h / 24) + ' 天前';
+}
+
 function updateRestoreBar() {
   var bar = document.getElementById('restoreBar');
   var nm = document.getElementById('srcName');
@@ -707,6 +1167,8 @@ function updateRestoreBar() {
   var bc = document.getElementById('btnClearCache');
   var hint = document.getElementById('restoreHint');
   if (!bar || !nm) return;
+  /* 提示文字的颜色状态每次重算，避免「缓存过旧」的警示色残留到其他状态 */
+  if (hint) hint.style.color = '';
   var hasSrc = srcEntries.length > 0;
   if (restorePhase) {
     /* 恢复过程态：让"卡住"变成"看得见的加载" */
@@ -721,19 +1183,40 @@ function updateRestoreBar() {
   /* 恢复条常显：任何状态下都能看到缓存状态，失败/为空不再无声 */
   bar.style.display = '';
   if (cacheErr) {
-    /* 缓存写入失败：明示原因，当前会话数据不受影响 */
-    nm.textContent = '数据缓存未写入（' + cacheErr + '）——本次会话数据仍有效，刷新后需重新导入';
+    /* 部分或全部图层没写进缓存：当前会话不受影响，但刷新后缺的那几层要重新导入 */
+    var _miss = (cacheInfo && cacheInfo.missing && cacheInfo.missing.length) ? cacheInfo.missing.length : 0;
+    nm.textContent = (cacheInfo && cacheInfo.count)
+      ? '已缓存 ' + cacheInfo.count + ' 个图层，' + _miss + ' 个未写入（' + cacheErr + '）'
+      : '数据缓存未写入（' + cacheErr + '）——本次会话数据仍有效，刷新后需重新导入';
     if (br) br.style.display = hasSrc ? '' : 'none';
     if (bf) bf.style.display = hasSrc ? '' : 'none';
-    if (bc) bc.style.display = 'none';
-    if (hint) hint.textContent = '重新导入数据会再次尝试写缓存。';
+    if (bc) bc.style.display = '';
+    if (hint) {
+      hint.textContent = (cacheInfo && cacheInfo.count)
+        ? '未缓存的图层：' + (cacheInfo.missing || []).join('、') + '——刷新后需重新导入。「清除缓存」可整体重来。'
+        : '重新导入数据会再次尝试写缓存。';
+    }
   } else if (cacheInfo) {
-    /* 缓存自动恢复态：显示缓存概况，「从源更新」仅在记住过数据源时出现 */
-    nm.textContent = '已自动恢复上次数据（' + cacheInfo.count + ' 个文件 · ' + cacheInfo.mb + ' MB）';
+    /* 缓存自动恢复态：带上写入时间——源文件在别处被覆盖时，这是唯一的"数据有多旧"线索 */
+    var _ago = cacheInfo.savedAt ? fmtAgo(cacheInfo.savedAt) : '';
+    nm.textContent = '已自动恢复上次数据（' + cacheInfo.count + ' 个文件 · ' + cacheInfo.mb + ' MB）' +
+      (_ago ? '，' + _ago + '写入' : '');
     if (br) { br.style.display = hasSrc ? '' : 'none'; br.title = '从数据源重新读取文件，替换缓存与当前图层'; }
     if (bf) bf.style.display = hasSrc ? '' : 'none';
     if (bc) bc.style.display = '';
-    if (hint) hint.textContent = '重新导入数据会自动更新缓存；「清除缓存」不影响当前页面里的数据。';
+    if (hint) {
+      hint.textContent = '这是缓存快照：源文件若已更新，点「恢复数据」重读；重新导入会自动更新缓存。';
+      /* 上次有图层没写进缓存：本次恢复必然缺它们，用警示色说清楚是哪几层 */
+      if (cacheInfo.missing && cacheInfo.missing.length) {
+        hint.textContent = '上次有 ' + cacheInfo.missing.length + ' 个图层未写入缓存（' +
+          cacheInfo.missing.join('、') + '），本次未恢复，需重新导入。';
+        hint.style.color = 'var(--warn)';
+        return;
+      }
+      /* 超过 12 小时用警示色提醒，避免拿前一天的数出报表 */
+      var _old = cacheInfo.savedAt && (Date.now() - cacheInfo.savedAt) > 12 * 3600000;
+      hint.style.color = _old ? 'var(--warn)' : '';
+    }
   } else if (hasSrc) {
     var names = srcEntries.map(function (e) { return e.name; });
     nm.textContent = '已记住数据源：' + ((names.length === 1) ? names[0] :
@@ -948,6 +1431,7 @@ async function putLayerRecords(i, L) {
 }
 
 async function doPutCache() {
+  await refreshCacheLimit();   /* 先问浏览器要配额，别用写死的 1GB 去卡大栅格 */
   var manifest = { ver: 3, layers: [], savedAt: Date.now() };
   var total = 0;
   /* 全量替换语义：先删光旧清单的全部键再写新的。
@@ -967,13 +1451,14 @@ async function doPutCache() {
     /* 边界层：序列化 polygons 存 JSON */
     if (L.kind === 'vector') {
       var ventry = { id: cacheLyId(i), name: L.name, kind: 'vector', ok: false, err: '', keys: [],
-                     rows: L.polygons ? L.polygons.length : 0, cols: 0 };
+                     rows: L.polygons ? L.polygons.length : 0, cols: 0,
+                     ui: layerUi(L) };
       try {
         var vkey = cacheLyId(i) + '/vec';
         // 只存 rings 和 props，去掉 _bbox（恢复时重算）
         var vdata = L.polygons.map(function (pg) { return { rings: pg.rings, props: pg.props }; });
         var vjson = JSON.stringify(vdata);
-        if (total + vjson.length > CACHE_LIMIT) { ventry.err = '超过缓存总量上限（1GB），未缓存'; ventry.skipped = true; }
+        if (total + vjson.length > CACHE_LIMIT) { ventry.err = '超过缓存上限（' + fmtMB(CACHE_LIMIT) + '），未缓存'; ventry.skipped = true; }
         else {
           await idbGuard(idbSet(vkey, vjson, IDB_CACHE), 120000, '写入边界层');
           ventry.keys = [vkey]; ventry.ok = true;
@@ -988,11 +1473,12 @@ async function doPutCache() {
     }
     if (!L.ds) continue;
     var entry = { id: cacheLyId(i), name: L.name, kind: L.kind, ok: false, err: '', keys: [],
-                  rows: L.ds ? L.ds.n : 0, cols: (L.ds && L.ds.columns) ? L.ds.columns.length : 0 };
+                  rows: L.ds ? L.ds.n : 0, cols: (L.ds && L.ds.columns) ? L.ds.columns.length : 0,
+                  ui: layerUi(L) };
     var bEst = 0, kE;
     if (L.ds) { for (kE in L.ds.num) bEst += L.ds.num[kE].byteLength || 0; if (L.ds.store) bEst += L.ds.store.total * 2; }
     if (total + bEst > CACHE_LIMIT) {
-      entry.err = '超过缓存总量上限（1GB），未缓存';
+      entry.err = '超过缓存上限（' + fmtMB(CACHE_LIMIT) + '），未缓存';
       entry.skipped = true;
       manifest.layers.push(entry);
       continue;
@@ -1012,10 +1498,16 @@ async function doPutCache() {
   }
   await idbGuard(idbSet('manifest', manifest, IDB_CACHE), 60000, '写入缓存清单');
   var okCnt = manifest.layers.filter(function (e) { return e.ok; }).length;
-  cacheInfo = { count: okCnt, mb: Math.round(total / 1048576) };
   var fails = manifest.layers.filter(function (e) { return !e.ok; });
+  cacheInfo = {
+    count: okCnt,
+    mb: Math.round(total / 1048576),
+    savedAt: Date.now(),
+    /* 没进缓存的图层名：刷新后会缺这几层，必须在恢复条上说清楚 */
+    missing: fails.map(function (e) { return (e.name || '图层').slice(0, 22); })
+  };
   if (fails.length) {
-    cacheErr = '部分图层未写入：' + fails.map(function (e) { return (e.name || '图层').slice(0, 16) + '（' + e.err.slice(0, 60) + '）'; }).join('、');
+    cacheErr = fails.map(function (e) { return (e.name || '图层').slice(0, 16) + '（' + (e.err || '').slice(0, 60) + '）'; }).join('、');
     /* 附带配额诊断，定位是浏览器存储上限还是其他原因 */
     try {
       if (navigator.storage && navigator.storage.estimate) {
@@ -1055,6 +1547,60 @@ function idbDelCache() {
    图层删空时清掉缓存，避免下次恢复出已删除的图层 */
 var _cacheChain = Promise.resolve();   /* 串行化缓存写入，避免并发 put 交错 */
 var _rscTimer = null;
+/* 图层界面设置的序列化/还原：勾选、注记、名称字段、符号化。
+   写缓存和恢复缓存都走这两个函数，避免两边字段对不上。 */
+function layerUi(L) {
+  return {
+    vis: !!L.visible, label: !!L.labelOn,
+    nameField: L.nameField || null, nameCol: L.nameCol || null,
+    styleMode: L.styleMode || null, singleColor: L.singleColor || null,
+    colorField: L.colorField || null, colorMap: L.colorMap || null,
+    strokeColor: L.strokeColor || null, lineWidth: L.lineWidth || null
+  };
+}
+function applyLayerUi(L, ui) {
+  if (!ui) return;
+  if (ui.vis !== undefined) L.visible = !!ui.vis;
+  L.labelOn = !!ui.label;
+  if (ui.nameField) L.nameField = ui.nameField;
+  if (ui.nameCol && L.kind === 'site' && ui.nameCol !== L.nameCol) {
+    L.nameCol = ui.nameCol;
+    if (typeof buildNameIndex === 'function') buildNameIndex(L);
+  }
+  L.styleMode = ui.styleMode || null;
+  L.singleColor = ui.singleColor || null;
+  L.colorField = ui.colorField || null;
+  L.colorMap = ui.colorMap || null;
+  L.strokeColor = ui.strokeColor || null;
+  L.lineWidth = ui.lineWidth || null;
+  if (L.kind === 'site' && typeof buildSiteColors === 'function') buildSiteColors(L);
+}
+
+/* 只更新缓存清单里的界面设置（勾选 / 注记开关 / 名称字段），不重写数据。
+   改一个字段就重写整份数据缓存是不可接受的，manifest 只有几十 KB。
+   用图层名做校验：图层增删会导致下标错位，对不上就跳过，宁可不写也别写错层。 */
+var _uiTimer = null;
+function scheduleCacheUi() {
+  if (_uiTimer) clearTimeout(_uiTimer);
+  _uiTimer = setTimeout(updateCacheUi, 600);
+}
+async function updateCacheUi() {
+  _uiTimer = null;
+  try {
+    var man = await idbGuard(idbGet('manifest', IDB_CACHE), 20000, '读取缓存清单');
+    if (!man || !man.layers || !man.layers.length) return;
+    var changed = false;
+    for (var i = 0; i < man.layers.length && i < layers.length; i++) {
+      var e = man.layers[i], L = layers[i];
+      if (!e || !e.ok || !L) continue;
+      if (e.name !== L.name) continue;
+      e.ui = layerUi(L);
+      changed = true;
+    }
+    if (changed) await idbGuard(idbSet('manifest', man, IDB_CACHE), 30000, '更新缓存清单');
+  } catch (e) { }
+}
+
 function refreshSessionCacheNow() {
   _cacheChain = _cacheChain.then(function () { return doPutCache(); }).catch(function (e) {
     cacheErr = (e && e.message) ? e.message : '写入失败';
@@ -1349,12 +1895,22 @@ async function restoreFromCache(cache) {
   if (cache && cache.ver === 3 && cache.manifest) {
     var man = cache.manifest;
     var okLs = man.layers.filter(function (e) { return e.ok; });
-    cacheInfo = { count: okLs.length, mb: man.layers.reduce(function (s, e) { return s + (e.mb || 0); }, 0) };
+    var missLs = man.layers.filter(function (e) { return !e.ok; });
+    cacheInfo = {
+      count: okLs.length,
+      mb: man.layers.reduce(function (s, e) { return s + (e.mb || 0); }, 0),
+      savedAt: man.savedAt || 0,
+      /* 上次没写进缓存的图层：刷新后它们不会出现，必须让用户知道是哪几层 */
+      missing: missLs.map(function (e) { return (e.name || '图层').slice(0, 22); })
+    };
     rflog('restoreFromCache v3 n=' + man.layers.length);
     return withVsSuspend((async function () {
       var restoredNames = [], failed = [];
       for (var i = 0; i < man.layers.length; i++) {
         var e = man.layers[i];
+        /* 大缓存恢复要几十秒：给个居中进度条，否则页面像卡死了 */
+        busyPct(i / Math.max(1, man.layers.length),
+          '正在恢复 ' + (i + 1) + ' / ' + man.layers.length + ' 个图层：' + (e.name || ''));
         await yieldFrame();
         if (!e.ok) { failed.push((e.name || '图层').slice(0, 16)); continue; }
         try {
@@ -1396,6 +1952,7 @@ async function restoreFromCache(cache) {
                 ok: true,
                 bbox: (vminX <= vmaxX) ? [vminX, vminY, vmaxX, vmaxY] : null
               };
+              applyLayerUi(vL, e.ui);   /* 恢复勾选/注记/名称字段/样式（老缓存没 ui 就走默认） */
               layers.push(vL);
               if (!selected) selectLayer(vL);
               restoredNames.push((e.name || '边界').slice(0, 16) + '（' + vdata.length.toLocaleString() + ' 个多边形）');
@@ -1447,6 +2004,8 @@ async function restoreFromCache(cache) {
             ds.stype = ds.stypeIdx >= 0 ? ds.columnText(sn) : null;
           }
           var L = makeLayer(ds, meta.kind, true);   /* 跳过同步城市索引，走 Worker */
+          /* 恢复上次的勾选 / 注记开关 / 手工指定的名称列（makeLayer 会重新自动识别，这里覆盖回去） */
+          applyLayerUi(L, e.ui);
           layers.push(L);
           if (!selected) selectLayer(L);
           if (L.ok) {
@@ -1492,7 +2051,8 @@ async function restoreFromCache(cache) {
     rflog('restoreFromCache v1 replay n=' + oldFiles.length);
     cacheInfo = {
       count: oldFiles.length,
-      mb: Math.round(cache.files.reduce(function (s, f) { return s + (f.blob && f.blob.size || 0); }, 0) / 1048576)
+      mb: Math.round(cache.files.reduce(function (s, f) { return s + (f.blob && f.blob.size || 0); }, 0) / 1048576),
+      savedAt: cache.savedAt || 0
     };
     return withVsSuspend(loadFiles(oldFiles).then(function () {
       /* 旧版缓存的文件引用可能已失效（源文件被移动/临时副本被清理 → Blob 读出 0 字节），
@@ -1510,7 +2070,7 @@ async function restoreFromCache(cache) {
     });
   }
   if (!cache || !cache.layers || !cache.layers.length) return Promise.reject(new Error('缓存为空'));
-  cacheInfo = { count: cache.layers.length, mb: Math.round((cache.bytes || 0) / 1048576) };
+  cacheInfo = { count: cache.layers.length, mb: Math.round((cache.bytes || 0) / 1048576), savedAt: cache.savedAt || 0 };
   rflog('restoreFromCache start n=' + cache.layers.length);
   return withVsSuspend((async function () {
     for (var i = 0; i < cache.layers.length; i++) {
@@ -1594,12 +2154,26 @@ async function initSourceRestore() {
     restorePhase = 'restoring';
     updateRestoreBar();
     await yieldFrame();
+    /* 大缓存恢复要读几百 MB，几十秒都有可能：给居中进度条，不然看着像卡死 */
+    busy('正在恢复上次数据…');
+    busyPct(0, '正在读取缓存清单…');
+    await yieldFrame();
     await restoreFromCache(cache);   /* 内部嵌套挂起 */
+    busyOff();
     _vsSuspend--;
     restorePhase = '';
     updateRestoreBar();
     saveViewState(true);
+    /* 缓存是快照，源文件可能在别处被覆盖过。超过 12 小时就明说一次，
+       否则容易拿前一天的数据出报表还以为是最新的 */
+    if (cacheInfo && cacheInfo.savedAt && (Date.now() - cacheInfo.savedAt) > 12 * 3600000) {
+      var _agoTxt = fmtAgo(cacheInfo.savedAt);
+      setTimeout(function () {
+        showErr('当前显示的是' + _agoTxt + '写入的缓存数据。源文件若已更新，点左侧「恢复数据」重读。');
+      }, 600);
+    }
   } catch (e) {
+    busyOff();
     _vsSuspend--;
     restorePhase = '';
     var msg = e && e.message ? e.message : String(e);
@@ -1940,6 +2514,8 @@ function applySelection() {
   var test = makeSelTest(sel);
   if (!test) { STATE.selStats = null; updateToolPanel(); return; }
   var counts = [0, 0, 0, 0, 0, 0, 0], total = 0, rsum = 0, rn = 0, ssum = 0, sn = 0;
+  /* 均值加权口径（与场景统计 stCompute 一致）：有 MRCnt 列则按采样数加权，否则退回栅格算术平均 */
+  var rsumW = 0, rw = 0, ssumW = 0, sw = 0;
   var poor = 0;   /* 质差栅格数：5G 栅格105覆盖率<80% 或平均SINR<-3；4G 栅格110覆盖率<80% */
   var mrcnt = 0, mrpass = 0, weakRat = null;   /* 弱覆盖：达标采样数 / 总采样数 */
   var mrByRat = { '4G': [0, 0], '5G': [0, 0] };   /* 按制式分开：门限不同不能混算 */
@@ -1960,8 +2536,24 @@ function applySelection() {
         if (!test(L.mx[i], L.my[i])) continue;
         counts[bi]++;
         total++;
-        if (rsrp) { var r = rsrp[i]; if (isFinite(r)) { rsum += r; rn++; } }
-        if (sinr) { var s = sinr[i]; if (isFinite(s)) { ssum += s; sn++; } }
+        if (rsrp) {
+          var r = rsrp[i];
+          if (isFinite(r)) {
+            if (cntAll) {
+              var _rw2 = cntAll[i];
+              if (isFinite(_rw2) && _rw2 > 0) { rsumW += r * _rw2; rw += _rw2; }
+            } else { rsum += r; rn++; }
+          }
+        }
+        if (sinr) {
+          var s = sinr[i];
+          if (isFinite(s)) {
+            if (cntAll) {
+              var _sw3 = cntAll[i];
+              if (isFinite(_sw3) && _sw3 > 0) { ssumW += s * _sw3; sw += _sw3; }
+            } else { ssum += s; sn++; }
+          }
+        }
         if (cntAll && cntThr) {
           var a = cntAll[i], t = cntThr[i];
           if (isFinite(a) && isFinite(t)) { mrcnt += a; mrpass += t; var _rb = mrByRat[L.rat === '5G' ? '5G' : '4G']; _rb[0] += a; _rb[1] += t; }
@@ -1995,8 +2587,9 @@ function applySelection() {
   STATE.lastResult = 'select';
   STATE.selStats = {
     counts: counts, total: total, poor: poor, bandMode: selMode,
-    rsrpMean: rn ? rsum / rn : null,
-    sinrMean: sn ? ssum / sn : null,
+    rsrpMean: rw > 0 ? rsumW / rw : (rn ? rsum / rn : null),
+    sinrMean: sw > 0 ? ssumW / sw : (sn ? ssum / sn : null),
+    meanWeighted: rw > 0 || sw > 0,
     /* 采样点口径：总数 = Σ MRCnt，弱覆盖 = 总数 − 达标数（MRCnt_105/110） */
     sampTotal: mrcnt > 0 ? mrcnt : null,
     sampWeak: mrcnt > 0 ? Math.max(0, mrcnt - mrpass) : null,
@@ -2115,11 +2708,12 @@ function statTableHtml() {
     h += '<tr><td class="k" title="低于弱覆盖门限（' + (s.rat === '5G' ? 'RSRP≥-105' : 'RSRP≥-110') +
       ' dBm 不达标）的采样点">弱覆盖采样点数</td><td class="num">' + s.sampWeak.toLocaleString() + '</td></tr>';
   }
+  var _mwTip = s.meanWeighted ? '按采样数(MRCnt)加权，与覆盖率同口径' : '栅格算术平均（未找到采样数列）';
   if (s.rsrpMean !== null) {
-    h += '<tr><td class="k">RSRP 均值</td><td class="num">' + s.rsrpMean.toFixed(2) + ' dBm</td></tr>';
+    h += '<tr><td class="k" title="' + _mwTip + '">RSRP 均值</td><td class="num">' + s.rsrpMean.toFixed(2) + ' dBm</td></tr>';
   }
   if (s.sinrMean !== null) {
-    h += '<tr><td class="k">SINR 均值</td><td class="num">' + s.sinrMean.toFixed(2) + ' dB</td></tr>';
+    h += '<tr><td class="k" title="' + _mwTip + '">SINR 均值</td><td class="num">' + s.sinrMean.toFixed(2) + ' dB</td></tr>';
   }
   if (s.weakByRat && s.weakByRat['4G'] && s.weakByRat['5G']) {
     var wl4 = weakLabel(s.weakByRat['4G'], '4G');
@@ -2885,6 +3479,15 @@ function busySet(p, rows) {
     ' 行 · ' + (p * 100).toFixed(0) + '%';
 }
 function busyOff() { document.getElementById('busy').classList.add('hide'); }
+/* 通用进度：只改百分比和说明文字（缓存恢复等非"解析行数"的场景用） */
+function busyPct(p, text) {
+  var bar = document.getElementById('busyBar');
+  if (bar) bar.style.width = Math.max(0, Math.min(1, p)) * 100 + '%';
+  if (text != null) {
+    var s = document.getElementById('busyS');
+    if (s) s.textContent = text;
+  }
+}
 function busyPhase(t) { document.getElementById('busyT').textContent = t; }
 /* 让出主线程，保证进度文字先画出来再干重活（rAF 保证已绘制，300ms 兜底防后台标签页 rAF 不触发） */
 function yieldFrame() {
@@ -3266,7 +3869,7 @@ function bindUI() {
                 if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
                 var _pprops = _pg.props || {};
                 /* 优先用 name/NAME 字段，否则用匹配到的值 */
-                var _sn = getSceneName(_pprops);
+                var _sn = getSceneName(_pprops, vL);
                 if (!_sn) {
                   /* 找第一个像名称的字段（非纯数字、非ID） */
                   for (var _sk in _pprops) {
@@ -3355,7 +3958,7 @@ function bindUI() {
           var _sb = _spg._bbox;
           if (_sb) {
             var _cx = (_sb[0] + _sb[2]) / 2, _cy = (_sb[1] + _sb[3]) / 2;
-            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = getSceneName(_sp) || String(_sres[0].name || '');
+            STATE.hlPoly = { L: _sL, pg: _spg }; var _sp = _spg.props || {}; STATE.sceneName = getSceneName(_sp, _sL) || String(_sres[0].name || '');
             if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
             try { map.getView().animate({ center: [_cx, _cy], zoom: 14, duration: 400 }); } catch (e) {}
             scheduleDraw();
@@ -3537,7 +4140,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1021x';
+    var workerUrl = 'worker.js?v=1105h';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -3581,14 +4184,18 @@ function workerCall(type, payload, transfer) {
 
 function boot() {
   initMap();
+  bindLabelMapEvents();   /* 注记跟着地图平移/缩放刷新，必须在 initMap 之后 */
   bindUI();
   initTopbarPopMutex();
   bindRatToggle();
   bindBandToggle();
   bindLabelToggle();
   initStatsPanel();
+  initFieldPop();
+  bindFoldAll();
   bindPopupResize('popup');
   bindPopupResize('tkPop');
+  bindPopupResize('fieldPop');
   getSiteWorker();   /* 预热 Worker */
   initTheme();
   initResponsive();
@@ -3676,6 +4283,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 /* ========== 场景指标统计（统计面板：选图层 → 搜场景查询/清除 → 导出） ========== */
 var ST = { layerId: -1, selScene: -1, busy: false };
+var LAST_STAT = null;   /* 最近一次统计的逐场景结果 { L, rows:[{idx,cov,poor,total}] }，供排行榜用 */
 
 function stVectorLayerIdxs() {
   var out = [];
@@ -3712,19 +4320,51 @@ function stRangeStr(bb) {
   return a[0].toFixed(4) + ',' + a[1].toFixed(4) + ' ~ ' + b[0].toFixed(4) + ',' + b[1].toFixed(4);
 }
 
-function stPolyAreaKm2(ring) {
-  if (!ring || ring.length < 3) return 0;
-  var R = 6371000, area = 0, prev = null;
-  for (var i = 0; i <= ring.length; i++) {
-    var p = ring[i % ring.length];
-    var ll = mercToLonLat(p[0], p[1]);
-    if (prev) {
-      var dLon = (ll[0] - prev[0]) * Math.PI / 180;
-      area += dLon * (Math.sin(prev[1] * Math.PI / 180) + Math.sin(ll[1] * Math.PI / 180)) / 2;
-    }
-    prev = ll;
+/* 单个点在环内（射线法），stPolyAreaKm2 判断环的嵌套层级用 */
+function stPointInRing(x, y, ring) {
+  var ins = false;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins;
   }
-  return Math.abs(area) * R * R / 1e6;
+  return ins;
+}
+
+/* 球面多边形面积（km²）。参数可以是单环（点数组）或多环数组。
+   多部件（MultiPolygon）的各部件累加，不再只算第一块；
+   洞按 even-odd 判嵌套层级扣减，不依赖环的绕向——数据方向不规范也不会把洞加成实心。 */
+function stPolyAreaKm2(rings) {
+  if (!rings || !rings.length) return 0;
+  /* 传进来的是单个环（[[x,y],...]）时包一层，兼容旧调用 */
+  if (typeof rings[0][0] === 'number') rings = [rings];
+  var R = 6371000, parts = [];
+  for (var ri = 0; ri < rings.length; ri++) {
+    var ring = rings[ri];
+    if (!ring || ring.length < 3) { parts.push(0); continue; }
+    var prev = null, a2 = 0;
+    for (var i = 0; i <= ring.length; i++) {
+      var p = ring[i % ring.length];
+      var ll = mercToLonLat(p[0], p[1]);
+      if (prev) {
+        var dLon = (ll[0] - prev[0]) * Math.PI / 180;
+        a2 += dLon * (Math.sin(prev[1] * Math.PI / 180) + Math.sin(ll[1] * Math.PI / 180)) / 2;
+      }
+      prev = ll;
+    }
+    parts.push(Math.abs(a2));
+  }
+  var total = 0;
+  for (var k = 0; k < rings.length; k++) {
+    if (!parts[k]) continue;
+    var pt = rings[k][0];
+    var depth = 0;
+    for (var j = 0; j < rings.length; j++) {
+      if (j === k || !parts[j]) continue;
+      if (stPointInRing(pt[0], pt[1], rings[j])) depth++;
+    }
+    total += (depth % 2 === 0) ? parts[k] : -parts[k];
+  }
+  return Math.abs(total) * R * R / 1e6;
 }
 
 /* 跨全部环 even-odd：多部件场景每个外环都算、带洞场景洞内不算（与地图拾取 ptInPoly 同口径） */
@@ -3800,11 +4440,29 @@ function stShowStatus(html) {
 
 function stInfoMsg() { /* 状态提示改走 stShowStatus（顶栏模块内） */ }
 
+/* 这次统计会用到哪些栅格图层（勾选 + 制式匹配），给用户一个明确的"统计范围" */
+function stGridScopeNames() {
+  var ratWant = stRatWant();
+  var out = [];
+  for (var i = 0; i < layers.length; i++) {
+    var g = layers[i];
+    if (!g.ok || g.kind !== 'grid' || !g.visible || !g.ds) continue;
+    if ((ratWant === '4G' || ratWant === '5G') && g.rat !== ratWant) continue;
+    out.push(shortName(g.name));
+  }
+  return out;
+}
+
 function stRefreshLayers() {
   var pop = document.getElementById('stLayerPop');
   if (!pop) return;
   var idxs = stVectorLayerIdxs();
   pop.innerHTML = '<div class="dsel-h">统计图层（边界图层）</div>';
+  /* 统计范围先摆出来：漏勾一个运营商或制式筛错了，这里一眼能看出来 */
+  var _scope = stGridScopeNames();
+  pop.innerHTML += '<div class="st-scope">' + (_scope.length
+    ? '将统计栅格：' + _scope.join('、')
+    : '未勾选栅格图层（只导出场景信息）') + '</div>';
   if (!idxs.length) {
     pop.innerHTML += '<div class="st-empty" style="padding:8px 10px">未加载边界图层</div>';
     ST.layerId = -1;
@@ -3822,7 +4480,7 @@ function stRefreshLayers() {
     nm.title = L.name;
     var ct = document.createElement('span');
     ct.className = 'st-ct';
-    ct.textContent = L.polygons.length + ' 个场景';
+    ct.textContent = L.polygons.length + ' 个场景' + (L.visible ? '' : ' · 未显示');
     b.appendChild(nm);
     b.appendChild(ct);
     if (li === ST.layerId) b.classList.add('on');
@@ -3848,7 +4506,7 @@ function stFindScenes(kw) {
   var out = [];
   for (var i = 0; i < L.polygons.length; i++) {
     if (_cm && !_cm(L.polygons[i].props || {})) continue;
-    var nm = getSceneName(L.polygons[i].props || {}) || '';
+    var nm = getSceneName(L.polygons[i].props || {}, L) || '';
     if (!kw || nm.toLowerCase().indexOf(kw) >= 0) out.push(i);
   }
   return out;
@@ -3878,7 +4536,7 @@ function stDoQuery() {
     var pg = L.polygons[hits[i]];
     html += '<div class="st-item" data-i="' + hits[i] + '"><span class="st-city">'
       + esc(stCityName(pg.props || {})) + '</span>'
-      + esc(getSceneName(pg.props || {}) || ('场景 ' + (hits[i] + 1))) + '</div>';
+      + esc(getSceneName(pg.props || {}, L) || ('场景 ' + (hits[i] + 1))) + '</div>';
   }
   if (hits.length > MAX) html += '<div class="st-empty">共 ' + hits.length + ' 个匹配，仅显示前 ' + MAX + ' 个，请输入更完整的名称</div>';
   list.innerHTML = html;
@@ -3903,7 +4561,7 @@ function stSelectScene(si) {
   }
   ST.selScene = si;
   STATE.hlPoly = { L: L, pg: pg };
-  STATE.sceneName = getSceneName(pg.props || {}) || ('场景 ' + (si + 1));
+  STATE.sceneName = getSceneName(pg.props || {}, L) || ('场景 ' + (si + 1));
   var bb = pg._bbox || polyBBoxMerc(pg);
   if (bb) {
     /* 按场景实际大小贴合缩放（固定 14 级对小场景太远）：外扩 18% + 60 米边距，最大 16.5 级 */
@@ -3969,10 +4627,17 @@ function stSheetName(g) {
   return nm.replace(/\.(csv|txt|tsv|xlsx|xls)$/i, '') || (g.rat || '栅格');
 }
 
+/* 均值：优先采样加权（权重为该行 MRCnt），无权重时退回栅格算术平均，都没有则留空 */
+function stMean(sumW, wSum, sum, n) {
+  if (wSum > 0) return Math.round(sumW / wSum * 100) / 100;
+  if (n > 0) return Math.round(sum / n * 100) / 100;
+  return '';
+}
+
 function stCompute(sceneIdxs, done) {
   var _stGen = ST.gen || 0;
   var L = layers[ST.layerId];
-  if (L && !L.visible) L = null;   /* 边界图层未勾选：不参与统计 */
+  /* 边界图层的显隐与统计无关：多边形隐藏了，照样统计它围住的栅格 */
   var ratWant = stRatWant();
   var grids = [];
   for (var gi = 0; gi < layers.length; gi++) {
@@ -3994,7 +4659,7 @@ function stCompute(sceneIdxs, done) {
     }
     if (!pg._ringsMerc || !pg._ringsMerc.length) continue;
     var bb = pg._bbox || polyBBoxMerc(pg);
-    scenes.push({ idx: sceneIdxs[si], pg: pg, rings: pg._ringsMerc, bb: bb });
+    scenes.push({ idx: sceneIdxs[si], pg: pg, L: L, rings: pg._ringsMerc, bb: bb });
   }
   if (!scenes.length) { done(null, '所选场景无有效边界'); return; }
   /* 没有勾选任何栅格图层：不算指标，只返回场景自身信息（地市/名称/范围/面积） */
@@ -4002,10 +4667,11 @@ function stCompute(sceneIdxs, done) {
     var infoRows = scenes.map(function (sc) {
       var props = sc.pg.props || {};
       return [
+        sc.idx + 1,
         stCityName(props),
-        getSceneName(props) || ('场景 ' + (sc.idx + 1)),
+        getSceneName(props, sc.L) || ('场景 ' + (sc.idx + 1)),
         stRangeStr(sc.bb),
-        Math.round(stPolyAreaKm2(sc.rings && sc.rings[0]) * 100) / 100
+        Math.round(stPolyAreaKm2(sc.rings) * 100) / 100
       ];
     });
     done({ info: infoRows }, null);
@@ -4029,10 +4695,15 @@ function stCompute(sceneIdxs, done) {
     }
   });
 
-  function newAcc() { return { total: 0, poor: 0, rsum: 0, rn: 0, ssum: 0, sn: 0, mrcnt: 0, mrpass: 0 }; }
+  /* 均值口径：有采样数列(MRCnt)的图层按采样数加权，没有则退化为栅格算术平均。
+     MR 栅格每行的 RSRP 已是该栅格内的采样平均，再对栅格做算术平均是「平均的平均」，
+     结果会随栅格粒度漂移；加权口径与覆盖率一致，两个指标能互相印证 */
+  function newAcc() { return { total: 0, poor: 0, rsum: 0, rn: 0, rsumW: 0, rw: 0, ssum: 0, sn: 0, ssumW: 0, sw: 0, mrcnt: 0, mrpass: 0 }; }
   /* 按栅格图层分别累计：多个运营商/制式的栅格不再汇总到一起，导出时一层一个 sheet */
   var acc = grids.map(function () { return scenes.map(newAcc); });
-  var work = grids.map(function (g, gi2) { return { g: g, gi: gi2, i: 0, n: g.mx.length }; });
+  var work = grids.map(function (g, gi2) {
+    return { g: g, gi: gi2, i: 0, n: g.mx.length, useW: !!g.ds.num[g.cntCol], drop: 0 };
+  });
   var totalPts = 0;
   work.forEach(function (w) { totalPts += w.n; });
   var wi = 0;
@@ -4056,14 +4727,35 @@ function stCompute(sceneIdxs, done) {
           var sc = scenes[cand[ci]];
           if (x < sc.bb[0] || x > sc.bb[2] || y < sc.bb[1] || y > sc.bb[3]) continue;
           if (!stInRing(x, y, sc.rings)) continue;
+          /* 只有带有效指标值的点才算一个栅格：与地图框选统计（只遍历有档位的点）同口径。
+             否则两个入口的「栅格点数」对不上，差的是有坐标但缺 RSRP/SINR/MRCnt 的行 */
           var a = accR[cand[ci]];
-          a.total++;
-          if (rsrp) { var r = rsrp[w.i]; if (isFinite(r)) { a.rsum += r; a.rn++; } }
-          if (sinr) { var s2 = sinr[w.i]; if (isFinite(s2)) { a.ssum += s2; a.sn++; } }
+          var _has = false;
+          if (rsrp) {
+            var r = rsrp[w.i];
+            if (isFinite(r)) {
+              _has = true;
+              if (w.useW) {
+                var _rw = cntAll[w.i];
+                if (isFinite(_rw) && _rw > 0) { a.rsumW += r * _rw; a.rw += _rw; }
+              } else { a.rsum += r; a.rn++; }
+            }
+          }
+          if (sinr) {
+            var s2 = sinr[w.i];
+            if (isFinite(s2)) {
+              _has = true;
+              if (w.useW) {
+                var _sw = cntAll[w.i];
+                if (isFinite(_sw) && _sw > 0) { a.ssumW += s2 * _sw; a.sw += _sw; }
+              } else { a.ssum += s2; a.sn++; }
+            }
+          }
           if (cntAll && cntThr) {
             var av = cntAll[w.i], tv = cntThr[w.i];
-            if (isFinite(av) && isFinite(tv)) { a.mrcnt += av; a.mrpass += tv; }
+            if (isFinite(av) && isFinite(tv)) { _has = true; a.mrcnt += av; a.mrpass += tv; }
           }
+          if (_has) a.total++; else w.drop++;
           var _poor2 = false;
           if (cntAll && cntThr) {
             var _av2 = cntAll[w.i], _tv2 = cntThr[w.i];
@@ -4081,7 +4773,7 @@ function stCompute(sceneIdxs, done) {
     }
     var donePts = 0;
     for (var _wi = 0; _wi < work.length; _wi++) donePts += (_wi < wi ? work[_wi].n : (_wi === wi ? work[_wi].i : 0));
-    stShowStatus('计算中… ' + Math.min(99, Math.round(donePts / Math.max(1, totalPts) * 100)) + '%');
+    stShowStatus('统计 ' + scenes.length + ' 个场景… ' + Math.min(99, Math.round(donePts / Math.max(1, totalPts) * 100)) + '%');
     if (wi < work.length) { setTimeout(step, 0); return; }
     function rowsFor(gi) {
       var rows = [];
@@ -4090,27 +4782,77 @@ function stCompute(sceneIdxs, done) {
         var props = sc.pg.props || {};
         var cov = a.mrcnt > 0 ? (a.mrpass / a.mrcnt * 100) : null;
         rows.push([
+          sc.idx + 1,
           stCityName(props),
-          getSceneName(props) || ('场景 ' + (sc.idx + 1)),
+          getSceneName(props, sc.L) || ('场景 ' + (sc.idx + 1)),
           stRangeStr(sc.bb),
-          Math.round(stPolyAreaKm2(sc.rings && sc.rings[0]) * 100) / 100,
+          Math.round(stPolyAreaKm2(sc.rings) * 100) / 100,
           a.total,
           a.poor,
           a.mrcnt > 0 ? a.mrcnt : 0,
           a.mrcnt > 0 ? Math.max(0, a.mrcnt - a.mrpass) : 0,
-          a.rn ? Math.round(a.rsum / a.rn * 100) / 100 : '',
-          a.sn ? Math.round(a.ssum / a.sn * 100) / 100 : '',
+          stMean(a.rsumW, a.rw, a.rsum, a.rn),
+          stMean(a.ssumW, a.sw, a.ssum, a.sn),
           cov == null ? '' : Math.round(cov * 100) / 100
         ]);
       }
       return rows;
     }
     var out = { sheets: grids.map(function (g, gi3) {
-      return { name: stSheetName(g), rat: (g.rat === '5G' ? '5G' : '4G'), rows: rowsFor(gi3) };
+      return { name: stSheetName(g), rat: (g.rat === '5G' ? '5G' : '4G'), useW: work[gi3].useW, rows: rowsFor(gi3) };
     }) };
+    /* 第一个栅格图层的逐场景结果，供「标到地图上」用（多图层时以首个为准，避免叠加） */
+    if (grids.length) {
+      out.stat = scenes.map(function (sc2, si2) {
+        var a2 = acc[0][si2];
+        return {
+          idx: sc2.idx,
+          cov: a2.mrcnt > 0 ? (a2.mrpass / a2.mrcnt * 100) : null,
+          poor: a2.poor,
+          total: a2.total
+        };
+      });
+    }
+    /* 落在场景内但没有任何有效指标值的行：不计入栅格点数，但要让用户知道丢了多少 */
+    var _dropN = 0, _dropLayer = '';
+    for (var _wi2 = 0; _wi2 < work.length; _wi2++) {
+      if (work[_wi2].drop > 0) { _dropN += work[_wi2].drop; _dropLayer = work[_wi2].g.name; }
+    }
+    if (_dropN > 0) out.dropped = { n: _dropN, layer: _dropLayer };
     done(out, null);
   }
   setTimeout(step, 0);
+}
+
+/* 质差场景排行：统计完直接把最差的列出来，点一行定位到地图。
+   原来导出完只弹一句"已导出 N 个场景"，还要自己打开 Excel 排序找问题场景。 */
+function showStatRanking(L, stat, note) {
+  var list = document.getElementById('stList');
+  if (!list || !stat || !stat.length) return;
+  var rows = stat.filter(function (s) { return s.cov != null && isFinite(s.cov); });
+  if (!rows.length) return;
+  rows.sort(function (a, b) { return a.cov - b.cov; });
+  var n = Math.min(rows.length, 30);
+  var html = '<div class="dsel-h">' + esc(note || '质差场景（覆盖率升序）') + '</div>';
+  for (var i = 0; i < n; i++) {
+    var s = rows[i];
+    var pg = L.polygons[s.idx];
+    var nm = getSceneName((pg && pg.props) || {}, L) || ('场景 ' + (s.idx + 1));
+    var cls = s.cov >= 95 ? 'g' : (s.cov >= 90 ? 'y' : (s.cov >= 80 ? 'o' : 'r'));
+    html += '<button type="button" class="st-rank" data-idx="' + s.idx + '" title="点击定位到该场景">' +
+      '<span class="rk">' + (i + 1) + '</span>' +
+      '<span class="rn">' + esc(nm) + '</span>' +
+      '<span class="rc ' + cls + '">' + s.cov.toFixed(1) + '%</span></button>';
+  }
+  list.innerHTML = html;
+  list.style.display = '';
+  Array.prototype.forEach.call(list.querySelectorAll('.st-rank'), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      stSelectScene(parseInt(b.getAttribute('data-idx'), 10));
+      list.style.display = 'none';
+    };
+  });
 }
 
 function stExport(all) {
@@ -4143,26 +4885,41 @@ function stExport(all) {
     ST.busy = false;
     if (bq) bq.disabled = false; if (bc) bc.disabled = false; if (be) be.disabled = false;
     if (err || !res) { showErr(err || '统计失败'); stInfoMsg(); return; }
+    /* 统计结果挂到多边形上：地图标注和质差榜单都读这里，不必重算 */
+    if (res.stat && L && L.polygons) {
+      for (var si3 = 0; si3 < res.stat.length; si3++) {
+        var pgS = L.polygons[res.stat[si3].idx];
+        if (pgS) pgS._stat = res.stat[si3];
+      }
+      LAST_STAT = { L: L, rows: res.stat.slice() };
+      if (STATE.statLabel) scheduleLabels();
+    }
     if (res.info) {
       /* 未勾选栅格：只导出场景自身信息 */
-      var IH = ['地市名', '区域场景名称', '范围', '面积(km²)'];
+      var IH = ['序号', '地市名', '区域场景名称', '范围', '面积(km²)'];
       var baseI = (L.name || '场景统计').replace(/[\\/:*?"<>|]/g, '_');
       if (all && cityFilter && cityFilter !== '*') baseI += '_' + (CITY_NAMES[cityFilter] || cityFilter);
       try {
         if (res.info.length <= 1000000 && typeof XLSX !== 'undefined') {
           var wbI = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wbI, XLSX.utils.aoa_to_sheet([IH].concat(res.info)), '场景信息');
-          XLSX.writeFile(wbI, baseI + '_场景信息.xlsx');
+          XLSX.writeFile(wbI, stampDate() + '_' + baseI + '_场景信息.xlsx');
         } else {
-          stDownloadCsv(baseI + '_场景信息.csv', IH, res.info);
+          stDownloadCsv(stampDate() + '_' + baseI + '_场景信息.csv', IH, res.info);
         }
         stShowStatus('已导出 ' + res.info.length + ' 个场景（仅场景信息，未勾选栅格图层）');
         setTimeout(function () { var l2 = document.getElementById('stList'); if (l2) l2.style.display = 'none'; }, 2500);
       } catch (eI) { showErr('导出失败：' + eI.message); stInfoMsg(); }
       return;
     }
-    var H4 = ['地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数', '栅格采样点数', '弱覆盖采样点数', 'RSRP均值(dBm)', 'SINR均值(dB)', '覆盖率≥-110dBm(%)'];
-    var H5 = H4.slice(); H5[10] = '覆盖率≥-105dBm(%)';
+    /* 表头按层动态生成：均值列标注实际口径（采样加权 / 栅格平均），覆盖率按制式标门限 */
+    function stHeader(rat, useW) {
+      var w = useW ? '采样加权' : '栅格平均';
+      return ['序号', '地市名', '区域场景名称', '范围', '面积(km²)', '栅格点数', '质差栅格数',
+              '栅格采样点数', '弱覆盖采样点数',
+              'RSRP均值(' + w + ',dBm)', 'SINR均值(' + w + ',dB)',
+              rat === '5G' ? '覆盖率≥-105dBm(%)' : '覆盖率≥-110dBm(%)'];
+    }
     var sheets = (res.sheets || []).filter(function (sh) { return sh.rows && sh.rows.length; });
     if (!sheets.length) { showErr('没有可导出的数据'); stInfoMsg(); return; }
     var total = sheets[0].rows.length;
@@ -4180,21 +4937,37 @@ function stExport(all) {
       if (total <= 1000000 && typeof XLSX !== 'undefined') {
         var wb = XLSX.utils.book_new();
         sheets.forEach(function (sh) {
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([(sh.rat === '5G' ? H5 : H4)].concat(sh.rows)), sh._sheet);
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([stHeader(sh.rat, sh.useW)].concat(sh.rows)), sh._sheet);
         });
-        XLSX.writeFile(wb, base + '_场景指标.xlsx');
+        XLSX.writeFile(wb, stampDate() + '_' + base + '_场景指标.xlsx');
       } else {
         sheets.forEach(function (sh, ri) {
-          setTimeout(function () { stDownloadCsv(base + '_' + sh._sheet + '.csv', sh.rat === '5G' ? H5 : H4, sh.rows); }, ri * 400);
+          setTimeout(function () { stDownloadCsv(stampDate() + '_' + base + '_' + sh._sheet + '.csv', stHeader(sh.rat, sh.useW), sh.rows); }, ri * 400);
         });
       }
-      stShowStatus('已导出 ' + total + ' 个场景（' + sheets.length + ' 个图层）');
-      setTimeout(function () { var l = document.getElementById('stList'); if (l) l.style.display = 'none'; }, 2500);
+      var _dropTip = res.dropped
+        ? '；另有 ' + res.dropped.n.toLocaleString() + ' 个栅格无有效指标（RSRP/SINR/采样数全空），未计入栅格点数'
+        : '';
+      /* 有覆盖率结果时顺势给出质差排行（点一行定位）；没有就只报导出结果 */
+      if (res.stat && res.stat.length) {
+        showStatRanking(L, res.stat, '已导出 ' + total + ' 个场景 · 按覆盖率排序');
+      } else {
+        stShowStatus('已导出 ' + total + ' 个场景（' + sheets.length + ' 个图层）' + _dropTip);
+        setTimeout(function () { var l = document.getElementById('stList'); if (l) l.style.display = 'none'; }, 2500);
+      }
     } catch (e) {
       showErr('导出失败：' + e.message);
       stInfoMsg();
     }
   });
+}
+
+/* 导出文件名用的日期戳（YYYYMMDD）：同一天多次导出由浏览器自动加 (1)(2)，
+   但文件名能按天归档，不用打开表才知道是哪天的数据 */
+function stampDate() {
+  var d = new Date();
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
 }
 
 function stDownloadCsv(name, header, rows) {
