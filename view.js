@@ -4,6 +4,20 @@
 var map, cv, ctx, baseSource = null, baseLayer = null, overlayLayers = {};
 var lodBuf = null;
 
+/* 地图状态提示：两个来源（栅格步长未识别 / 扇区已聚合）合并成一行显示，不会互相覆盖。
+   文本没变就不碰 DOM，drawSites 每帧调用也没有开销 */
+var _hintGrid = '', _hintSite = '';
+function setMapHint(which, txt) {
+  txt = txt || '';
+  if (which === 'site') { if (_hintSite === txt) return; _hintSite = txt; }
+  else { if (_hintGrid === txt) return; _hintGrid = txt; }
+  var all = [_hintGrid, _hintSite].filter(Boolean).join('　·　');
+  var el = document.getElementById('mapHint');
+  if (!el) return;
+  el.textContent = all;
+  el.classList.toggle('show', !!all);
+}
+
 function tdtUrl(layer, tk, sub) {
   var host = (!sub || sub === 'random') ? 't{0-7}' : sub;
   return 'https://' + host + '.tianditu.gov.cn/' + layer + '_w/wmts' +
@@ -142,6 +156,7 @@ function applyToolbarCity() {
   if (currentSel()) applySelection();
   renderLegend();
   scheduleDraw();
+  scheduleLabels();   /* 地市变了，注记也要跟着重绘 */
   saveViewState();
 }
 
@@ -326,6 +341,7 @@ var GMODE_NAME = { rsrp: 'RSRP均值', sinr: 'SINR均值', cov: '覆盖率' };
 /* 切换栅格着色模式：含字段支持检查（缺字段回退 RSRP 并提示），
    重建所有栅格图层的分桶，并同步侧栏下拉与顶部按钮两处 UI */
 function applyGridColorMode(mode) {
+  STATE.bandFilter = -1;   /* 换了指标档位含义全变，之前的档位过滤作废 */
   /* 字段支持检查：以选中图层（或第一个栅格图层）为准，缺字段则回退并提示 */
   var chk = (selected && selected.kind === 'grid') ? selected : null;
   if (!chk) {
@@ -345,13 +361,21 @@ function applyGridColorMode(mode) {
     }
   }
   STATE.gridColorMode = mode;
-  var _gridLs = [];
+  var _gridLs = [], _fbNames = [];
   for (var i = 0; i < layers.length; i++) {
     var L = layers[i];
     if (L.kind === 'grid' && L.ok && L.buckets) {
       rebuildBuckets(L, true);  /* 跳过同步 GL 构建，避免卡顿 */
+      if (L.bandFallback) _fbNames.push(shortName(L.name));
       _gridLs.push(L);
     }
+  }
+  /* 只有「部分图层」缺字段时才提示：全缺的情况上面已经报过「没有 SINR 字段」了。
+     不提示的话，同一张图上并存两套配色而图例只解释一套，看着像某层数据坏了 */
+  if (_fbNames.length && _gridLs.length > _fbNames.length) {
+    showErr('这些图层缺少' + (mode === 'sinr' ? 'SINR' : '采样数') +
+      '字段，仍按 RSRP 着色：' + _fbNames.join('、'));
+    renderLayerList();
   }
   /* WebGL 缓冲异步重建 */
   (function (_ls) {
@@ -773,9 +797,13 @@ function paintCells(c, L, t, w, h, box, cw, ch, selTest, inside) {
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   var hw = cw * 0.5, hh = ch * 0.5;
   var bandsFill = gridFill(L);
+  /* 图例点选过滤：非目标档降到 10% 不透明度（WebGL 路径在着色器里同样处理） */
+  var _bf = (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1;
+  var _a0 = c.globalAlpha;
   for (var b = 0; b < L.bandCount; b++) {
     var idx = L.buckets[b];
     if (!idx.length) continue;
+    if (_bf >= 0) c.globalAlpha = (_bf === b) ? _a0 : _a0 * 0.10;
     c.fillStyle = bandsFill[b];
     c.beginPath();
     for (var k = 0; k < idx.length; k++) {
@@ -790,6 +818,7 @@ function paintCells(c, L, t, w, h, box, cw, ch, selTest, inside) {
     }
     c.fill();
   }
+  if (_bf >= 0) c.globalAlpha = _a0;
 }
 
 function drawGrid(c, L, t, w, h, box) {
@@ -944,6 +973,7 @@ function glrInit() {
       'uniform vec3 u_colors[7];\n' +
       'uniform vec4 u_sel;\n' + /* rect: minx,miny,maxx,maxy；circle: cx,cy,r,0 */
       'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆（多边形选区不支持压暗） */
+      'uniform int u_bandFlt;\n' + /* -1 不过滤；>=0 只突出该档，其余压到很淡 */
       'out vec4 v_color;\n' +
       'void main() {\n' +
       '  float px = u_t0.x * a_pos.x + u_t0.z * a_pos.y + u_t1.x + a_corner.x * u_half.x;\n' +
@@ -956,7 +986,9 @@ function glrInit() {
       '    vec2 d = a_pos - u_sel.xy;\n' +
       '    if (dot(d, d) > u_sel.z * u_sel.z) dim = 0.22;\n' +
       '  }\n' +
-      '  v_color = vec4(u_colors[int(a_band + 0.5)], u_alpha * dim);\n' +
+      '  int bk = int(a_band + 0.5);\n' +
+      '  if (u_bandFlt >= 0 && bk != u_bandFlt) dim = min(dim, 0.10);\n' +
+      '  v_color = vec4(u_colors[bk], u_alpha * dim);\n' +
       '}\n';
     var fsrc =
       '#version 300 es\n' +
@@ -976,7 +1008,7 @@ function glrInit() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
 
     var loc = {};
-    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType'];
+    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType', 'u_bandFlt'];
     for (var ui = 0; ui < unames.length; ui++) loc[unames[ui]] = gl.getUniformLocation(prog, unames[ui]);
     loc.a_pos = gl.getAttribLocation(prog, 'a_pos');
     loc.a_band = gl.getAttribLocation(prog, 'a_band');
@@ -1623,6 +1655,8 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   }
   gl.uniform4f(loc.u_sel, sx, sy, sz, sw);
   gl.uniform1i(loc.u_selType, st);
+  /* 图例点选过滤：只压暗不改缓冲，切换零成本 */
+  gl.uniform1i(loc.u_bandFlt, (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1);
 
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, L.glCount);
   return true;
@@ -1735,8 +1769,8 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
   var cityOn = st.cityOn, cityMatcher = st.cityMatcher;
   var startT = performance.now();
   c.save();
-  c.strokeStyle = '#c86bff';
-  c.lineWidth = 2.5;
+  c.strokeStyle = L.strokeColor || '#c86bff';
+  c.lineWidth = L.lineWidth || 2.5;
   c.lineJoin = st.miter ? 'miter' : 'round';
   c.lineCap = 'round';
   c.beginPath();
@@ -1790,7 +1824,7 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
   }
   st.pi = pi;
   c.stroke();
-  if (dotPath) { c.fillStyle = '#c86bff'; c.fill(dotPath); }
+  if (dotPath) { c.fillStyle = L.strokeColor || '#c86bff'; c.fill(dotPath); }
   c.restore();
   return pi >= polys.length;
 }
@@ -1976,6 +2010,11 @@ function drawSites(c, L, t, w, h, box) {
   /* 缩放/平移动画过程中也走快速通道：动画每帧都重绘，画全扇区会把动画卡成 PPT。
      6000 点以下全扇区本来就够快，不必降级 */
   var navigating = STATE.navigating && vis > 6000;
+  /* 扇区降级提示：可见点超阈值只画圆点，不说一声用户会以为扇区丢了或频段样式失效。
+     拖动/缩放过程中的临时降级不提示，避免闪烁 */
+  setMapHint('site', (vis > SITE_SECTOR_LIMIT && !navigating)
+    ? '可见小区较多，已改为圆点显示（放大可查看扇区）'
+    : '');
   /* 自动聚合：站点屏幕密度过高时（平均每点 < 3px），按 3px 网格聚合，
      每格只画一个点，参考栅格的聚合逻辑 */
   var aggCell = 0;
@@ -2354,7 +2393,7 @@ function initPopupDrag() {
 function showVectorPopup(L, pg, pixel) {
   var props = pg.props || {};
   /* 标题自适应取名称 */
-  var title = getSceneName(props) || L.name;
+  var title = getSceneName(props, L) || L.name;
   if (!title) {
     title = L.name;
     for (var k in props) {
@@ -2803,11 +2842,22 @@ function renderLegend() {
   var title = document.getElementById('legendTitle');
   var L = selected;
 
+  /* 栅格步长没识别出来时，绘制会退回默认 20 米左右，格子之间会露出底图。
+     不说一声用户会以为是数据缺失，所以在这里挂个常驻提示 */
+  var _badStep = null;
+  for (var _gs = 0; _gs < layers.length; _gs++) {
+    var _gl = layers[_gs];
+    if (_gl.kind === 'grid' && _gl.ok && _gl.visible && _gl.stepDetected === false) { _badStep = _gl; break; }
+  }
+  setMapHint('grid', _badStep
+    ? '栅格步长未识别，按约 ' + Math.round(_badStep.stepLonM || 20) + '×' + Math.round(_badStep.stepLatM || 20) + ' 米绘制'
+    : '');
+
   var html = '';
   if (L && L.kind === 'vector') {
     /* 边界图层：以前落到下面的公共分支，选中的是边界却在显示 RSRP 档位图例 */
     title.textContent = '边界';
-    html += '<div class="li"><i style="background:#c86bff;border-radius:0"></i><span>多边形边界（描边）</span></div>';
+    html += '<div class="li"><i style="background:' + (L.strokeColor || '#c86bff') + ';border-radius:0"></i><span>多边形边界（描边）</span></div>';
     body.innerHTML = html;
     sub.textContent = L.polygons ? (L.polygons.length.toLocaleString() + ' 个多边形') : '';
     return;
@@ -2863,71 +2913,42 @@ function renderLegend() {
   var mode = gridLayer ? (gridLayer.bandMode || 'rsrp') : STATE.gridColorMode;
   var gm = GRID_MODES[mode];
   title.textContent = gridLayer ? (GMODE_NAME[mode] || 'RSRP均值') : '图例';
+  /* 档位行可点：点一下只看这一档（其余压暗），再点取消。找弱覆盖点时不用再从一堆颜色里挑 */
+  var _bf = (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1;
   for (var b = 0; b < gm.bands.length; b++) {
-    html += '<div class="li"><i style="background:' + gm.fill[b] + '"></i>' +
+    html += '<div class="li lgi' + (_bf === b ? ' on' : '') + (_bf >= 0 && _bf !== b ? ' dim' : '') +
+      '" data-band="' + b + '" title="点击只看这一档，再点一次取消">' +
+      '<i style="background:' + gm.fill[b] + '"></i>' +
       '<span>' + gm.bands[b].label + '</span></div>';
   }
   body.innerHTML = html;
+  Array.prototype.forEach.call(body.querySelectorAll('.li[data-band]'), function (el) {
+    el.onclick = function () {
+      var bi = parseInt(el.getAttribute('data-band'), 10);
+      STATE.bandFilter = (STATE.bandFilter === bi) ? -1 : bi;
+      renderLegend();
+      scheduleDraw();
+    };
+  });
 
-  sub.textContent = '';
+  sub.textContent = _bf >= 0 ? ('仅突出 ' + gm.bands[_bf].label) : '';
 }
 
 
 /* ============================ 小区注记 ============================ */
-/* 小区名注记（QGIS 风格）：zoom>=15 时显示可见扇区的小区名 */
-/* 自适应取场景名称：找字段名含 name/名称 的，找不到用第一个像名称的字符串 */
-function getSceneName(props) {
-  if (!props) return '';
-  var keys = Object.keys(props);
-  var i, k, kl;
-  /* 编号型的值（如 CJ0001454）不是名称，哪怕装在「唯一名称」这种字段里 */
-  function isIdVal(v) {
-    if (/^[A-Za-z]{1,5}\d{3,}$/.test(v)) return true;
-    if (/^\d{6,}$/.test(v)) return true;
-    if (/^[A-Z0-9\-_]+$/i.test(v) && v.length > 10 && /\d/.test(v)) return true;
-    return false;
-  }
-  /* 有「唯一」类字段（如唯一名称）的图层以它为准：普通名称字段（村名等）会重名，统计/导出按名字认场景会串 */
-  for (i = 0; i < keys.length; i++) {
-    if (keys[i].indexOf('唯一') >= 0) {
-      var v0 = String(props[keys[i]] || '').trim();
-      if (v0) return v0;
-    }
-  }
-  /* ArcGIS 的 OBJECTID 列：有些图层（如新疆图层）区域场景名称就存这一列，优先级高于普通名称字段 */
-  for (i = 0; i < keys.length; i++) {
-    if (/^objectid/i.test(keys[i])) {
-      var vObj = String(props[keys[i]] || '').trim();
-      if (vObj) return vObj;
-    }
-  }
-  /* 第一遍：字段名像名称字段（含 name / 含「名称」/ 以「名」结尾如村名、场景名），且值不像编号 */
-  for (i = 0; i < keys.length; i++) {
-    k = keys[i]; kl = k.toLowerCase();
-    if (kl.indexOf('name') >= 0 || k.indexOf('名称') >= 0 || /名$/.test(k)) {
-      var v = String(props[k] || '').trim();
-      if (v && v.indexOf('\uFFFD') < 0 && !isIdVal(v)) return v;
-    }
-  }
-  /* 第二遍兜底：第一个像名称的字符串 */
-  for (i = 0; i < keys.length; i++) {
-    k = keys[i];
-    var v2 = String(props[k] || '').trim();
-    if (!v2 || v2.indexOf('\uFFFD') >= 0) continue;
-    if (/^[\d\-\.]+$/.test(v2)) continue;
-    if (/^[A-Z0-9\-]+$/i.test(v2) && v2.length > 10) continue;
-    if (v2.length > 60) continue;
-    if (isIdVal(v2)) continue;
-    return v2;
-  }
-  return '';
-}
-
-var LABEL_4G = false;
-var LABEL_5G = false;
-var LABEL_SCENE = false;
+/* 注记按图层开关（L.labelOn），不再按制式统一控制：
+   导入多个 4G/5G 工参时，才能分别关掉不想看的那一层名字。
+   缩放阈值 14 级：再小字会糊成一片，反而不如看扇区颜色。 */
 var LABEL_MIN_ZOOM = 14;
 var LABEL_MAX = 3000;
+
+/* 是否有任何可见图层开了注记——全部关掉时直接跳过整个绘制 */
+function anyLabelOn() {
+  for (var i = 0; i < layers.length; i++) {
+    if (layers[i].labelOn && layers[i].visible) return true;
+  }
+  return false;
+}
 function drawLabels() {
   var cv = document.getElementById('labelCanvas');
   if (!cv) return;
@@ -2940,9 +2961,9 @@ function drawLabels() {
   var ctx = cv.getContext('2d');
   ctx.setTransform(_ldpr, 0, 0, _ldpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if ((!LABEL_4G && !LABEL_5G && !LABEL_SCENE) || !map) return;
+  if (!map || !anyLabelOn()) return;
   var zoom = map.getView().getZoom();
-  if (zoom < LABEL_MIN_ZOOM) return;
+  if (zoom < LABEL_MIN_ZOOM) { setMapHint('label', ''); return; }
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
   ctx.font = '11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
@@ -2953,8 +2974,36 @@ function drawLabels() {
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
     if (!L.visible || !L.ok) continue;
+    /* 场景指标：统计结果直接标在场景中心，颜色按覆盖率分级。
+       扫一眼就能看出哪片差，不用导出表格再回头找位置 */
+    if (L.kind === 'vector' && STATE.statLabel && L.polygons) {
+      ctx.font = '600 12px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+      for (var mi = 0; mi < L.polygons.length && drawn < LABEL_MAX; mi++) {
+        var mpg = L.polygons[mi];
+        var mst = mpg._stat;
+        if (!mst || mst.cov == null || !isFinite(mst.cov)) continue;
+        var mbb = mpg._bbox;
+        if (!mbb) continue;
+        var mcx = (mbb[0] + mbb[2]) / 2, mcy = (mbb[1] + mbb[3]) / 2;
+        if (mcx < extent[0] || mcx > extent[2] || mcy < extent[1] || mcy > extent[3]) continue;
+        var mpx = map.getPixelFromCoordinate([mcx, mcy]);
+        if (!mpx) continue;
+        var covV = mst.cov;
+        var covTxt = covV.toFixed(1) + '%';
+        ctx.textAlign = 'center';
+        var mcol = covV >= 95 ? '#0a8f3c' : (covV >= 90 ? '#a8741a' : (covV >= 80 ? '#c2571a' : '#c0392b'));
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,255,255,.95)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(covTxt, mpx[0], mpx[1]);
+        ctx.fillStyle = mcol;
+        ctx.fillText(covTxt, mpx[0], mpx[1]);
+        drawn++;
+      }
+      ctx.font = '11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+    }
     /* 场景名称：边界层多边形 */
-    if (L.kind === 'vector' && LABEL_SCENE && L.polygons) {
+    if (L.kind === 'vector' && L.labelOn && L.polygons) {
       for (var vpi = 0; vpi < L.polygons.length && drawn < LABEL_MAX; vpi++) {
         var vpg = L.polygons[vpi];
         var vbb = vpg._bbox;
@@ -2986,7 +3035,7 @@ function drawLabels() {
           if (!found) continue;
         }
         var vprops = vpg.props || {};
-        var vnm = getSceneName(vprops);
+        var vnm = getSceneName(vprops, L);
         vnm = String(vnm || '').trim();
         if (!vnm) continue;
         var vpx = map.getPixelFromCoordinate([vcx, vcy]);
@@ -3005,23 +3054,24 @@ function drawLabels() {
     }
     if (L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     /* 4G/5G 注记开关 */
-    if (L.rat === '4G' && !LABEL_4G) continue;
-    if (L.rat === '5G' && !LABEL_5G) continue;
-    if (L.rat !== '4G' && L.rat !== '5G') {
-      if (!LABEL_4G && !LABEL_5G) continue;
-    }
+    if (!L.labelOn) continue;
+    /* 地市筛选：扇区已被 shader 过滤，注记也要跟着过滤，否则别的城市名字还挂在图上 */
+    if (L.citySel === 'none') continue;
+    var _csIdx = (L.citySel && L.citySel !== '*') ? parseInt(L.citySel, 10) : -1;
     var mx = L.mx, my = L.my, n = L.ds.n;
     var nameCol = L.nameCol;
     var azArr = L.azCol ? L.ds.num[L.azCol] : null;
     var stypeArr = L.ds.stype;
-    /* 预取名字数组，避免内层逐行 ds.value() 的函数调用开销 */
+    /* 名字优先用加载时预建的 _nameArr（数组直接读），改名称字段后由 buildNameIndex 重建；
+       没有时才退回 ds.str 或逐行取值 */
     var _sarr = (L.ds.str && L.ds.str[nameCol]) ? L.ds.str[nameCol] : null;
     /* 频段模式：注记锚点/颜色按每行频段走（与绘制同口径） */
     var _bandKeysL = (STATE.bandStyle && L.bandCol && typeof buildBandInfo === 'function') ? buildBandInfo(L) : null;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
+      if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
-      var nm = _sarr ? _sarr[i] : L.ds.value(i, nameCol);
+      var nm = L._nameArr ? L._nameArr[i] : (_sarr ? _sarr[i] : L.ds.value(i, nameCol));
       if (!nm) continue;
       nm = String(nm);
       // 贴边：锚点 = 该行实际绘制半径 + 小间隙（宏站 6 米 / 室分 5 米），文字紧贴扇区边缘；
@@ -3086,65 +3136,170 @@ function drawLabels() {
       drawn++;
     }
   }
+  /* 注记有条数上限，超出部分不画。不说一声用户会以为这一片没数据 */
+  setMapHint('label', drawn >= LABEL_MAX ? '注记已达 ' + LABEL_MAX + ' 条上限，放大可显示更多' : '');
 }
 var _labelTimer = null;
 function scheduleLabels() {
   if (_labelTimer) clearTimeout(_labelTimer);
   _labelTimer = setTimeout(drawLabels, 200);
 }
-/* 注记下拉：4G/5G/场景多选，单击切换 */
+/* 地图平移/缩放与注记的联动：移动开始清空（否则标签钉在屏幕上、和扇区错位），
+   停下后重绘。独立成函数——原来写在注记下拉的初始化里，
+   顶部下拉删掉后整段被跳过，标签就不跟手了。 */
+function bindLabelMapEvents() {
+  if (!map || map._labelEv) return;
+  map._labelEv = true;
+  map.on('moveend', scheduleLabels);
+  map.on('movestart', function () {
+    if (!anyLabelOn()) return;
+    var cv = document.getElementById('labelCanvas');
+    if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    if (_labelTimer) clearTimeout(_labelTimer);
+  });
+}
+/* 注记下拉：按实际图层动态生成，每层一个开关。
+   原来的 4G/5G/场景 三个全局开关在「导入多个同制式工参」时无法分别控制，
+   改为挂到图层上（L.labelOn），关掉某一层不影响其他层。 */
 function initLabelDropdown() {
   var box = document.getElementById('labelBox');
   var btn = document.getElementById('btnLabel');
-  if (!box || !btn) return;
+  var list = document.getElementById('labelList');
+  if (!box || !btn || !list) return;
+
+  function canLabel(L) {
+    return !!(L && L.ok && (
+      (L.kind === 'site' && L.nameCol) ||
+      (L.kind === 'vector' && L.polygons && L.polygons.length)
+    ));
+  }
   function syncBtn() {
-    var on = LABEL_4G || LABEL_5G || LABEL_SCENE;
+    var on = false;
+    for (var i = 0; i < layers.length; i++) { if (layers[i].labelOn) { on = true; break; } }
     btn.classList.toggle('on', on);
   }
   function close() {
     box.classList.remove('open');
     btn.setAttribute('aria-expanded', 'false');
   }
+  function row(L, isVec) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'lbl-row' + (L.labelOn ? ' on' : '');
+    var ck = document.createElement('i');
+    ck.className = 'lbl-ck';
+    var nm = document.createElement('span');
+    nm.className = 'lbl-nm';
+    nm.textContent = shortName(L.name);
+    nm.title = L.name;
+    b.appendChild(ck);
+    b.appendChild(nm);
+    if (!isVec) {
+      var tg = document.createElement('span');
+      var rr = (L.rat === '5G') ? '5G' : (L.rat === '4G' ? '4G' : '?');
+      tg.className = 'lbl-tag ' + (rr === '5G' ? 't5g' : (rr === '4G' ? 't4g' : 'tna'));
+      tg.textContent = rr;
+      b.appendChild(tg);
+    }
+    b.onclick = function (e) {
+      e.stopPropagation();
+      L.labelOn = !L.labelOn;
+      b.classList.toggle('on', !!L.labelOn);
+      syncBtn();
+      drawLabels();
+      /* 注记开关存进缓存清单，刷新后保持 */
+      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
+    };
+    return b;
+  }
+  function render() {
+    list.innerHTML = '';
+    var sites = [], vecs = [];
+    for (var i = 0; i < layers.length; i++) {
+      var L = layers[i];
+      if (!canLabel(L)) continue;
+      (L.kind === 'vector' ? vecs : sites).push(L);
+    }
+    var head = document.createElement('div');
+    head.className = 'dsel-h';
+    head.textContent = '注记显示';
+    list.appendChild(head);
+    /* 场景指标：统计过才有，与图层注记相互独立 */
+    if (vecs.length && typeof LAST_STAT !== 'undefined' && LAST_STAT) {
+      var srow = document.createElement('button');
+      srow.type = 'button';
+      srow.className = 'lbl-row' + (STATE.statLabel ? ' on' : '');
+      var sck = document.createElement('i');
+      sck.className = 'lbl-ck';
+      var snm = document.createElement('span');
+      snm.className = 'lbl-nm';
+      snm.textContent = '场景指标（覆盖率）';
+      srow.appendChild(sck);
+      srow.appendChild(snm);
+      srow.onclick = function (e) {
+        e.stopPropagation();
+        STATE.statLabel = !STATE.statLabel;
+        srow.classList.toggle('on', !!STATE.statLabel);
+        drawLabels();
+      };
+      list.appendChild(srow);
+    }
+    if (!sites.length && !vecs.length) {
+      var empty = document.createElement('div');
+      empty.className = 'st-empty';
+      empty.style.cssText = 'padding:9px 10px';
+      empty.textContent = '还没有可显示注记的图层';
+      list.appendChild(empty);
+      return;
+    }
+    /* 批量开关：图层多的时候省得一个个点 */
+    var bar = document.createElement('div');
+    bar.className = 'lbl-bar';
+    var bAll = document.createElement('button');
+    bAll.type = 'button';
+    bAll.textContent = '全部显示';
+    bAll.onclick = function (e) {
+      e.stopPropagation();
+      for (var k = 0; k < layers.length; k++) { if (canLabel(layers[k])) layers[k].labelOn = true; }
+      render(); syncBtn(); drawLabels();
+      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
+    };
+    var bNone = document.createElement('button');
+    bNone.type = 'button';
+    bNone.textContent = '全部隐藏';
+    bNone.onclick = function (e) {
+      e.stopPropagation();
+      for (var k = 0; k < layers.length; k++) layers[k].labelOn = false;
+      render(); syncBtn(); drawLabels();
+      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
+    };
+    bar.appendChild(bAll);
+    bar.appendChild(bNone);
+    list.appendChild(bar);
+
+    function group(title, arr, isVec) {
+      if (!arr.length) return;
+      var h = document.createElement('div');
+      h.className = 'dsel-h';
+      h.textContent = title;
+      list.appendChild(h);
+      for (var j = 0; j < arr.length; j++) list.appendChild(row(arr[j], isVec));
+    }
+    group('工参图层', sites, false);
+    group('边界图层', vecs, true);
+  }
+
   btn.onclick = function (e) {
     e.stopPropagation();
     var open = box.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) render();
   };
-  Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
-    b.onclick = function (e) {
-      e.stopPropagation();
-      var v = b.getAttribute('data-v');
-      if (v === '4g') LABEL_4G = !LABEL_4G;
-      else if (v === '5g') LABEL_5G = !LABEL_5G;
-      else if (v === 'scene') LABEL_SCENE = !LABEL_SCENE;
-      b.classList.toggle('on',
-        (v === '4g' && LABEL_4G) || (v === '5g' && LABEL_5G) || (v === 'scene' && LABEL_SCENE));
-      syncBtn();
-      drawLabels();
-    };
-    b.ondblclick = function (e) {
-      e.stopPropagation();
-      var v = b.getAttribute('data-v');
-      if (v === '4g') LABEL_4G = false;
-      else if (v === '5g') LABEL_5G = false;
-      else if (v === 'scene') LABEL_SCENE = false;
-      b.classList.remove('on');
-      syncBtn();
-      drawLabels();
-    };
-  });
   document.addEventListener('click', function () {
     if (box.classList.contains('open')) close();
   });
-  if (map) {
-    map.on('moveend', scheduleLabels);
-    map.on('movestart', function () {
-      if (!LABEL_4G && !LABEL_5G && !LABEL_SCENE) return;
-      var cv = document.getElementById('labelCanvas');
-      if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
-      if (typeof _labelTimer !== 'undefined' && _labelTimer) clearTimeout(_labelTimer);
-    });
-  }
+  syncBtn();
+  /* 地图事件的绑定统一在 bindLabelMapEvents 里，这里不再重复绑 */
 }
 /* 兼容旧调用 */
 function bindLabelToggle() { initLabelDropdown(); }
