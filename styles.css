@@ -202,8 +202,11 @@ button.panbtn:active,button.lvbtn:active,.eye:active,
    用 .hov 类而非 :hover —— 便于自动化测试验证，与工具条的类机制一致 */
 .ol-control button.hov{transform:scale(1.08)}
 .ol-control button:active{transform:scale(.78);color:var(--accent)}
+/* ol.css 把 1px 描边写在 :hover 和 :focus 上，鼠标移上去就出现一圈深色框。
+   这里全部去掉，焦点改用底色变化表示（键盘用户仍能看出位置） */
+.ol-control button:hover{outline:none}
 .ol-control button:focus{outline:none;box-shadow:none}
-.ol-control button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.ol-control button:focus-visible{outline:none;box-shadow:none;background:var(--hover)}
 
 /* 面板开合按钮与主题按钮（同为独立图标按钮），统一放大手感 */
 #btnFold,#btnTheme{
@@ -597,7 +600,10 @@ html.light #popup td.hl:last-child{color:var(--accent2)}
 #busy .s{font-size:12px;color:var(--fg3);margin-top:8px;font-variant-numeric:tabular-nums}
 
 .ol-zoom{top:auto!important;bottom:26px!important;left:calc(var(--mleft) + 12px)!important;
-  transition:left .3s cubic-bezier(.22,.61,.36,1);z-index:10}
+  transition:left .3s cubic-bezier(.22,.61,.36,1);z-index:10;
+  /* 去掉 ol.css 给 .ol-control 的灰底（rgba(128,128,128,.25)）和 4px 圆角外框，
+     让两个按钮像工具条那样各自独立悬浮 */
+  background:transparent!important;padding:0!important;border-radius:0!important;box-shadow:none!important}
 /* 缩放按钮改成独立圆角方块，圆角与工具条图标按钮统一（9px）。
    覆盖 ol.css 的默认 2px 上下粘连样式，并给玻璃底/边框，视觉与其他按钮一致 */
 .ol-zoom .ol-zoom-in,
@@ -695,3 +701,131 @@ html.light #btnTheme .ic-sun{display:block}
 #stLayerPop .st-ct{flex:0 0 auto;font-size:11px;color:var(--fg3)}
 #stLayerPop button{white-space:normal;text-align:left}
 
+/* 图层属性：场景名称字段设置弹窗 */
+#fieldMask{display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.3);z-index:60}
+#fieldMask.show{display:block}
+/* 图层属性弹窗：左导航 + 右内容（QGIS 风格），可拖动可缩放 */
+#fieldPop{position:fixed;display:none;z-index:61;flex-direction:column;
+  width:560px;height:420px;min-width:400px;min-height:280px;
+  background:var(--popbg);border:1px solid var(--popbd);border-radius:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.4);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);overflow:hidden}
+#fieldPop.show{display:flex;animation:tpIn .18s cubic-bezier(.34,1.2,.5,1)}
+.ld-head{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 13px;flex:0 0 auto;
+  border-bottom:1px solid var(--line);cursor:move;user-select:none}
+.ld-title{font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap}
+.ld-sub{flex:1;min-width:0;font-size:11.5px;color:var(--fg3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ld-head button{flex:0 0 auto;width:26px;height:26px;padding:0;border:none;background:none;
+  border-radius:6px;color:var(--fg3);font-size:15px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.ld-head button:hover{color:var(--fg);background:var(--soft)}
+.ld-body{flex:1 1 auto;display:flex;min-height:0}
+.ld-nav{flex:0 0 92px;display:flex;flex-direction:column;gap:2px;padding:7px 6px;
+  border-right:1px solid var(--line);background:var(--soft);overflow-y:auto}
+.ld-nav button{width:100%;text-align:left;padding:6px 9px;border:none;background:none;
+  border-radius:7px;font-size:12.5px;color:var(--fg2);cursor:pointer;white-space:nowrap}
+.ld-nav button:hover{background:var(--hover);color:var(--fg)}
+.ld-nav button.on{background:var(--accent);color:#fff}
+.ld-pane{flex:1 1 auto;min-width:0;padding:12px 14px;overflow-y:auto;font-size:12.5px;line-height:1.6}
+.ld-foot{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:9px 12px;
+  border-top:1px solid var(--line)}
+.ld-sp{flex:1}
+/* 下拉与顶部 .dsel-btn 对齐：藏掉系统箭头，自绘 chevron，同高度同圆角同玻璃底 */
+#fieldPop select{width:100%;height:34px;font-size:12.5px;border:1px solid var(--line);border-radius:9px;
+  background-color:var(--glass);
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:11px;
+  color:var(--fg);padding:0 28px 0 11px;outline:none;cursor:pointer;
+  -webkit-appearance:none;appearance:none}
+#fieldPop select:focus{border-color:var(--accent)}
+#fieldPop select option{background:var(--popbg);color:var(--fg)}
+/* 底部按钮与页面其他按钮一致 */
+.ld-foot button{padding:6px 13px;font-size:12.5px;border-radius:9px;border:1px solid var(--line);
+  background:var(--glass);color:var(--fg);cursor:pointer;transition:background .15s,color .15s}
+.ld-foot button:hover{background:var(--hover)}
+.ld-foot button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.ld-foot button.pri:hover{background:var(--accent);filter:brightness(1.08)}
+/* 单色页的常用色板 */
+.sw-row{display:flex;flex-wrap:wrap;gap:6px}
+.sw{width:22px;height:22px;border-radius:5px;cursor:pointer;display:inline-block;
+  border:1px solid rgba(0,0,0,.18);box-sizing:border-box;transition:transform .12s}
+.sw:hover{transform:scale(1.12)}
+.sw.on{box-shadow:0 0 0 2px var(--accent);border-color:transparent}
+#fieldPop .fld{margin:0 0 11px}
+#fieldPop .fld>span{display:block;font-size:11.5px;color:var(--fg3);margin-bottom:5px}
+#fldPrev{font-size:12px;line-height:1.7;color:var(--fg2);word-break:break-all;
+  background:var(--soft);border-radius:7px;padding:6px 8px;min-height:32px}
+#fldPrev i{font-style:normal;color:var(--fg)}
+#fldPrev .warn{color:var(--warn)}
+
+/* 地图状态提示（栅格步长未识别 / 扇区已聚合），不挡鼠标 */
+#mapHint{position:absolute;left:calc(var(--mleft) + 12px);bottom:14px;z-index:6;display:none;
+  max-width:min(400px,52vw);padding:5px 10px;font-size:11.5px;line-height:1.55;
+  color:var(--fg2);background:var(--glass);border:1px solid var(--line);border-radius:8px;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  transition:left .3s cubic-bezier(.22,.61,.36,1);pointer-events:none}
+#mapHint.show{display:block}
+
+
+/* 注记下拉：按图层一行一个开关（替代原来的 4G/5G/场景 三个全局开关） */
+#labelPop{min-width:220px;max-width:300px;padding:4px}
+#labelPop .lbl-bar{display:flex;gap:5px;padding:3px 5px 6px}
+#labelPop .lbl-bar button{flex:1;padding:3px 6px;font-size:11.5px;border-radius:6px;
+  background:var(--soft);border:1px solid var(--line);color:var(--fg2);text-shadow:none}
+#labelPop .lbl-bar button:hover{transform:none;color:var(--fg);background:var(--hover)}
+#labelPop .lbl-row{display:flex;align-items:center;gap:7px;width:100%;padding:5px 7px;
+  background:none;border:none;border-radius:6px;text-align:left;cursor:pointer;
+  font-size:12.5px;color:var(--fg);text-shadow:none}
+#labelPop .lbl-row:hover{transform:none;background:var(--soft)}
+#labelPop .lbl-ck{flex:0 0 auto;width:13px;height:13px;border-radius:3px;box-sizing:border-box;
+  border:1.5px solid var(--line);position:relative}
+#labelPop .lbl-row.on .lbl-ck{background:var(--accent);border-color:var(--accent)}
+#labelPop .lbl-row.on .lbl-ck:after{content:"";position:absolute;left:3.5px;top:0.5px;
+  width:4px;height:7px;border:solid #fff;border-width:0 1.6px 1.6px 0;transform:rotate(42deg)}
+#labelPop .lbl-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#labelPop .lbl-tag{flex:0 0 auto;font-size:10.5px;padding:0 4px;border-radius:3px;line-height:15px;color:#fff}
+#labelPop .lbl-tag.t4g{background:#e74c3c}
+#labelPop .lbl-tag.t5g{background:#3498db}
+#labelPop .lbl-tag.tna{background:var(--fg3)}
+
+/* 图层区的小号文字按钮（收起全部 / 展开全部） */
+.lnkbtn{background:none;border:none;padding:2px 4px;cursor:pointer;
+  font-size:11.5px;color:var(--fg3);border-radius:5px}
+.lnkbtn:hover{color:var(--fg);background:var(--soft)}
+/* 统计下拉里的"将统计栅格"提示行 */
+.st-scope{padding:2px 10px 7px;font-size:11px;line-height:1.5;color:var(--fg3)}
+
+/* 图例档位可点：单击只看该档（其余压暗），再点取消 */
+#legend .li.lgi{cursor:pointer;border-radius:5px;transition:opacity .15s,background .15s}
+#legend .li.lgi:hover{background:var(--soft)}
+#legend .li.lgi.on{background:var(--soft);box-shadow:inset 0 0 0 1px var(--accent)}
+#legend .li.lgi.dim{opacity:.4}
+#legend .li.lgi.dim:hover{opacity:.85}
+
+/* 质差场景排行（统计面板内） */
+.st-rank{display:flex;align-items:center;gap:8px;width:100%;padding:5px 10px;
+  background:none;border:none;outline:none;text-align:left;cursor:pointer;font-size:12px;color:var(--fg)}
+.st-rank:hover{background:var(--soft)}
+.st-rank .rk{flex:0 0 20px;color:var(--fg3);font-size:11px;text-align:right;font-variant-numeric:tabular-nums}
+.st-rank .rn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-rank .rc{flex:0 0 auto;font-variant-numeric:tabular-nums}
+.st-rank .rc.g{color:#0a8f3c}
+.st-rank .rc.y{color:#a8741a}
+.st-rank .rc.o{color:#c2571a}
+.st-rank .rc.r{color:#c0392b}
+
+/* 图层属性面板：符号化控件 */
+.fld-layer{font-size:12.5px;color:var(--fg);word-break:break-all}
+.fld-color{display:flex;align-items:center;gap:8px}
+.fld-color input[type=color]{width:36px;height:26px;padding:0;border:1px solid var(--line);
+  border-radius:6px;background:none;cursor:pointer}
+.fld-color b{font-weight:400;font-size:12px;color:var(--fg3)}
+.fld-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;color:var(--fg)}
+.fld-chk input{accent-color:var(--accent);margin:0;cursor:pointer}
+.fld-lbl{font-size:11.5px;color:var(--fg3);margin:3px 0 5px}
+.fld-cls{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12px;color:var(--fg2)}
+.fld-cls input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--line);
+  border-radius:4px;background:none;cursor:pointer;flex:0 0 auto}
+.fld-cls span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fldBody input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 0}
