@@ -66,6 +66,7 @@ function buildSiteArrays(data) {
   var azk = new Float32Array(total * 2);
   var rb = new Float32Array(total * 2);   /* 每实例（半径米, 半波束角弧度）：频段样式用，0=用制式 uniform */
   var cityA = new Float32Array(total);
+  var grpA = new Float32Array(total);   /* 每顶点所属分组序号：图例过滤在着色器里按它裁，不必重建缓冲 */
   var p = 0, alpha = 0.6;
 
   for (var g = 0; g < groups.length; g++) {
@@ -81,6 +82,7 @@ function buildSiteArrays(data) {
       pos[p * 2] = x - refX;
       pos[p * 2 + 1] = y - refY;
       cityA[p] = cityIdx ? cityIdx[pi] : -1;
+      grpA[p] = g;
       col[p * 3] = rgba[0]; col[p * 3 + 1] = rgba[1]; col[p * 3 + 2] = rgba[2];
       var kind, azr = 0;
       if (isIndoor) {
@@ -98,7 +100,7 @@ function buildSiteArrays(data) {
   }
 
   return {
-    pos: pos, col: col, azk: azk, cityA: cityA, rb: rb,
+    pos: pos, col: col, azk: azk, cityA: cityA, rb: rb, grp: grpA,
     count: p, refX: refX, refY: refY, alpha: alpha
   };
 }
@@ -184,8 +186,10 @@ self.onmessage = function (e) {
           id: msg.id,
           count: arrResult.count,
           refX: arrResult.refX, refY: arrResult.refY, alpha: arrResult.alpha,
-          pos: arrResult.pos, col: arrResult.col, azk: arrResult.azk, cityA: arrResult.cityA, rb: arrResult.rb
-        }, [arrResult.pos.buffer, arrResult.col.buffer, arrResult.azk.buffer, arrResult.cityA.buffer, arrResult.rb.buffer]);
+          pos: arrResult.pos, col: arrResult.col, azk: arrResult.azk, cityA: arrResult.cityA, rb: arrResult.rb,
+          grp: arrResult.grp
+        }, [arrResult.pos.buffer, arrResult.col.buffer, arrResult.azk.buffer, arrResult.cityA.buffer,
+            arrResult.rb.buffer, arrResult.grp.buffer]);
       }
     } else if (msg.type === 'projectGrid') {
       var projResult = projectGrid(msg.data);
