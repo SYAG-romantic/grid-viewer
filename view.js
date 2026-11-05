@@ -2,6 +2,9 @@
 /* ============================ 8. 地图 ============================ */
 
 var map, cv, ctx, baseSource = null, baseLayer = null, overlayLayers = {};
+/* 是否用 file:// 直接打开：此时 origin 为 null，跨域瓦片不能带 crossOrigin，
+   否则浏览器按 CORS 失败处理，底图整片空白 */
+var FILE_MODE = (location.protocol === 'file:');
 var lodBuf = null;
 
 /* 地图状态提示：两个来源（栅格步长未识别 / 扇区已聚合）合并成一行显示，不会互相覆盖。
@@ -83,16 +86,9 @@ function initBaseDropdown() {
     e.stopPropagation();
     var open = box.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    /* 每次打开重建列表：天地图项取决于当前有没有密钥 */
+    if (open) renderBaseList();
   };
-  Array.prototype.forEach.call(box.querySelectorAll('.dsel-pop button'), function (b) {
-    b.onclick = function (e) {
-      e.stopPropagation();
-      STATE.base = b.getAttribute('data-v');
-      syncBaseDropdown();
-      close();
-      rebuildBase();
-    };
-  });
   document.addEventListener('click', function () {
     if (box.classList.contains('open')) close();
   });
@@ -517,21 +513,68 @@ function initTheme() {
   }
 }
 
-/* 可用底图（天地图图层名） */
+/* 可用底图：高德走免密钥接口（GCJ-02），天地图需密钥（CGCS2000）。
+   选高德时自动开启坐标纠偏（数据 WGS84 → GCJ-02），不需要用户手动开。 */
 var BASE_LAYERS = [
-  { id: 'img', name: '影像底图' },
-  { id: 'vec', name: '矢量底图' },
-  { id: 'ter', name: '地形晕染' },
-  { id: 'none', name: '无底图' }
+  { id: 'amapImg', name: '高德影像', gcj: true,  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
+  { id: 'amapVec', name: '高德矢量', gcj: true,  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>' },
+  { id: 'tdImg',   name: '天地图影像', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
+  { id: 'tdVec',   name: '天地图矢量', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>' },
+  { id: 'tdTer',   name: '天地图地形', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19l6-8 4 4 3-5 7 9z"/><path d="M2 22h20"/></svg>' },
+  { id: 'none',    name: '无底图', gcj: false, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' }
 ];
-/* 底图与其配套注记：注记随底图一起加载，不再单独勾选 */
-var BASE_ANNO = { img: 'cia', vec: 'cva', ter: 'cta', none: null };
-var BASE_NAME = { img: '影像', vec: '矢量', ter: '地形', none: '无底图' };
+/* 天地图底图与配套注记（注记随底图一起加载） */
+var BASE_ANNO = { tdImg: 'cia', tdVec: 'cva', tdTer: 'cta' };
+var BASE_NAME = {
+  amapImg: '高德影像', amapVec: '高德矢量',
+  tdImg: '天地图影像', tdVec: '天地图矢量', tdTer: '天地图地形', none: '无底图'
+};
+/* 旧版只存了 img/vec/ter（都指天地图），读回来时映射一次 */
+function normBaseId(id) {
+  var m = { img: 'tdImg', vec: 'tdVec', ter: 'tdTer' };
+  return m[id] || id || 'amapImg';
+}
+function baseDef(id) {
+  for (var i = 0; i < BASE_LAYERS.length; i++) if (BASE_LAYERS[i].id === id) return BASE_LAYERS[i];
+  return BASE_LAYERS[0];
+}
+
+/* 高德免密钥瓦片：四个域名轮询，影像 style=6，矢量含中文标注 style=8 */
+function amapSource(kind) {
+  var urls = ['1', '2', '3', '4'].map(function (s) {
+    return kind === 'img'
+      ? 'https://webst0' + s + '.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}'
+      : 'https://webrd0' + s + '.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
+  });
+  return new ol.source.XYZ({
+    urls: urls,
+    /* file:// 打开时 origin 是 null，带 crossOrigin 会被 CORS 拦掉整张瓦片；
+       本工具不读瓦片像素，不需要画布同源，所以本地文件模式直接不设 */
+    crossOrigin: FILE_MODE ? null : 'anonymous',
+    maxZoom: 18,
+    attributions: '© 高德地图'
+  });
+}
+
+/* 高德影像注记层：style=8 + ltype=4 是透明底的地名/POI 标注，
+   单独叠在卫星图上才有字（style=6 是纯影像，不带任何文字） */
+function amapAnnoSource() {
+  var urls = ['1', '2', '3', '4'].map(function (s) {
+    return 'https://wprd0' + s + '.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scl=1&style=8&ltype=4&x={x}&y={y}&z={z}';
+  });
+  return new ol.source.XYZ({
+    urls: urls,
+    crossOrigin: FILE_MODE ? null : 'anonymous',
+    maxZoom: 18
+  });
+}
 
 function makeTileSource(layer, tk) {
+  if (layer === 'amapImg') return amapSource('img');
+  if (layer === 'amapVec') return amapSource('vec');
   var src = new ol.source.XYZ({
     url: tdtUrl(layer, tk, STATE.sub),
-    crossOrigin: 'anonymous',
+    crossOrigin: FILE_MODE ? null : 'anonymous',
     maxZoom: 18,
     attributions: '© 天地图'
   });
@@ -544,7 +587,6 @@ function makeTileSource(layer, tk) {
 }
 
 function rebuildBase() {
-  var tk = STATE.tk;
   if (baseLayer) { map.removeLayer(baseLayer); baseLayer = null; }
   Object.keys(overlayLayers).forEach(function (k) {
     map.removeLayer(overlayLayers[k]);
@@ -553,22 +595,83 @@ function rebuildBase() {
   map.getLayers().clear();
   updateTdtStatus();
 
-  if (!tk) { scheduleDraw(); return; }
+  var id = normBaseId(STATE.base);
+  var def = baseDef(id);
+  /* 没配天地图密钥时天地图项不可用，自动退回高德 */
+  if (def.needKey && !STATE.tk) { id = 'amapImg'; STATE.base = id; def = baseDef(id); }
+  if (id === 'none') { scheduleDraw(); return; }
 
-  if (STATE.base !== 'none') {
-    baseSource = makeTileSource(STATE.base, tk);
-    baseLayer = new ol.layer.Tile({ source: baseSource, zIndex: 1 });
-    map.addLayer(baseLayer);
+  baseSource = makeTileSource(id, STATE.tk);
+  baseLayer = new ol.layer.Tile({ source: baseSource, zIndex: 1 });
+  map.addLayer(baseLayer);
 
-    var anno = BASE_ANNO[STATE.base];
-    if (anno) {
-      var anoSrc = makeTileSource(anno, tk);
-      var anoLay = new ol.layer.Tile({ source: anoSrc, zIndex: 2 });
-      overlayLayers[anno] = anoLay;
-      map.addLayer(anoLay);
-    }
+  /* 高德影像：叠加透明注记层，否则卫星图上一个字都没有 */
+  if (id === 'amapImg') {
+    var aanoSrc = amapAnnoSource();
+    var aanoLay = new ol.layer.Tile({ source: aanoSrc, zIndex: 2 });
+    overlayLayers['amapAnno'] = aanoLay;
+    map.addLayer(aanoLay);
+  }
+  /* 天地图影像/矢量/地形：配配套注记（cia/cva/cta） */
+  var anno = BASE_ANNO[id];
+  if (anno && STATE.tk) {
+    var anoSrc = makeTileSource(anno, STATE.tk);
+    var anoLay = new ol.layer.Tile({ source: anoSrc, zIndex: 2 });
+    overlayLayers[anno] = anoLay;
+    map.addLayer(anoLay);
   }
   scheduleDraw();
+}
+
+/* 底图下拉按「是否配了天地图密钥」动态生成 */
+function renderBaseList() {
+  var box = document.getElementById('baseList');
+  if (!box) return;
+  var h = '';
+  for (var i = 0; i < BASE_LAYERS.length; i++) {
+    var b = BASE_LAYERS[i];
+    /* 没配密钥的天地图项也列出来，置灰并提示怎么配——
+       直接不显示会让人以为"这个版本没有天地图" */
+    var locked = !!(b.needKey && !STATE.tk);
+    var cls = (STATE.base === b.id ? 'on ' : '') + (locked ? 'off' : '');
+    h += '<button type="button" role="option" data-v="' + b.id + '"' +
+      (cls.trim() ? ' class="' + cls.trim() + '"' : '') +
+      (locked ? ' data-lock="1" title="需要在顶栏「天地图」里配置密钥"' : '') +
+      '>' + (b.icon || '') + '<span>' + b.name + (locked ? '（需密钥）' : '') + '</span></button>';
+  }
+  box.innerHTML = h;
+  Array.prototype.forEach.call(box.querySelectorAll('button'), function (el) {
+    el.onclick = function (e) {
+      e.stopPropagation();
+      if (el.getAttribute('data-lock')) {
+        var bb0 = document.getElementById('baseBox');
+        if (bb0) bb0.classList.remove('open');
+        var tp = document.getElementById('tkPop');
+        if (tp) tp.classList.add('show');
+        showErr('天地图需要密钥：粘贴密钥后点保存，底图列表里即可切换。');
+        return;
+      }
+      applyBase(el.getAttribute('data-v'));
+      var bb = document.getElementById('baseBox');
+      if (bb) bb.classList.remove('open');
+    };
+  });
+}
+
+/* 切底图：同步坐标纠偏开关（高德 GCJ-02 要纠偏，天地图不纠），
+   纠偏状态变了就重投影所有图层 */
+function applyBase(id) {
+  id = normBaseId(id);
+  var def = baseDef(id);
+  if (def.needKey && !STATE.tk) { showErr('天地图需要先在左侧配置密钥'); return; }
+  STATE.base = id;
+  var wantGcj = !!def.gcj;
+  var changed = (STATE.crsMode === 1) !== wantGcj;
+  STATE.crsMode = wantGcj ? 1 : 0;
+  rebuildBase();
+  syncBaseDropdown();
+  saveViewState();
+  if (changed && typeof reprojectAll === 'function') reprojectAll();
 }
 
 function setTdtStatus(text, kind) {
@@ -701,10 +804,17 @@ function drawHlCell(c, t, w, h) {
   var is5g = (L.rat === '5G');
   var mR = isIndoor ? (is5g ? 15 : 20) : (is5g ? 60 : 80);
   var beamHl = is5g ? 45 : 35;
-  if (!isIndoor && STATE.bandStyle) {
+  if (!isIndoor && siteUseBand(L)) {
     var _bkHl = buildBandInfo(L);
-    var _bstHl = _bkHl && _bkHl[i] ? BAND_STYLE[_bkHl[i]] : null;
-    if (_bstHl) { mR = _bstHl.r; beamHl = _bstHl.beam; }
+    var _kHl = _bkHl && _bkHl[i] ? _bkHl[i] : null;
+    var _bstHl = _kHl ? BAND_STYLE[_kHl] : null;
+    var _ovHl = (_kHl && L.bandOverride && L.bandOverride[_kHl]) ? L.bandOverride[_kHl] : null;
+    if (_ovHl) {
+      if (isFinite(_ovHl.r)) mR = _ovHl.r;
+      if (isFinite(_ovHl.beam)) beamHl = _ovHl.beam;
+    } else if (_bstHl) {
+      mR = _bstHl.r; beamHl = _bstHl.beam;
+    }
   }
   var rp = mR * Math.abs(t[0]);   /* 与扇形绘制同尺度（CSS 像素），旧式多乘设备倍率会画大 */
   if (!(rp > 0)) rp = 40;
@@ -1196,6 +1306,7 @@ function glsInit() {
       'in vec2 a_rb;\n' +
       'in float a_city;\n' +
       'in float a_t;\n' +
+      'in float a_grp;\n' +          /* 该实例所属分组序号：图例过滤在 GPU 里裁，不重建缓冲 */
       'uniform vec4 u_t0;\n' +
       'uniform vec2 u_t1;\n' +
       'uniform vec2 u_size;\n' +
@@ -1205,12 +1316,16 @@ function glsInit() {
       'uniform float u_citySel;\n' +
       'uniform float u_band;\n' +
       'uniform float u_sub;\n' +
+      'uniform int u_grpFlt;\n' +     /* -1 不过滤；>=0 只画该分组 */
       'out vec3 v_col;\n' +
       'void main() {\n' +
       '  if (u_sub > 1.5 && mod(float(gl_InstanceID), u_sub) > 0.5) {\n' +
       '    gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
       '  }\n' +
       '  if (u_citySel > -0.5 && abs(a_city - u_citySel) > 0.5) {\n' +
+      '    gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
+      '  }\n' +
+      '  if (u_grpFlt >= 0 && int(a_grp + 0.5) != u_grpFlt) {\n' +
       '    gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
       '  }\n' +
       '  vec2 sp = vec2(u_t0.x*a_pos.x + u_t0.z*a_pos.y + u_t1.x,\n' +
@@ -1309,6 +1424,7 @@ function glsInit() {
         a_rb: gl.getAttribLocation(progFan, 'a_rb'),
         a_city: gl.getAttribLocation(progFan, 'a_city'),
         a_t: gl.getAttribLocation(progFan, 'a_t'),
+        a_grp: gl.getAttribLocation(progFan, 'a_grp'),
         u_t0: gl.getUniformLocation(progFan, 'u_t0'),
         u_t1: gl.getUniformLocation(progFan, 'u_t1'),
         u_size: gl.getUniformLocation(progFan, 'u_size'),
@@ -1318,7 +1434,8 @@ function glsInit() {
         u_alpha: gl.getUniformLocation(progFan, 'u_alpha'),
         u_citySel: gl.getUniformLocation(progFan, 'u_citySel'),
         u_sub: gl.getUniformLocation(progFan, 'u_sub'),
-        u_band: gl.getUniformLocation(progFan, 'u_band')
+        u_band: gl.getUniformLocation(progFan, 'u_band'),
+        u_grpFlt: gl.getUniformLocation(progFan, 'u_grpFlt')
       },
       progPt: progPt,
       locPt: {
@@ -1347,6 +1464,7 @@ async function buildSiteGL(L) {
   L.siteGlOk = false;
   L.siteGlCount = 0;
   if (!glsInit()) return;
+  /* 缓冲始终包含全部分组，图例过滤由着色器按 a_grp 裁，切换零成本 */
   var groups = L.colorGroups || [];
   var mx = L.mx, my = L.my;
   if (!mx || !my) return;
@@ -1377,6 +1495,7 @@ async function buildSiteGL(L) {
           L.sitePosBuf = null; L.siteColBuf = null; L.siteAzkBuf = null;
           if (L.siteCityBuf) { try { gl.deleteBuffer(L.siteCityBuf); } catch (e2) {} L.siteCityBuf = null; }
           if (L.siteRbBuf) { try { gl.deleteBuffer(L.siteRbBuf); } catch (e4) {} L.siteRbBuf = null; }
+          if (L.siteGrpBuf) { try { gl.deleteBuffer(L.siteGrpBuf); } catch (e5) {} L.siteGrpBuf = null; }
         }
         var pb = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, pb);
@@ -1396,9 +1515,15 @@ async function buildSiteGL(L) {
           gl.bufferData(gl.ARRAY_BUFFER, _res.rb, gl.STATIC_DRAW);
           L.siteRbBuf = rbb;
         }
+        if (_res.grp) {
+          var gpb = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, gpb);
+          gl.bufferData(gl.ARRAY_BUFFER, _res.grp, gl.STATIC_DRAW);
+          L.siteGrpBuf = gpb;
+        }
         if (_glGen !== L._glGen) return;
         if (_glGen !== L._glGen) return;
-  L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
+  L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib; L.siteGrpBuf = gpb;
         L.siteRefX = _res.refX; L.siteRefY = _res.refY;
         L.siteAlpha = _res.alpha;
         L.siteGlCount = _res.count;
@@ -1442,6 +1567,7 @@ async function buildSiteGL(L) {
   var azk = new Float32Array(total * 2);
   var rbA = new Float32Array(total * 2);
   var cityA = new Float32Array(total);
+  var grpA = new Float32Array(total);
   var alpha = 0.6;
   var p = 0;
   var cityIdxAll = L.cityIdx || null;
@@ -1461,6 +1587,7 @@ async function buildSiteGL(L) {
       pos[p * 2] = x - refX;
       pos[p * 2 + 1] = y - refY;
       cityA[p] = cityIdxAll ? cityIdxAll[i] : -1;
+      grpA[p] = gi;
       col[p * 3] = rgba[0]; col[p * 3 + 1] = rgba[1]; col[p * 3 + 2] = rgba[2];
       var kind, azr = 0;
       if (isIndoor) {
@@ -1486,6 +1613,7 @@ async function buildSiteGL(L) {
     L.sitePosBuf = null; L.siteColBuf = null; L.siteAzkBuf = null;
     if (L.siteCityBuf) { try { gl.deleteBuffer(L.siteCityBuf); } catch (e) {} L.siteCityBuf = null; }
     if (L.siteRbBuf) { try { gl.deleteBuffer(L.siteRbBuf); } catch (e) {} L.siteRbBuf = null; }
+    if (L.siteGrpBuf) { try { gl.deleteBuffer(L.siteGrpBuf); } catch (e) {} L.siteGrpBuf = null; }
   }
   var pb = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, pb);
@@ -1503,8 +1631,12 @@ async function buildSiteGL(L) {
   gl.bindBuffer(gl.ARRAY_BUFFER, rbb2);
   gl.bufferData(gl.ARRAY_BUFFER, rbA, gl.STATIC_DRAW);
   L.siteRbBuf = rbb2;
+  var gpb2 = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, gpb2);
+  gl.bufferData(gl.ARRAY_BUFFER, grpA, gl.STATIC_DRAW);
+  L.siteGrpBuf = gpb2;
   if (_glGen !== L._glGen) return;
-  L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib;
+  L.sitePosBuf = pb; L.siteColBuf = cb; L.siteAzkBuf = ab; L.siteCityBuf = cib; L.siteGrpBuf = gpb2;
   L.siteGlCount = p;
   L.siteGlOk = true;
 }
@@ -1575,11 +1707,23 @@ function glDrawSites(L, t, w, h, box, dpr) {
   var _sub = 1;
   if (R < 6) _sub = Math.min(32, Math.ceil(12 / Math.max(0.5, R)));
   if (loc.u_sub) gl.uniform1f(loc.u_sub, _sub);
-  if (loc.u_band) gl.uniform1f(loc.u_band, STATE.bandStyle ? 1 : 0);
+  if (loc.u_band) gl.uniform1f(loc.u_band, siteUseBand(L) ? 1 : 0);
+  /* 图例点选过滤：只改这个 uniform，不重建缓冲 */
+  if (loc.u_grpFlt) {
+    var _gf = -1;
+    if (STATE.siteGroupFilter) {
+      for (var _gfi = 0; _gfi < (L.colorGroups || []).length; _gfi++) {
+        if (L.colorGroups[_gfi].key === STATE.siteGroupFilter) { _gf = _gfi; break; }
+      }
+      if (_gf < 0) _gf = -2;   /* 该层没有这个分组：用一个不存在的序号把全部裁掉 */
+    }
+    gl.uniform1i(loc.u_grpFlt, _gf);
+  }
 
   glsBindInst(gl, loc.a_pos, L.sitePosBuf, 2);
   glsBindInst(gl, loc.a_col, L.siteColBuf, 3);
   glsBindInst(gl, loc.a_azk, L.siteAzkBuf, 2);
+  if (loc.a_grp >= 0 && L.siteGrpBuf) glsBindInst(gl, loc.a_grp, L.siteGrpBuf, 1);
   if (loc.a_rb >= 0) {
     if (L.siteRbBuf) glsBindInst(gl, loc.a_rb, L.siteRbBuf, 2);
     else { gl.disableVertexAttribArray(loc.a_rb); gl.vertexAttrib2f(loc.a_rb, 0, 0); }
@@ -1794,12 +1938,7 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
       }
     }
     /* 用预计算的墨卡托环绘制：逐帧把经纬度现算成墨卡托，几万个多边形直接卡死 */
-    var rings = pg._ringsMerc;
-    if (!rings) {
-      rings = pg._ringsMerc = pg.rings.map(function (ring0) {
-        return ring0.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-      });
-    }
+    var rings = vRingsOf(pg);   /* 统一入口：内部按当前坐标系缓存，切底图后自动重建 */
     for (var ri = 0; ri < rings.length; ri++) {
       var ring = rings[ri];
       var n = ring.length;
@@ -1986,7 +2125,11 @@ function drawSites(c, L, t, w, h, box) {
   var half = (_is5gCv ? 45 : 35) * DEG * 0.5;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var mx = L.mx, my = L.my;
-  var groups = L.colorGroups || [];
+  /* 与 WebGL 路径同口径：图例点选过滤时只画目标分组 */
+  var groups = (L.colorGroups || []).filter(function (g) {
+    if (!STATE.siteGroupFilter) return true;
+    return g.key === STATE.siteGroupFilter;
+  });
   var gi, g, k, i, x, y, px, py, idx;
 
   /* 先数可见点：纯算术循环，比一次 canvas 调用便宜两个量级 */
@@ -2126,15 +2269,25 @@ function pickSiteSector(L, pixel, t, res) {
   var RpxIndoor = _indoorM * _pxPerMerc;
   var half = _beamW * Math.PI / 360;
   /* 频段模式：每行按频段表取半径/波束角，与绘制同口径 */
-  var _bandKeys = (STATE.bandStyle && L.bandCol) ? buildBandInfo(L) : null;
+  var _bandKeys = (siteUseBand(L) && L.bandCol) ? buildBandInfo(L) : null;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var n = L.ds.n, mx = L.mx, my = L.my;
   /* 地市口径与绘制一致：被地市筛掉的扇区不可点（citySel 是城市索引；'none' 表示该层无此地市） */
   var _csIdx = (L.citySel !== undefined && L.citySel !== '*' && L.citySel !== 'none') ? parseInt(L.citySel, 10) : -1;
   var hits = [];
+  /* 图例点选过滤：被隐藏的分组不可点 */
+  var _fGrp = -2;   /* -2 表示不过滤 */
+  if (STATE.siteGroupFilter) {
+    _fGrp = -1;
+    for (var _fg = 0; _fg < (L.colorGroups || []).length; _fg++) {
+      if (L.colorGroups[_fg].key === STATE.siteGroupFilter) { _fGrp = _fg; break; }
+    }
+    if (_fGrp < 0) return [];   /* 该层没有这个分组，整层不可点 */
+  }
   for (var i = 0; i < n; i++) {
     if (L.citySel === 'none') break;
     if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
+    if (_fGrp >= 0 && L._grpOf && L._grpOf[i] !== _fGrp) continue;
     var x = mx[i], y = my[i];
     if (!isFinite(x) || !isFinite(y)) continue;
     var sx = t[0] * x + t[2] * y + t[4];
@@ -2143,8 +2296,15 @@ function pickSiteSector(L, pixel, t, res) {
     var d2 = dx * dx + dy * dy;
     var RpxI = Rpx, halfI = half;
     if (_bandKeys) {
-      var _bst = _bandKeys[i] ? BAND_STYLE[_bandKeys[i]] : null;
-      if (_bst) { RpxI = _bst.r * _pxPerMerc; halfI = _bst.beam * Math.PI / 360; }
+      /* 命中范围必须和绘制同口径：优先图层覆写的半径/波束角，
+         否则调过参数后扇区变大、点击区还是旧的 */
+      var _bkP = _bandKeys[i];
+      var _bstP = _bkP ? BAND_STYLE[_bkP] : null;
+      var _ovP = (_bkP && L.bandOverride && L.bandOverride[_bkP]) ? L.bandOverride[_bkP] : null;
+      var _rP = (_ovP && isFinite(_ovP.r)) ? _ovP.r : (_bstP ? _bstP.r : null);
+      var _bP = (_ovP && isFinite(_ovP.beam)) ? _ovP.beam : (_bstP ? _bstP.beam : null);
+      if (isFinite(_rP)) RpxI = _rP * _pxPerMerc;
+      if (isFinite(_bP)) halfI = _bP * Math.PI / 360;
     }
     if (d2 > RpxI * RpxI) continue;
     var az = azArr ? azArr[i] : NaN;
@@ -2263,11 +2423,7 @@ function pickAt(pixel) {
         if (pMatcher && !pMatcher(pg.props || {})) continue;
         var bb = pg._bbox;
         if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
-        if (!pg._ringsMerc) {
-          pg._ringsMerc = pg.rings.map(function (ring) {
-            return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-          });
-        }
+        vRingsOf(pg);
         if (ptInPoly(mxx, myy, pg._ringsMerc)) { best = { L: L3, poly: pg }; break; }
       }
       if (best) break;
@@ -2836,6 +2992,35 @@ function syncLegendFold() {
   el.style.height = (legendBox.h !== null && hasData) ? legendBox.h + 'px' : '';
 }
 
+/* 重建所有工参图层的 GL 缓冲（切换过滤条件后必须重建，因为顶点是按过滤裁剪生成的） */
+function rebuildAllSiteGL() {
+  var jobs = [];
+  for (var i = 0; i < layers.length; i++) {
+    var LL = layers[i];
+    if (LL.kind !== 'site' || !LL.ok) continue;
+    var p = null;
+    try { p = buildSiteGL(LL); } catch (e) { LL.siteGlOk = false; }
+    if (p && p.then) jobs.push(p.catch(function () { }));
+  }
+  return Promise.all(jobs);
+}
+
+/* 工参图例点选过滤：点一下只看该分组，再点取消 */
+function bindSiteLegendClick(body) {
+  Array.prototype.forEach.call(body.querySelectorAll('.li[data-g]'), function (el) {
+    el.onclick = function () {
+      var g = el.getAttribute('data-g');
+      STATE.siteGroupFilter = (STATE.siteGroupFilter === g) ? null : g;
+      /* GL 缓冲是异步重建的，必须等它完成再重绘——否则画的还是旧缓冲，
+         要等下一次缩放才更新 */
+      renderLegend();   /* 选中态立即反馈 */
+      /* 过滤由着色器按 a_grp 裁，改 uniform 即可，不重建缓冲 */
+      scheduleDraw();
+      scheduleLabels();
+    };
+  });
+}
+
 function renderLegend() {
   var body = document.getElementById('legendBody');
   var sub = document.getElementById('legendSub');
@@ -2864,7 +3049,7 @@ function renderLegend() {
   }
   if (L && L.kind === 'site') {
     /* 工参图层：频段模式下图例跟随频段表（每频段一行：色 + 半径/波束角） */
-    if (STATE.bandStyle) {
+    if (siteUseBand(L)) {
       title.textContent = '工参 · 频段';
       var bhtml = '';
       var seenB = {};
@@ -2876,14 +3061,19 @@ function renderLegend() {
         if (bk === 'rat') continue;   /* 未识别频段不在图例单列（用户定） */
         if (seenB[bk]) continue;
         seenB[bk] = 1;
-        bhtml += '<div class="li"><i style="background:' + bgv.color + ';border-radius:0;' +
+        var _onB = (STATE.siteGroupFilter === bk) ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+        bhtml += '<div class="li lgi' + _onB + '" data-g="' + esc(bk) + '" title="点击只看该频段">' +
+          '<i style="background:' + bgv.color + ';border-radius:0;' +
           'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + bk + '</span></div>';
       }
       /* 室分：用图层里室分的实际颜色（与扇区同制式色，4G 红 / 5G 蓝），不再用灰色 */
       if (!indoorColor) indoorColor = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
-      bhtml += '<div class="li"><i style="background:' + indoorColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
+      var _onI = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+      bhtml += '<div class="li lgi' + _onI + '" data-g="indoor" title="点击只看室分">' +
+        '<i style="background:' + indoorColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
       body.innerHTML = bhtml;
-      sub.textContent = '';
+      bindSiteLegendClick(body);
+      sub.textContent = STATE.siteGroupFilter ? ('仅显示 ' + (STATE.siteGroupFilter === 'indoor' ? '室分' : STATE.siteGroupFilter)) : '';
       return;
     }
     /* 工参图层：显示制式色 + 形状说明（圆=室分，扇区=宏站） */
@@ -2894,12 +3084,18 @@ function renderLegend() {
       if (g.key === 'rat' || !g.indoor) { ratColor = g.color; break; }
     }
     var ratName = (L.rat === '5G') ? '5G' : (L.rat === '4G') ? '4G' : '扇区';
-    html += '<div class="li"><i style="background:' + ratColor + ';border-radius:0;' +
+    /* 制式模式下同样支持点选过滤（按 group key：rat / indoor） */
+    var _onR = (STATE.siteGroupFilter === 'rat') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+    var _onIR = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+    html += '<div class="li lgi' + _onR + '" data-g="rat" title="点击只看宏站扇区">' +
+      '<i style="background:' + ratColor + ';border-radius:0;' +
       'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + ratName + ' 宏站扇区</span></div>';
-    html += '<div class="li"><i style="background:' + ratColor + ';border-radius:50%"></i>' +
-      '<span>室分（圆点）</span></div>';
+    html += '<div class="li lgi' + _onIR + '" data-g="indoor" title="点击只看室分">' +
+      '<i style="background:' + ratColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
     body.innerHTML = html;
-    sub.textContent = '';
+    bindSiteLegendClick(body);
+    sub.textContent = STATE.siteGroupFilter
+      ? ('仅显示 ' + (STATE.siteGroupFilter === 'indoor' ? '室分' : '宏站扇区')) : '';
     return;
   }
 
@@ -3011,11 +3207,7 @@ function drawLabels() {
         var vcx = (vbb[0] + vbb[2]) / 2, vcy = (vbb[1] + vbb[3]) / 2;
         if (vcx < extent[0] || vcx > extent[2] || vcy < extent[1] || vcy > extent[3]) continue;
         /* 确保中心点在多边形内部（凹多边形 bbox 中心可能在外） */
-        if (!vpg._ringsMerc) {
-          vpg._ringsMerc = vpg.rings.map(function (ring) {
-            return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-          });
-        }
+        vRingsOf(vpg);
         if (!ptInPoly(vcx, vcy, vpg._ringsMerc)) {
           /* 中心在外：试 bbox 的 1/4 分位点 */
           var found = false;
@@ -3055,6 +3247,15 @@ function drawLabels() {
     if (L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     /* 4G/5G 注记开关 */
     if (!L.labelOn) continue;
+    /* 图例点选过滤：只画目标分组，其余行跳过（用行→分组索引 O(1) 判断） */
+    var _lbGrp = -2;
+    if (STATE.siteGroupFilter) {
+      _lbGrp = -1;
+      for (var _gi2 = 0; _gi2 < (L.colorGroups || []).length; _gi2++) {
+        if (L.colorGroups[_gi2].key === STATE.siteGroupFilter) { _lbGrp = _gi2; break; }
+      }
+      if (_lbGrp < 0) continue;   /* 该层没有这个分组，整层跳过 */
+    }
     /* 地市筛选：扇区已被 shader 过滤，注记也要跟着过滤，否则别的城市名字还挂在图上 */
     if (L.citySel === 'none') continue;
     var _csIdx = (L.citySel && L.citySel !== '*') ? parseInt(L.citySel, 10) : -1;
@@ -3066,9 +3267,10 @@ function drawLabels() {
        没有时才退回 ds.str 或逐行取值 */
     var _sarr = (L.ds.str && L.ds.str[nameCol]) ? L.ds.str[nameCol] : null;
     /* 频段模式：注记锚点/颜色按每行频段走（与绘制同口径） */
-    var _bandKeysL = (STATE.bandStyle && L.bandCol && typeof buildBandInfo === 'function') ? buildBandInfo(L) : null;
+    var _bandKeysL = (siteUseBand(L) && L.bandCol && typeof buildBandInfo === 'function') ? buildBandInfo(L) : null;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
+      if (_lbGrp >= 0 && L._grpOf && L._grpOf[i] !== _lbGrp) continue;
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
       var nm = L._nameArr ? L._nameArr[i] : (_sarr ? _sarr[i] : L.ds.value(i, nameCol));
@@ -3079,8 +3281,12 @@ function drawLabels() {
       var _sv = stypeArr ? stypeArr[i] : '';
       var _isIndoor = typeof _sv === 'string' && /室分|室内/.test(_sv);
       var _is5gLb = (L.rat === '5G');
-      var _bstL = _bandKeysL ? (_bandKeysL[i] ? BAND_STYLE[_bandKeysL[i]] : null) : null;
-      var _rM = _isIndoor ? (_is5gLb ? 15 : 20) : (_bstL ? _bstL.r : (_is5gLb ? 60 : 80));
+      var _bkeyL = _bandKeysL ? _bandKeysL[i] : null;
+      var _bstL = _bkeyL ? BAND_STYLE[_bkeyL] : null;
+      /* 注记锚点必须和扇区同口径：用户在图层面板调过半径就优先用覆写值 */
+      var _ovL = (_bkeyL && L.bandOverride && L.bandOverride[_bkeyL]) ? L.bandOverride[_bkeyL] : null;
+      var _rM = _isIndoor ? (_is5gLb ? 15 : 20)
+        : ((_ovL && isFinite(_ovL.r)) ? _ovL.r : (_bstL ? _bstL.r : (_is5gLb ? 60 : 80)));
       var _dist = _rM + (_isIndoor ? 5 : 6);
       var az = azArr ? azArr[i] : 0;
       var rad = (az || 0) * Math.PI / 180;
@@ -3126,8 +3332,9 @@ function drawLabels() {
       ctx.strokeStyle = 'rgba(255,255,255,.95)';
       ctx.lineJoin = 'round';
       ctx.strokeText(nm, fpx, fpy);
-      if (!_isIndoor && _bstL && _bstL.c) {
-        var _rgbL = _bstL.c.split(',');
+      var _colL = (_ovL && _ovL.c) ? _ovL.c : (_bstL ? _bstL.c : null);
+      if (!_isIndoor && _colL) {
+        var _rgbL = _colL.split(',');
         ctx.fillStyle = 'rgb(' + Math.round(_rgbL[0] * 0.72) + ',' + Math.round(_rgbL[1] * 0.72) + ',' + Math.round(_rgbL[2] * 0.72) + ')';
       } else {
         ctx.fillStyle = is5g ? '#2471a3' : '#b03a2e';
@@ -3144,6 +3351,22 @@ function scheduleLabels() {
   if (_labelTimer) clearTimeout(_labelTimer);
   _labelTimer = setTimeout(drawLabels, 200);
 }
+/* 多边形的墨卡托环：按当前坐标系缓存，切底图（纠偏状态变）后自动重建。
+   原来各处内联写 lonToMercX/latToMercY，纠偏接上后必须统一走这里。 */
+function vRingsOf(pg) {
+  if (pg._ringsMerc && pg._ringsMode === STATE.crsMode) return pg._ringsMerc;
+  var fix = (STATE.crsMode === 1);
+  pg._ringsMerc = pg.rings.map(function (ring) {
+    return ring.map(function (pt) {
+      var x = pt[0], y = pt[1];
+      if (fix) { var p = wgs84ToGcj02(x, y); x = p[0]; y = p[1]; }
+      return [lonToMercX(x), latToMercY(y)];
+    });
+  });
+  pg._ringsMode = STATE.crsMode;
+  return pg._ringsMerc;
+}
+
 /* 地图平移/缩放与注记的联动：移动开始清空（否则标签钉在屏幕上、和扇区错位），
    停下后重绘。独立成函数——原来写在注记下拉的初始化里，
    顶部下拉删掉后整段被跳过，标签就不跟手了。 */
@@ -3158,148 +3381,4 @@ function bindLabelMapEvents() {
     if (_labelTimer) clearTimeout(_labelTimer);
   });
 }
-/* 注记下拉：按实际图层动态生成，每层一个开关。
-   原来的 4G/5G/场景 三个全局开关在「导入多个同制式工参」时无法分别控制，
-   改为挂到图层上（L.labelOn），关掉某一层不影响其他层。 */
-function initLabelDropdown() {
-  var box = document.getElementById('labelBox');
-  var btn = document.getElementById('btnLabel');
-  var list = document.getElementById('labelList');
-  if (!box || !btn || !list) return;
-
-  function canLabel(L) {
-    return !!(L && L.ok && (
-      (L.kind === 'site' && L.nameCol) ||
-      (L.kind === 'vector' && L.polygons && L.polygons.length)
-    ));
-  }
-  function syncBtn() {
-    var on = false;
-    for (var i = 0; i < layers.length; i++) { if (layers[i].labelOn) { on = true; break; } }
-    btn.classList.toggle('on', on);
-  }
-  function close() {
-    box.classList.remove('open');
-    btn.setAttribute('aria-expanded', 'false');
-  }
-  function row(L, isVec) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'lbl-row' + (L.labelOn ? ' on' : '');
-    var ck = document.createElement('i');
-    ck.className = 'lbl-ck';
-    var nm = document.createElement('span');
-    nm.className = 'lbl-nm';
-    nm.textContent = shortName(L.name);
-    nm.title = L.name;
-    b.appendChild(ck);
-    b.appendChild(nm);
-    if (!isVec) {
-      var tg = document.createElement('span');
-      var rr = (L.rat === '5G') ? '5G' : (L.rat === '4G' ? '4G' : '?');
-      tg.className = 'lbl-tag ' + (rr === '5G' ? 't5g' : (rr === '4G' ? 't4g' : 'tna'));
-      tg.textContent = rr;
-      b.appendChild(tg);
-    }
-    b.onclick = function (e) {
-      e.stopPropagation();
-      L.labelOn = !L.labelOn;
-      b.classList.toggle('on', !!L.labelOn);
-      syncBtn();
-      drawLabels();
-      /* 注记开关存进缓存清单，刷新后保持 */
-      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
-    };
-    return b;
-  }
-  function render() {
-    list.innerHTML = '';
-    var sites = [], vecs = [];
-    for (var i = 0; i < layers.length; i++) {
-      var L = layers[i];
-      if (!canLabel(L)) continue;
-      (L.kind === 'vector' ? vecs : sites).push(L);
-    }
-    var head = document.createElement('div');
-    head.className = 'dsel-h';
-    head.textContent = '注记显示';
-    list.appendChild(head);
-    /* 场景指标：统计过才有，与图层注记相互独立 */
-    if (vecs.length && typeof LAST_STAT !== 'undefined' && LAST_STAT) {
-      var srow = document.createElement('button');
-      srow.type = 'button';
-      srow.className = 'lbl-row' + (STATE.statLabel ? ' on' : '');
-      var sck = document.createElement('i');
-      sck.className = 'lbl-ck';
-      var snm = document.createElement('span');
-      snm.className = 'lbl-nm';
-      snm.textContent = '场景指标（覆盖率）';
-      srow.appendChild(sck);
-      srow.appendChild(snm);
-      srow.onclick = function (e) {
-        e.stopPropagation();
-        STATE.statLabel = !STATE.statLabel;
-        srow.classList.toggle('on', !!STATE.statLabel);
-        drawLabels();
-      };
-      list.appendChild(srow);
-    }
-    if (!sites.length && !vecs.length) {
-      var empty = document.createElement('div');
-      empty.className = 'st-empty';
-      empty.style.cssText = 'padding:9px 10px';
-      empty.textContent = '还没有可显示注记的图层';
-      list.appendChild(empty);
-      return;
-    }
-    /* 批量开关：图层多的时候省得一个个点 */
-    var bar = document.createElement('div');
-    bar.className = 'lbl-bar';
-    var bAll = document.createElement('button');
-    bAll.type = 'button';
-    bAll.textContent = '全部显示';
-    bAll.onclick = function (e) {
-      e.stopPropagation();
-      for (var k = 0; k < layers.length; k++) { if (canLabel(layers[k])) layers[k].labelOn = true; }
-      render(); syncBtn(); drawLabels();
-      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
-    };
-    var bNone = document.createElement('button');
-    bNone.type = 'button';
-    bNone.textContent = '全部隐藏';
-    bNone.onclick = function (e) {
-      e.stopPropagation();
-      for (var k = 0; k < layers.length; k++) layers[k].labelOn = false;
-      render(); syncBtn(); drawLabels();
-      if (typeof scheduleCacheUi === 'function') scheduleCacheUi();
-    };
-    bar.appendChild(bAll);
-    bar.appendChild(bNone);
-    list.appendChild(bar);
-
-    function group(title, arr, isVec) {
-      if (!arr.length) return;
-      var h = document.createElement('div');
-      h.className = 'dsel-h';
-      h.textContent = title;
-      list.appendChild(h);
-      for (var j = 0; j < arr.length; j++) list.appendChild(row(arr[j], isVec));
-    }
-    group('工参图层', sites, false);
-    group('边界图层', vecs, true);
-  }
-
-  btn.onclick = function (e) {
-    e.stopPropagation();
-    var open = box.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) render();
-  };
-  document.addEventListener('click', function () {
-    if (box.classList.contains('open')) close();
-  });
-  syncBtn();
-  /* 地图事件的绑定统一在 bindLabelMapEvents 里，这里不再重复绑 */
-}
-/* 兼容旧调用 */
-function bindLabelToggle() { initLabelDropdown(); }
+/* 注记下拉已随顶部控件移除：开关并入图层属性「名称」页。 */
