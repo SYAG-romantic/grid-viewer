@@ -759,14 +759,6 @@ html.light #btnTheme .ic-sun{display:block}
 #fldPrev i{font-style:normal;color:var(--fg)}
 #fldPrev .warn{color:var(--warn)}
 
-/* 地图状态提示（栅格步长未识别 / 扇区已聚合），不挡鼠标 */
-#mapHint{position:absolute;left:calc(var(--mleft) + 12px);bottom:14px;z-index:6;display:none;
-  max-width:min(400px,52vw);padding:5px 10px;font-size:11.5px;line-height:1.55;
-  color:var(--fg2);background:var(--glass);border:1px solid var(--line);border-radius:8px;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  transition:left .3s cubic-bezier(.22,.61,.36,1);pointer-events:none}
-#mapHint.show{display:block}
-
 
 /* 注记下拉：按图层一行一个开关（替代原来的 4G/5G/场景 三个全局开关） */
 #labelPop{min-width:220px;max-width:300px;padding:4px}
@@ -886,79 +878,14 @@ html.light #btnTheme .ic-sun{display:block}
 #fieldPop .sw{transition:border-color .15s ease}
 #fieldPop .sw:hover{transform:none;border-color:var(--accent)}
 
-/* ============ 1106g：空间书签 / 工程出图 / 鹰眼 / 属性表 / 出图对话框 ============ */
-/* 左面板：工程与出图按钮行（平面，无悬浮动画） */
-.proj-row{display:flex;gap:6px;margin-top:10px}
-.proj-row button{flex:1;height:32px;padding:0 4px;font-size:12.5px;border:1px solid var(--line);
+/* ============ 1106g：出图按钮 / 缓冲区表单 / 出图对话框 / 分级列表 ============ */
+/* 左面板：出图按钮行（平面，无悬浮动画） */
+.print-row{display:flex;gap:6px;margin-top:10px}
+.print-row button{flex:1;height:32px;padding:0 4px;font-size:12.5px;border:1px solid var(--line);
   border-radius:9px;background:var(--glass);color:var(--fg);cursor:pointer}
-.proj-row button:hover{background:var(--hover)}
-.proj-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
-.proj-row button.pri:hover{background:var(--accent2)}
-/* 左面板：空间书签 */
-#bmList:empty:before{content:"还没有书签";color:var(--fg3);font-size:12px}
-.bm-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--line);
-  border-radius:8px;margin-bottom:6px;cursor:pointer}
-.bm-item:hover{background:var(--hover)}
-.bm-item b{flex:1;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bm-item span{font-size:11px;color:var(--fg3);white-space:nowrap}
-.bm-item button{flex:0 0 auto;border:none;background:none;color:var(--fg3);font-size:14px;
-  cursor:pointer;padding:0 2px;line-height:1}
-.bm-item button:hover{color:var(--danger)}
-.bm-add{display:flex;gap:6px;margin:8px 0}
-.bm-add input{flex:1;min-width:0;height:32px;font-size:12.5px;border:1px solid var(--line);
-  border-radius:9px;background:var(--glass);color:var(--fg);padding:0 9px;outline:none}
-.bm-add button{flex:0 0 auto;height:32px;padding:0 11px;font-size:12.5px;border:1px solid var(--line);
-  border-radius:9px;background:var(--glass);color:var(--fg);cursor:pointer}
-.bm-add button.pri{background:var(--accent);border-color:transparent;color:#fff}
-.bm-add button:hover{background:var(--hover)}
-.bm-add button.pri:hover{background:var(--accent2)}
-/* 左下角：鹰眼 + 实时经纬度（默认收起画布时只留坐标行） */
-#ovBox{position:absolute;left:calc(var(--mleft) + 10px);bottom:10px;z-index:6;width:232px;
-  background:var(--glass);border:1px solid var(--line);border-radius:10px;
-  box-shadow:0 6px 22px rgba(0,0,0,.25);padding:8px;transition:left .3s cubic-bezier(.22,.61,.36,1)}
-#mapwrap.attr-open #ovBox{bottom:252px}
-.ov-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
-.ov-h b{flex:1;font-size:12.5px;font-weight:500}
-.ov-h span{font-size:11px;color:var(--fg3)}
-.ov-h button{width:22px;height:22px;border:none;background:none;color:var(--fg3);font-size:15px;
-  cursor:pointer;line-height:1}
-.ov-h button:hover{color:var(--fg)}
-#ovCanvas{display:block;width:216px;height:144px;border:1px solid var(--line);border-radius:6px;
-  background:#eef0e8;cursor:crosshair}
-#ovBox.folded #ovCanvas{display:none}
-#coordRead{margin-top:6px;font-size:11.5px;color:var(--fg3);font-variant-numeric:tabular-nums;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 属性表：底部通栏（属性表打开时鹰眼与图例上移避让） */
-#attrPanel{position:absolute;left:calc(var(--mleft) + 10px);right:10px;bottom:10px;height:232px;
-  z-index:6;background:var(--glass);border:1px solid var(--line);border-radius:10px;
-  box-shadow:0 6px 22px rgba(0,0,0,.25);overflow:hidden;display:none;flex-direction:column;
-  transition:left .3s cubic-bezier(.22,.61,.36,1)}
-#attrPanel.show{display:flex}
-#mapwrap.attr-open #legend{bottom:252px}
-.ap-h{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);
-  background:var(--soft2);font-size:12.5px}
-.ap-h b{font-weight:500;white-space:nowrap}
-.ap-h input{flex:0 0 210px;height:27px;font-size:12px;border:1px solid var(--line);border-radius:7px;
-  background:var(--glass);color:var(--fg);padding:0 8px;outline:none}
-.ap-sp{flex:1}
-.ap-h button{height:27px;padding:0 10px;font-size:12px;border:1px solid var(--line);border-radius:7px;
-  background:var(--glass);color:var(--fg);cursor:pointer;white-space:nowrap}
-.ap-h button:hover{background:var(--hover)}
-.ap-b{flex:1;overflow:auto;min-height:0}
-.ap-b table{width:100%;border-collapse:collapse;font-size:12.5px}
-.ap-b th{position:sticky;top:0;z-index:1;text-align:left;font-weight:400;color:var(--fg3);
-  background:var(--panel);border-bottom:1px solid var(--line);padding:5px 10px 5px 0;
-  white-space:nowrap;cursor:pointer}
-.ap-b th:first-child,.ap-b td:first-child{padding-left:10px}
-.ap-b td{padding:5px 10px 5px 0;color:var(--fg2);border-bottom:1px solid var(--line);
-  white-space:nowrap;font-variant-numeric:tabular-nums;cursor:pointer}
-.ap-b tr.sel td{background:rgba(47,107,237,.12);color:var(--fg)}
-.ap-f{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line);
-  font-size:12px;color:var(--fg3)}
-.ap-f button{height:26px;padding:0 10px;font-size:12px;border:1px solid var(--line);border-radius:7px;
-  background:var(--glass);color:var(--fg);cursor:pointer}
-.ap-f button:hover{background:var(--hover)}
-.ap-f button:disabled{opacity:.45;cursor:default}
+.print-row button:hover{background:var(--hover)}
+.print-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.print-row button.pri:hover{background:var(--accent2)}
 /* 统计面板内的缓冲区表单 */
 .buf-row{display:flex;gap:6px;align-items:center;margin-top:8px}
 .buf-row input{flex:1;min-width:0;height:30px;font-size:12.5px;border:1px solid var(--line);
