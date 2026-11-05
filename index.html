@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>图层查看</title>
 <link rel="stylesheet" href="vendor/ol.css">
-<link rel="stylesheet" href="styles.css?v=1106f">
+<link rel="stylesheet" href="styles.css?v=1106g">
 </head>
 <body>
 <div id="app" class="panelopen">
@@ -92,10 +92,26 @@
             <button id="btnFoldAll" class="lnkbtn">收起全部</button>
           </div>
 <div id="layerList" style="margin-top:4px"></div>
+          <div class="proj-row">
+            <button id="btnProjSave" title="把当前视图、图层设置和书签存成工程文件">保存工程</button>
+            <button id="btnProjOpen" title="打开工程文件（按图层名匹配设置）">打开工程</button>
+            <button id="btnPrint" class="pri" title="地图出图：快照 + 图例 + 比例尺 + 指北针">地图出图</button>
+            <input type="file" id="pickProj" accept=".json,.tucha.json,application/json" hidden>
+          </div>
         </div>
       </details>
 
-
+      <details id="bmDetails">
+        <summary>空间书签</summary>
+        <div class="sec">
+          <div id="bmList"></div>
+          <div class="bm-add">
+            <input type="text" id="bmName" placeholder="书签名称（留空自动命名）" autocomplete="off">
+            <button id="btnBmSave" class="pri">保存当前视图</button>
+          </div>
+          <div style="font-size:11.5px;color:var(--fg3);line-height:1.5">点书签回到记录的位置和缩放；书签存在浏览器里，换电脑需要用工程文件带走。</div>
+        </div>
+      </details>
 
     </div>
   </aside>
@@ -380,6 +396,28 @@
         </div>
       </div>
 
+      <div class="tgroup" id="grpSpatial">
+        <button id="btnSpatial" class="tbtn" title="空间选择：按边界 / 缓冲区">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l8 5-8 5-8-5z"/>
+            <path d="M4 13l8 5 8-5"/>
+            <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+          </svg>
+          <i class="tcar"></i>
+        </button>
+        <div class="tfly" id="flySpatial">
+          <button data-tool="byscene">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l8 6-3 11H7L4 9z"/></svg>
+            <span>按边界选择</span>
+          </button>
+          <button data-tool="buffer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8" stroke-dasharray="3 2.4"/><circle cx="12" cy="12" r="1.4"/><path d="M12 12l6-6"/></svg>
+            <span>缓冲区选择</span>
+          </button>
+        </div>
+      </div>
+
       <button id="btnCoord" class="tbtn" title="经纬度拾取：在地图上点击即可读取该点经纬度">
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
              stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -393,6 +431,30 @@
     <div id="toolPanel">
       <div class="tp-h"><b id="tpTitle">测量</b><button id="tpClose" class="lvbtn" title="清除结果并退出工具">✕</button></div>
       <div class="tp-b" id="tpBody"></div>
+    </div>
+
+    <div id="ovBox" class="card">
+      <div class="ov-h"><b>鹰眼</b><span id="ovHint">暂无边界图层</span><button id="ovFold" title="收起 / 展开鹰眼">–</button></div>
+      <canvas id="ovCanvas" width="216" height="144"></canvas>
+      <div id="coordRead">—</div>
+    </div>
+
+    <div id="attrPanel">
+      <div class="ap-h">
+        <b id="apTitle">属性表</b>
+        <input type="text" id="apFilter" placeholder="筛选（任意列包含）" autocomplete="off">
+        <span class="ap-sp"></span>
+        <button id="apLocate">定位选中行</button>
+        <button id="apClearSel">清除选择</button>
+        <button id="apClose" title="关闭属性表">✕</button>
+      </div>
+      <div class="ap-b"><table id="apTable"></table></div>
+      <div class="ap-f">
+        <button id="apPrev">上一页</button>
+        <span id="apPage">—</span>
+        <button id="apNext">下一页</button>
+        <span id="apCount"></span>
+      </div>
     </div>
 
     <div id="popup">
@@ -445,14 +507,35 @@
     <div class="rsz rsz-sw" data-dir="sw"></div><div class="rsz rsz-se" data-dir="se"></div>
   </div>
 
+  <!-- 地图出图：预览 + 下载 / 打印 -->
+  <div id="printMask"></div>
+  <div id="printDlg">
+    <div class="pr-h"><b>地图出图</b><span id="prNote"></span><button id="prClose" title="关闭">×</button></div>
+    <div class="pr-b">
+      <div class="pr-opt">
+        <label>标题 <input type="text" id="prTitle" value="图层查看出图" autocomplete="off"></label>
+        <label class="pr-chk"><input type="checkbox" id="prLegend" checked> 图例</label>
+        <label class="pr-chk"><input type="checkbox" id="prScale" checked> 比例尺</label>
+        <label class="pr-chk"><input type="checkbox" id="prNorth" checked> 指北针</label>
+        <button id="prRefresh">重新生成预览</button>
+      </div>
+      <div class="pr-img"><img id="prImg" alt="出图预览"></div>
+    </div>
+    <div class="pr-f">
+      <span class="pr-sp"></span>
+      <button id="prDownload" class="pri">下载 PNG</button>
+      <button id="prPrint">浏览器打印</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="vendor/ol.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
-<script src="data.js?v=1106f"></script>
-<script src="vector.js?v=1106f"></script>
-<script src="view.js?v=1106f"></script>
-<script src="app.js?v=1106f"></script>
+<script src="data.js?v=1106g"></script>
+<script src="vector.js?v=1106g"></script>
+<script src="view.js?v=1106g"></script>
+<script src="app.js?v=1106g"></script>
 <script>
 /* 页面版本号显示 + 版本自检：服务器上有新版本时自动刷新一次到新版，终结缓存卡旧页 */
 (function () {
