@@ -846,34 +846,34 @@ html.light #btnTheme .ic-sun{display:block}
   border-radius:6px;background:var(--glass);color:var(--fg);padding:0 5px;outline:none}
 .band-row input[type=number]:focus{border-color:var(--accent)}
 
-/* ---------- 属性弹窗：下拉交互统一（11-05 反馈） ---------- */
-/* 下拉列表在弹层内部滚动（不撑高、不连带整个属性弹窗滚），触底也不外溢；
-   开合动画收敛为 4px 轻移，参考统计面板的克制过渡 */
-#fieldPop .dsel-pop{max-height:240px;overflow-y:auto;overscroll-behavior:contain;
-  transform:translateY(-4px);
-  transition:opacity .14s ease, transform .16s ease}
-#fieldPop .dsel.open .dsel-pop{transform:none}
+/* ---------- 属性弹窗：与全站统一的克制样式（11-05 反馈：回弹/缩放/阴影太激进） ---------- */
+/* 弹窗内下拉：只保留弹层内滚动（功能），开合动画回归全站 .dsel-pop 同款，不再单列快动画 */
+#fieldPop .dsel-pop{max-height:240px;overflow-y:auto;overscroll-behavior:contain}
+/* 弹窗内下拉按钮：去掉顶栏 .dsel-btn 的常驻阴影与悬浮缩放/阴影，悬浮只换底色（同 #labelPop 行的克制语言） */
+#fieldPop .dsel-btn{box-shadow:none}
+#fieldPop .dsel-btn:hover{transform:none!important;box-shadow:none!important;
+  background:var(--hover)!important;border-color:var(--line)!important}
+#fieldPop .dsel-btn:active{transform:none!important;color:var(--fg)!important}
 /* 右侧面板自身滚动也收敛在弹窗内 */
 .ld-pane{overscroll-behavior:contain}
 /* 档位分布色块：保持平面实心（无描边无玻璃圈） */
 #popup table.dist td.sw i{box-shadow:none;border-radius:2px}
 
-/* ---------- 属性弹窗：页签与底部按钮统一质感（11-05 反馈） ---------- */
-/* 左侧页签：玻璃底、悬浮右滑加深、激活填充主色 */
-#fieldPop .ld-nav button{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+/* 左侧页签：回归全站列表语言——透明底、悬浮只换底色、选中是主色文字＋柔底（同 .dsel-pop button.on），不再玻璃卡片＋回弹右滑＋主色填充 */
+#fieldPop .ld-nav button{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
   border:1px solid transparent;
-  transition:transform .16s cubic-bezier(.34,1.56,.64,1), color .16s ease,
-             background-color .16s ease, border-color .16s ease}
-#fieldPop .ld-nav button:hover{background:var(--hover);color:var(--fg);transform:translateX(2px)}
-#fieldPop .ld-nav button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-/* 底部按钮：同款玻璃底与轻缩放悬浮；主按钮（应用）保持主色填充 */
+  transition:background-color .15s ease, color .15s ease}
+#fieldPop .ld-nav button:hover{background:var(--hover);color:var(--fg);transform:none}
+#fieldPop .ld-nav button.on{background:var(--soft);border-color:transparent;color:var(--accent);font-weight:500}
+/* 底部按钮：玻璃底同 .pri 家族，但悬浮只换底色、按压只换底色，不缩放、不阴影、不改边框色、不回弹 */
 #fieldPop .ld-foot button{background:var(--glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
   border:1px solid var(--line);color:var(--fg2);
-  transition:transform .16s cubic-bezier(.34,1.56,.64,1), color .16s ease,
-             background-color .16s ease, border-color .16s ease, box-shadow .16s ease}
-#fieldPop .ld-foot button:hover{color:var(--fg);transform:scale(1.06);
-  border-color:var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.35)}
-#fieldPop .ld-foot button:active{transform:scale(.97)}
+  transition:background-color .15s ease, color .15s ease}
+#fieldPop .ld-foot button:hover{color:var(--fg);background:var(--hover);transform:none;box-shadow:none;border-color:var(--line)}
+#fieldPop .ld-foot button:active{background:var(--soft);transform:none}
 #fieldPop .ld-foot button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-#fieldPop .ld-foot button.pri:hover{color:#fff;transform:scale(1.06)}
-#fieldPop .ld-foot button.pri:active{transform:scale(.97)}
+#fieldPop .ld-foot button.pri:hover{color:#fff;background:var(--accent);filter:brightness(1.08);transform:none;box-shadow:none}
+#fieldPop .ld-foot button.pri:active{filter:brightness(.92);transform:none}
+/* 单色页的常用色板：悬浮不再缩放，改描边主色提示 */
+#fieldPop .sw{transition:border-color .15s ease}
+#fieldPop .sw:hover{transform:none;border-color:var(--accent)}
