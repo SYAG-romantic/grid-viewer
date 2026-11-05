@@ -926,12 +926,15 @@ function projectLayer(L) {
   var ds = L.ds, n = ds.n;
   var lon = ds.num[L.lonCol], lat = ds.num[L.latCol];
   if (!lon || !lat) { L.ok = false; L.error = '经纬度列不是数值'; return; }
+  /* 纠偏方向：源数据是 WGS84（工参/MR/AOI 均如此），配高德时需要
+     正向转成 GCJ-02 再投影；配天地图则保持原样。原来这里调的是
+     gcj02ToWgs84（反了），只有"数据本身是火星坐标"的旧场景才对。 */
   var fix = (STATE.crsMode === 1);
   var mx = new Float32Array(n), my = new Float32Array(n);
   for (var i = 0; i < n; i++) {
     var x = lon[i], y = lat[i];
     if (!isFinite(x) || !isFinite(y)) { mx[i] = NaN; my[i] = NaN; continue; }
-    if (fix) { var p = gcj02ToWgs84(x, y); x = p[0]; y = p[1]; }
+    if (fix) { var p = wgs84ToGcj02(x, y); x = p[0]; y = p[1]; }
     mx[i] = lonToMercX(x);
     my[i] = latToMercY(y);
   }
@@ -1042,6 +1045,29 @@ function buildBandInfo(L) {
   return out;
 }
 
+/* 该图层是否按频段样式绘制。图层显式设了 styleMode 就听它的；
+   没设（旧缓存、未配置的图层）才回退到全局开关 STATE.bandStyle。
+   渲染层（GL/Canvas/图例/注记/点击）原本统一读全局，改为逐层判断后
+   才能做到「4G 按频段、5G 按制式」。 */
+/* 每行所属的分组序号，供图例过滤时 O(1) 判断（别的办法是逐个 idx.indexOf，19 万行会很慢） */
+function buildGroupIndex(L) {
+  var gs = L.colorGroups || [], n = L.ds ? L.ds.n : 0;
+  if (!n) { L._grpOf = null; return; }
+  var arr = new Uint16Array(n);
+  for (var gi = 0; gi < gs.length; gi++) {
+    var idx = gs[gi].idx;
+    if (!idx) continue;
+    for (var k = 0; k < idx.length; k++) arr[idx[k]] = gi;
+  }
+  L._grpOf = arr;
+}
+
+function siteUseBand(L) {
+  if (!L || L.kind !== 'site') return false;
+  if (L.styleMode) return L.styleMode === 'band';
+  return !!STATE.bandStyle;
+}
+
 function buildSiteColors(L) {
   var ds = L.ds, n = ds.n;
   var mode = L.styleMode || STATE.siteColor;   /* 图层级样式优先于全局 */
@@ -1087,7 +1113,7 @@ function buildSiteColors(L) {
     return base + (h % half);
   }
 
-  if (STATE.bandStyle) {
+  if (siteUseBand(L)) {
     /* 按频段样式：颜色/半径/波束角查 BAND_STYLE；识别不出的频段回退制式样式；室分仍画圆 */
     var bkeys = buildBandInfo(L);
     var bgroups = {}, border = [];
@@ -1099,12 +1125,15 @@ function buildSiteColors(L) {
     var defR = (L.rat === '5G') ? 60 : 80, defBeam = (L.rat === '5G') ? 45 : 35;
     L.colorGroups = border.map(function (k) {
       var st = (k !== 'indoor' && k !== 'rat') ? BAND_STYLE[k] : null;
+      /* 图层级覆写优先于 BAND_STYLE 默认表：用户在属性面板里调过的颜色/半径/波束角 */
+      var ov = (L.bandOverride && L.bandOverride[k]) ? L.bandOverride[k] : null;
+      var oc = ov && ov.c ? ov.c : null;
       return {
         key: k,
         indoor: (k === 'indoor'),
-        color: st ? ('rgba(' + st.c + ',0.7)') : ratColor,
-        rM: st ? st.r : defR,
-        beam: st ? st.beam : defBeam,
+        color: oc ? ('rgba(' + oc + ',0.7)') : (st ? ('rgba(' + st.c + ',0.7)') : ratColor),
+        rM: (ov && isFinite(ov.r)) ? ov.r : (st ? st.r : defR),
+        beam: (ov && isFinite(ov.beam)) ? ov.beam : (st ? st.beam : defBeam),
         idx: new Uint32Array(bgroups[k])
       };
     });
@@ -1144,6 +1173,7 @@ function buildSiteColors(L) {
     }
     L.isIndoor = _indoor;
   } catch (e) { L.isIndoor = null; }
+  buildGroupIndex(L);   /* 行→分组索引，图例过滤用 */
   /* 站点 WebGL 实例缓冲异步重建（失败则 siteGlOk=false，走 Canvas 回退） */
   try {
     buildSiteGL(L).catch(function () { L.siteGlOk = false; });
@@ -1310,14 +1340,15 @@ var STATE = {
   tk: '',
   sub: 'random',
   keys: [],
-  base: 'img',
-  crsMode: 0,             /* 默认不纠偏：实测众测数据本身即与天地图一致 */
+  base: 'amapVec',   /* 默认高德矢量：免密钥，配套开启坐标纠偏 */
+  crsMode: 1,             /* 默认纠偏：底图默认高德（GCJ-02），数据 WGS84 需正向转换 */
   beamW: 65,
   siteR: 34,
   siteColor: 'rat',
   bandStyle: false,          /* 按频段样式（颜色/半径/波束角查 BAND_STYLE 表） */
   gridColorMode: 'rsrp',   /* 栅格着色：rsrp | sinr | cov（字段缺失的图层自动回退 rsrp） */
-  bandFilter: -1,          /* 图例点选过滤：-1=不过滤，>=0 只突出该档（其余压暗） */
+  bandFilter: -1,          /* 栅格图例点选过滤：-1=不过滤，>=0 只突出该档（其余压暗） */
+  siteGroupFilter: null,   /* 工参图例点选过滤：null=全部，否则只画该 group（频段名/rat/indoor） */
   statLabel: false,        /* 把场景统计结果（覆盖率）直接标在地图上 */
   cityFilter: '*',         /* 顶部城市按钮：'*'=全疆，或 CityID 字符串 */
   pin: null,
