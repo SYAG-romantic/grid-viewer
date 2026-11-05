@@ -862,6 +862,10 @@ html.light #btnTheme .ic-sun{display:block}
   box-shadow:none;background-image:none;filter:none;opacity:1;border-radius:0;transition:none}
 #tpBody table.dist td.sw i:hover, #popup table.dist td.sw i:hover, table.stat td.sw i:hover{
   transform:none;box-shadow:none;filter:none}
+/* 档位分布色块的单元格本身也被 .sw 色板样式污染（圆角边框 chip＋悬浮缩放）——一并清掉（11-05 反馈：1106e 只改了色块本身，外面的框还在） */
+#tpBody td.sw, #popup td.sw, table.stat td.sw{
+  border:none;border-radius:0;background:none;box-shadow:none;cursor:default;height:auto;transition:none}
+#tpBody td.sw:hover, #popup td.sw:hover, table.stat td.sw:hover{transform:none}
 
 /* 左侧页签：回归全站列表语言——透明底、悬浮只换底色、选中是主色文字＋柔底（同 .dsel-pop button.on），不再玻璃卡片＋回弹右滑＋主色填充 */
 #fieldPop .ld-nav button{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
