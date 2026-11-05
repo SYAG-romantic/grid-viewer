@@ -949,7 +949,7 @@ function drawGrid(c, L, t, w, h, box) {
 
   /* 半透明叠加：让底图透出来，便于对照地物（30% 透明 = 不透明度 0.7） */
   var alpha0 = c.globalAlpha;
-  var gAlpha = gAlpha * (L.opacity == null ? 1 : L.opacity);
+  var gAlpha = GRID_ALPHA * (L.opacity == null ? 1 : L.opacity);
 
   if (!agg) {
     var st = makeSelTest(currentSel());
