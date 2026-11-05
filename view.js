@@ -516,10 +516,10 @@ function initTheme() {
 /* 可用底图：高德走免密钥接口（GCJ-02），天地图需密钥（CGCS2000）。
    选高德时自动开启坐标纠偏（数据 WGS84 → GCJ-02），不需要用户手动开。 */
 var BASE_LAYERS = [
-  { id: 'amapImg', name: '高德影像', gcj: true,  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
   { id: 'amapVec', name: '高德矢量', gcj: true,  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>' },
-  { id: 'tdImg',   name: '天地图影像', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
+  { id: 'amapImg', name: '高德影像', gcj: true,  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
   { id: 'tdVec',   name: '天地图矢量', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>' },
+  { id: 'tdImg',   name: '天地图影像', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>' },
   { id: 'tdTer',   name: '天地图地形', gcj: false, needKey: true, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19l6-8 4 4 3-5 7 9z"/><path d="M2 22h20"/></svg>' },
   { id: 'none',    name: '无底图', gcj: false, icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' }
 ];
@@ -2092,9 +2092,8 @@ function drawVectorHighlight(c, L, t, box) {
       c.beginPath();
       var hrings = hpg._ringsMerc;
       if (!hrings) {
-        hrings = hpg.rings.map(function (ring) {
-          return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-        });
+        try { hrings = vRingsOf(hpg); }
+        catch (e0) { hrings = []; }
       }
       for (var hri = 0; hri < hrings.length; hri++) {
         var hring = hrings[hri];
@@ -3356,13 +3355,23 @@ function scheduleLabels() {
 function vRingsOf(pg) {
   if (pg._ringsMerc && pg._ringsMode === STATE.crsMode) return pg._ringsMerc;
   var fix = (STATE.crsMode === 1);
-  pg._ringsMerc = pg.rings.map(function (ring) {
-    return ring.map(function (pt) {
-      var x = pt[0], y = pt[1];
-      if (fix) { var p = wgs84ToGcj02(x, y); x = p[0]; y = p[1]; }
-      return [lonToMercX(x), latToMercY(y)];
-    });
-  });
+  /* 畸形几何防御：个别多边形 rings 缺失/结构不对时，一个坏数据不能炸掉
+     整个拾取/标注流程（否则点击无反应、标注全消失） */
+  var rings = pg.rings;
+  if (!Array.isArray(rings)) { pg._ringsMerc = []; pg._ringsMode = STATE.crsMode; return pg._ringsMerc; }
+  try {
+    pg._ringsMerc = rings.map(function (ring) {
+      if (!Array.isArray(ring)) return [];
+      return ring.map(function (pt) {
+        if (!pt || pt.length < 2) return [NaN, NaN];
+        var x = pt[0], y = pt[1];
+        if (fix) { var p = wgs84ToGcj02(x, y); x = p[0]; y = p[1]; }
+        return [lonToMercX(x), latToMercY(y)];
+      }).filter(function (p2) { return isFinite(p2[0]) && isFinite(p2[1]); });
+    }).filter(function (r2) { return Array.isArray(r2) && r2.length >= 3; });
+  } catch (e) {
+    pg._ringsMerc = [];
+  }
   pg._ringsMode = STATE.crsMode;
   return pg._ringsMerc;
 }
