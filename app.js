@@ -255,13 +255,10 @@ function renderFieldPane(L, T) {
 
   if (FIELD_PAGE === 'name') {
     var keys = fieldKeys(L);
-    h += '<div class="fld"><span>名称字段（注记 / 搜索 / 导出用）</span><select id="fldSel">' +
-      '<option value="">（自动识别）</option>';
-    for (i = 0; i < keys.length; i++) {
-      h += '<option value="' + esc(keys[i]) + '"' + (T.nameField === keys[i] ? ' selected' : '') +
-        '>' + esc(keys[i]) + '</option>';
-    }
-    h += '</select><div id="fldPrev"></div></div>';
+    var nameOpts = [{ v: '', t: '（自动识别）' }];
+    for (i = 0; i < keys.length; i++) nameOpts.push({ v: keys[i], t: keys[i] });
+    h += '<div class="fld"><span>名称字段（注记 / 搜索 / 导出用）</span>' +
+      fldDselHtml('fldSel', T.nameField || '', nameOpts) + '<div id="fldPrev"></div></div>';
     h += '<div class="fld"><label class="fld-chk"><input type="checkbox" id="fldLabelOn"' +
       (T.labelOn ? ' checked' : '') + '> 在地图上显示名称</label></div>';
     h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
@@ -270,12 +267,12 @@ function renderFieldPane(L, T) {
   }
 
   if (FIELD_PAGE === 'style' && isSite) {
-    h += '<div class="fld"><span>着色方式</span><select id="fldMode">' +
-      '<option value="rat"' + (T.styleMode === 'rat' ? ' selected' : '') + '>按制式（4G 红 / 5G 蓝）</option>' +
-      '<option value="single"' + (T.styleMode === 'single' ? ' selected' : '') + '>单色</option>' +
-      '<option value="field"' + (T.styleMode === 'field' ? ' selected' : '') + '>按字段分类</option>' +
-      '<option value="band"' + (T.styleMode === 'band' ? ' selected' : '') + '>按频段（可调颜色 / 半径 / 波束角）</option>' +
-      '</select></div>';
+    h += '<div class="fld"><span>着色方式</span>' + fldDselHtml('fldMode', T.styleMode, [
+      { v: 'rat', t: '按制式（4G 红 / 5G 蓝）' },
+      { v: 'single', t: '单色' },
+      { v: 'field', t: '按字段分类' },
+      { v: 'band', t: '按频段（可调颜色 / 半径 / 波束角）' }
+    ]) + '</div>';
     if (T.styleMode === 'single') {
       h += '<div class="fld"><span>颜色</span><div class="fld-color">' +
         '<input type="color" id="fldColor" value="' + T.single + '">' +
@@ -296,12 +293,10 @@ function renderFieldPane(L, T) {
     }
     if (T.styleMode === 'field') {
       var keys2 = fieldKeys(L);
-      h += '<div class="fld"><span>分类字段</span><select id="fldCField"><option value="">（选择字段）</option>';
-      for (i = 0; i < keys2.length; i++) {
-        h += '<option value="' + esc(keys2[i]) + '"' + (T.colorField === keys2[i] ? ' selected' : '') +
-          '>' + esc(keys2[i]) + '</option>';
-      }
-      h += '</select></div><div id="fldClassList"></div>';
+      var cOpts = [{ v: '', t: '（选择字段）' }];
+      for (i = 0; i < keys2.length; i++) cOpts.push({ v: keys2[i], t: keys2[i] });
+      h += '<div class="fld"><span>分类字段</span>' + fldDselHtml('fldCField', T.colorField || '', cOpts) +
+        '</div><div id="fldClassList"></div>';
     }
     return h;
   }
@@ -323,6 +318,53 @@ function renderFieldPane(L, T) {
     return h;
   }
   return h;
+}
+
+/* 属性弹窗内的自定义下拉：与顶栏 .dsel 同一套样式/交互 */
+function fldDselHtml(id, cur, options) {
+  var curT = '';
+  for (var i = 0; i < options.length; i++) if (options[i].v === cur) curT = options[i].t;
+  if (!curT && options.length) curT = options[0].t;
+  var h = '<div class="dsel" id="' + id + 'Dsel" style="width:100%">' +
+    '<button type="button" class="dsel-btn" aria-haspopup="listbox" aria-expanded="false" style="width:100%">' +
+    '<b id="' + id + 'Cur">' + esc(curT) + '</b>' +
+    '<svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>' +
+    '<div class="dsel-pop" role="listbox">';
+  for (i = 0; i < options.length; i++) {
+    h += '<button type="button" role="option" data-v="' + esc(options[i].v) + '"' +
+      (options[i].v === cur ? ' class="on"' : '') + '><span>' + esc(options[i].t) + '</span></button>';
+  }
+  h += '</div></div>';
+  return h;
+}
+function fldDselBind(id, onPick) {
+  var box = document.getElementById(id + 'Dsel');
+  if (!box) return;
+  var btn = box.querySelector('.dsel-btn');
+  var pop = box.querySelector('.dsel-pop');
+  function close() { box.classList.remove('open'); if (btn) btn.setAttribute('aria-expanded', 'false'); }
+  if (btn) btn.onclick = function (e) {
+    e.stopPropagation();
+    var open = box.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  Array.prototype.forEach.call(pop.querySelectorAll('button'), function (b) {
+    b.onclick = function (e) {
+      e.stopPropagation();
+      Array.prototype.forEach.call(pop.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === b); });
+      if (onPick) onPick(b.getAttribute('data-v'));
+      close();
+    };
+  });
+  /* 点弹窗外关闭：文档级监听只装一次，统一收起属性弹窗里所有打开的下拉 */
+  if (!fldDselBind._doc) {
+    fldDselBind._doc = true;
+    document.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.fld .dsel.open'), function (b2) {
+        b2.classList.remove('open');
+      });
+    });
+  }
 }
 
 function renderFieldBody() {
@@ -355,15 +397,15 @@ function bindFieldEvents() {
   var T = FIELD_TMP;
   var $ = function (id) { return document.getElementById(id); };
   if (T === null) return;
-  if ($('fldSel')) $('fldSel').onchange = function () { T.nameField = this.value; updateFieldPreview(); };
-  if ($('fldMode')) $('fldMode').onchange = function () { T.styleMode = this.value; renderFieldBody(); };
+  fldDselBind('fldSel', function (v) { T.nameField = v || ''; updateFieldPreview(); });
+  fldDselBind('fldMode', function (v) { T.styleMode = v; renderFieldBody(); });
   if ($('fldColor')) $('fldColor').oninput = function () {
     T.single = this.value;
     var t = $('fldColorTxt'); if (t) t.textContent = this.value;
   };
-  if ($('fldCField')) $('fldCField').onchange = function () {
-    T.colorField = this.value || null; T.colorMap = {}; renderFieldBody();
-  };
+  fldDselBind('fldCField', function (v) {
+    T.colorField = v || null; T.colorMap = {}; renderFieldBody();
+  });
   if ($('fldStroke')) $('fldStroke').oninput = function () {
     T.stroke = this.value;
     var t = $('fldStrokeTxt'); if (t) t.textContent = this.value;
@@ -484,9 +526,8 @@ function renderBandList() {
 function updateFieldPreview() {
   var L = FIELD_L, T = FIELD_TMP;
   var prev = document.getElementById('fldPrev');
-  var sel = document.getElementById('fldSel');
-  if (!L || !T || !prev || !sel) return;
-  var field = sel.value || '';
+  if (!L || !T || !prev) return;
+  var field = T.nameField || '';
   var vals = [];
   if (L.kind === 'site') {
     var col = field || L._nameColAuto;
@@ -4235,7 +4276,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106a';
+    var workerUrl = 'worker.js?v=1106b';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4518,6 +4559,43 @@ function initStatsPanel() {
   var search = document.getElementById('stSearch');
   q.onclick = function () { stDoQuery(); };
   if (search) search.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); stDoQuery(); } };
+  /* 输入时防抖模糊建议（与左侧定位搜索一致的体验）：不点查询也出下拉，点建议直接选中场景 */
+  var _stDeb = null;
+  if (search) search.oninput = function () {
+    if (_stDeb) clearTimeout(_stDeb);
+    var v0 = search.value.trim();
+    if (v0.length < 2) {
+      var l0 = document.getElementById('stList');
+      if (l0) l0.style.display = 'none';
+      return;
+    }
+    _stDeb = setTimeout(function () {
+      if (ST.busy) return;
+      if (!stEnsureLayer()) return;
+      var kw = search.value.trim();
+      if (kw.length < 2) return;
+      var hits = stFindScenes(kw);
+      var list = document.getElementById('stList');
+      if (!hits.length) { list.style.display = 'none'; return; }
+      var L = layers[ST.layerId];
+      var html = '', MAX = 30;
+      for (var i = 0; i < Math.min(hits.length, MAX); i++) {
+        var pg = L.polygons[hits[i]];
+        html += '<div class="st-item" data-i="' + hits[i] + '"><span class="st-city">'
+          + esc(stCityName(pg.props || {})) + '</span>'
+          + esc(getSceneName(pg.props || {}, L) || ('场景 ' + (hits[i] + 1))) + '</div>';
+      }
+      if (hits.length > MAX) html += '<div class="st-empty">共 ' + hits.length + ' 个匹配，仅显示前 ' + MAX + ' 个</div>';
+      list.innerHTML = html;
+      list.style.display = '';
+      Array.prototype.forEach.call(list.querySelectorAll('.st-item'), function (el) {
+        el.onclick = function () {
+          list.style.display = 'none';
+          stSelectScene(parseInt(el.getAttribute('data-i'), 10));
+        };
+      });
+    }, 350);
+  };
   document.getElementById('stClear').onclick = function () { stDoClear(false); };
   document.getElementById('stExport').onclick = function () {
     /* 统一导出分发：① 统计查中的场景 → 该场景栅格统计；② 地图上有手动框选 → 选区内小区清单；③ 都没有 → 统计图层全部场景栅格统计 */
