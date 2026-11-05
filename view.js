@@ -7,20 +7,6 @@ var map, cv, ctx, baseSource = null, baseLayer = null, overlayLayers = {};
 var FILE_MODE = (location.protocol === 'file:');
 var lodBuf = null;
 
-/* 地图状态提示：两个来源（栅格步长未识别 / 扇区已聚合）合并成一行显示，不会互相覆盖。
-   文本没变就不碰 DOM，drawSites 每帧调用也没有开销 */
-var _hintGrid = '', _hintSite = '';
-function setMapHint(which, txt) {
-  txt = txt || '';
-  if (which === 'site') { if (_hintSite === txt) return; _hintSite = txt; }
-  else { if (_hintGrid === txt) return; _hintGrid = txt; }
-  var all = [_hintGrid, _hintSite].filter(Boolean).join('　·　');
-  var el = document.getElementById('mapHint');
-  if (!el) return;
-  el.textContent = all;
-  el.classList.toggle('show', !!all);
-}
-
 function tdtUrl(layer, tk, sub) {
   var host = (!sub || sub === 'random') ? 't{0-7}' : sub;
   return 'https://' + host + '.tianditu.gov.cn/' + layer + '_w/wmts' +
@@ -2163,11 +2149,6 @@ function drawSites(c, L, t, w, h, box) {
   /* 缩放/平移动画过程中也走快速通道：动画每帧都重绘，画全扇区会把动画卡成 PPT。
      6000 点以下全扇区本来就够快，不必降级 */
   var navigating = STATE.navigating && vis > 6000;
-  /* 扇区降级提示：可见点超阈值只画圆点，不说一声用户会以为扇区丢了或频段样式失效。
-     拖动/缩放过程中的临时降级不提示，避免闪烁 */
-  setMapHint('site', (vis > SITE_SECTOR_LIMIT && !navigating)
-    ? '可见小区较多，已改为圆点显示（放大可查看扇区）'
-    : '');
   /* 自动聚合：站点屏幕密度过高时（平均每点 < 3px），按 3px 网格聚合，
      每格只画一个点，参考栅格的聚合逻辑 */
   var aggCell = 0;
@@ -3037,17 +3018,6 @@ function renderLegend() {
   var title = document.getElementById('legendTitle');
   var L = selected;
 
-  /* 栅格步长没识别出来时，绘制会退回默认 20 米左右，格子之间会露出底图。
-     不说一声用户会以为是数据缺失，所以在这里挂个常驻提示 */
-  var _badStep = null;
-  for (var _gs = 0; _gs < layers.length; _gs++) {
-    var _gl = layers[_gs];
-    if (_gl.kind === 'grid' && _gl.ok && _gl.visible && _gl.stepDetected === false) { _badStep = _gl; break; }
-  }
-  setMapHint('grid', _badStep
-    ? '栅格步长未识别，按约 ' + Math.round(_badStep.stepLonM || 20) + '×' + Math.round(_badStep.stepLatM || 20) + ' 米绘制'
-    : '');
-
   var html = '';
   if (L && L.kind === 'vector') {
     /* 边界图层：以前落到下面的公共分支，选中的是边界却在显示 RSRP 档位图例 */
@@ -3212,7 +3182,7 @@ function drawLabels() {
   ctx.clearRect(0, 0, W, H);
   if (!map || !anyLabelOn()) return;
   var zoom = map.getView().getZoom();
-  if (zoom < LABEL_MIN_ZOOM) { setMapHint('label', ''); return; }
+  if (zoom < LABEL_MIN_ZOOM) return;
   var extent = map.getView().calculateExtent(map.getSize());
   // extent 是墨卡托坐标 [minx, miny, maxx, maxy]
   ctx.font = '11px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
@@ -3396,8 +3366,6 @@ function drawLabels() {
       drawn++;
     }
   }
-  /* 注记有条数上限，超出部分不画。不说一声用户会以为这一片没数据 */
-  setMapHint('label', drawn >= LABEL_MAX ? '注记已达 ' + LABEL_MAX + ' 条上限，放大可显示更多' : '');
 }
 var _labelTimer = null;
 function scheduleLabels() {
