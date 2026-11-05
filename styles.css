@@ -885,3 +885,124 @@ html.light #btnTheme .ic-sun{display:block}
 /* 单色页的常用色板：悬浮不再缩放，改描边主色提示 */
 #fieldPop .sw{transition:border-color .15s ease}
 #fieldPop .sw:hover{transform:none;border-color:var(--accent)}
+
+/* ============ 1106g：空间书签 / 工程出图 / 鹰眼 / 属性表 / 出图对话框 ============ */
+/* 左面板：工程与出图按钮行（平面，无悬浮动画） */
+.proj-row{display:flex;gap:6px;margin-top:10px}
+.proj-row button{flex:1;height:32px;padding:0 4px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:9px;background:var(--glass);color:var(--fg);cursor:pointer}
+.proj-row button:hover{background:var(--hover)}
+.proj-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.proj-row button.pri:hover{background:var(--accent2)}
+/* 左面板：空间书签 */
+#bmList:empty:before{content:"还没有书签";color:var(--fg3);font-size:12px}
+.bm-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--line);
+  border-radius:8px;margin-bottom:6px;cursor:pointer}
+.bm-item:hover{background:var(--hover)}
+.bm-item b{flex:1;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bm-item span{font-size:11px;color:var(--fg3);white-space:nowrap}
+.bm-item button{flex:0 0 auto;border:none;background:none;color:var(--fg3);font-size:14px;
+  cursor:pointer;padding:0 2px;line-height:1}
+.bm-item button:hover{color:var(--danger)}
+.bm-add{display:flex;gap:6px;margin:8px 0}
+.bm-add input{flex:1;min-width:0;height:32px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:9px;background:var(--glass);color:var(--fg);padding:0 9px;outline:none}
+.bm-add button{flex:0 0 auto;height:32px;padding:0 11px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:9px;background:var(--glass);color:var(--fg);cursor:pointer}
+.bm-add button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.bm-add button:hover{background:var(--hover)}
+.bm-add button.pri:hover{background:var(--accent2)}
+/* 左下角：鹰眼 + 实时经纬度（默认收起画布时只留坐标行） */
+#ovBox{position:absolute;left:calc(var(--mleft) + 10px);bottom:10px;z-index:6;width:232px;
+  background:var(--glass);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 6px 22px rgba(0,0,0,.25);padding:8px;transition:left .3s cubic-bezier(.22,.61,.36,1)}
+#mapwrap.attr-open #ovBox{bottom:252px}
+.ov-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.ov-h b{flex:1;font-size:12.5px;font-weight:500}
+.ov-h span{font-size:11px;color:var(--fg3)}
+.ov-h button{width:22px;height:22px;border:none;background:none;color:var(--fg3);font-size:15px;
+  cursor:pointer;line-height:1}
+.ov-h button:hover{color:var(--fg)}
+#ovCanvas{display:block;width:216px;height:144px;border:1px solid var(--line);border-radius:6px;
+  background:#eef0e8;cursor:crosshair}
+#ovBox.folded #ovCanvas{display:none}
+#coordRead{margin-top:6px;font-size:11.5px;color:var(--fg3);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 属性表：底部通栏（属性表打开时鹰眼与图例上移避让） */
+#attrPanel{position:absolute;left:calc(var(--mleft) + 10px);right:10px;bottom:10px;height:232px;
+  z-index:6;background:var(--glass);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 6px 22px rgba(0,0,0,.25);overflow:hidden;display:none;flex-direction:column;
+  transition:left .3s cubic-bezier(.22,.61,.36,1)}
+#attrPanel.show{display:flex}
+#mapwrap.attr-open #legend{bottom:252px}
+.ap-h{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);
+  background:var(--soft2);font-size:12.5px}
+.ap-h b{font-weight:500;white-space:nowrap}
+.ap-h input{flex:0 0 210px;height:27px;font-size:12px;border:1px solid var(--line);border-radius:7px;
+  background:var(--glass);color:var(--fg);padding:0 8px;outline:none}
+.ap-sp{flex:1}
+.ap-h button{height:27px;padding:0 10px;font-size:12px;border:1px solid var(--line);border-radius:7px;
+  background:var(--glass);color:var(--fg);cursor:pointer;white-space:nowrap}
+.ap-h button:hover{background:var(--hover)}
+.ap-b{flex:1;overflow:auto;min-height:0}
+.ap-b table{width:100%;border-collapse:collapse;font-size:12.5px}
+.ap-b th{position:sticky;top:0;z-index:1;text-align:left;font-weight:400;color:var(--fg3);
+  background:var(--panel);border-bottom:1px solid var(--line);padding:5px 10px 5px 0;
+  white-space:nowrap;cursor:pointer}
+.ap-b th:first-child,.ap-b td:first-child{padding-left:10px}
+.ap-b td{padding:5px 10px 5px 0;color:var(--fg2);border-bottom:1px solid var(--line);
+  white-space:nowrap;font-variant-numeric:tabular-nums;cursor:pointer}
+.ap-b tr.sel td{background:rgba(47,107,237,.12);color:var(--fg)}
+.ap-f{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--fg3)}
+.ap-f button{height:26px;padding:0 10px;font-size:12px;border:1px solid var(--line);border-radius:7px;
+  background:var(--glass);color:var(--fg);cursor:pointer}
+.ap-f button:hover{background:var(--hover)}
+.ap-f button:disabled{opacity:.45;cursor:default}
+/* 统计面板内的缓冲区表单 */
+.buf-row{display:flex;gap:6px;align-items:center;margin-top:8px}
+.buf-row input{flex:1;min-width:0;height:30px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:8px;background:var(--glass);color:var(--fg);padding:0 8px;outline:none}
+.buf-row button{height:30px;padding:0 12px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:8px;background:var(--glass);color:var(--fg);cursor:pointer}
+.buf-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.buf-row button:hover{background:var(--hover)}
+.buf-row button.pri:hover{background:var(--accent2)}
+/* 地图出图对话框 */
+#printMask{display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.3);z-index:60}
+#printMask.show{display:block}
+#printDlg{position:fixed;display:none;z-index:61;flex-direction:column;left:50%;top:50%;
+  transform:translate(-50%,-50%);width:min(920px,92vw);height:min(780px,88vh);
+  background:var(--popbg);border:1px solid var(--popbd);border-radius:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  overflow:hidden}
+#printDlg.show{display:flex}
+.pr-h{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 13px;flex:0 0 auto}
+.pr-h b{font-size:13px;font-weight:500}
+.pr-h span{flex:1;font-size:11.5px;color:var(--fg3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-h button{width:26px;height:26px;border:none;background:none;color:var(--fg3);font-size:16px;cursor:pointer}
+.pr-h button:hover{color:var(--fg)}
+.pr-b{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 12px 10px}
+.pr-opt{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;font-size:12.5px}
+.pr-opt label{display:flex;align-items:center;gap:5px;color:var(--fg2)}
+.pr-opt input[type=text]{width:220px;height:30px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:8px;background:var(--glass);color:var(--fg);padding:0 8px;outline:none}
+.pr-opt button{height:30px;padding:0 12px;font-size:12.5px;border:1px solid var(--line);
+  border-radius:8px;background:var(--glass);color:var(--fg);cursor:pointer}
+.pr-opt button:hover{background:var(--hover)}
+.pr-img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.pr-img img{max-width:100%;max-height:100%;object-fit:contain}
+.pr-f{display:flex;align-items:center;gap:7px;padding:9px 12px;flex:0 0 auto}
+.pr-sp{flex:1}
+.pr-f button{padding:6px 13px;font-size:12.5px;border-radius:9px;border:1px solid var(--line);
+  background:var(--glass);color:var(--fg);cursor:pointer}
+.pr-f button:hover{background:var(--hover)}
+.pr-f button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.pr-f button.pri:hover{background:var(--accent2)}
+/* 属性弹窗：分级着色列表（复用分类行的行高） */
+.fld-grd{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px;color:var(--fg2)}
+.fld-grd input[type=color]{flex:0 0 auto;width:26px;height:20px;padding:0;border:1px solid var(--line);
+  border-radius:4px;background:none;cursor:pointer}
+.fld-grd span{flex:1;white-space:nowrap}
+.fld-grd em{font-style:normal;color:var(--fg3);font-size:11.5px;white-space:nowrap}
