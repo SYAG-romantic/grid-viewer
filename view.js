@@ -770,12 +770,19 @@ function drawAll() {
       else drawGrid(ctx, L, t, w, h, box);
     }
     else if (L.kind === 'site') {
-      if (!siteGlUsed && !glsClearFrame(w, h, dpr)) { drawSites(ctx, L, t, w, h, box); continue; }
-      if (glDrawSites(L, t, w, h, box, dpr)) siteGlUsed = true;
+      /* 1106g 图层不透明度：Canvas 路径靠 ctx.globalAlpha 乘，WebGL 路径靠着色器 uniform 乘 */
+      var _sao = ctx.globalAlpha;
+      if (L.opacity != null) ctx.globalAlpha = _sao * L.opacity;
+      if (!siteGlUsed && !glsClearFrame(w, h, dpr)) { drawSites(ctx, L, t, w, h, box); }
+      else if (glDrawSites(L, t, w, h, box, dpr)) siteGlUsed = true;
       else drawSites(ctx, L, t, w, h, box);
+      ctx.globalAlpha = _sao;
     }
     else if (L.kind === 'vector') {
+      var _vao = ctx.globalAlpha;
+      if (L.opacity != null) ctx.globalAlpha = _vao * L.opacity;
       drawVector(ctx, L, t, w, h, box);
+      ctx.globalAlpha = _vao;
     }
   }
   /* 本帧没有任何可见栅格层走 WebGL 时补一次清屏：
@@ -956,17 +963,18 @@ function drawGrid(c, L, t, w, h, box) {
 
   /* 半透明叠加：让底图透出来，便于对照地物（30% 透明 = 不透明度 0.7） */
   var alpha0 = c.globalAlpha;
+  var gAlpha = gAlpha * (L.opacity == null ? 1 : L.opacity);
 
   if (!agg) {
     var st = makeSelTest(currentSel());
     if (st) {
       /* 有选区时：选区外压暗、选区内正常，便于看清选中了哪些点 */
-      c.globalAlpha = GRID_ALPHA * 0.22;
+      c.globalAlpha = gAlpha * 0.22;
       paintCells(c, L, t, w, h, box, cw, ch, st, false);
-      c.globalAlpha = GRID_ALPHA;
+      c.globalAlpha = gAlpha;
       paintCells(c, L, t, w, h, box, cw, ch, st, true);
     } else {
-      c.globalAlpha = GRID_ALPHA;
+      c.globalAlpha = gAlpha;
       paintCells(c, L, t, w, h, box, cw, ch, null, false);
     }
     c.globalAlpha = alpha0;
@@ -1005,7 +1013,7 @@ function drawGrid(c, L, t, w, h, box) {
     var bb = buf[o2];
     if (bb >= 0) byBand[bb].push(o2);
   }
-  c.globalAlpha = GRID_ALPHA;
+  c.globalAlpha = gAlpha;
   var aggFill = gridFill(L);
   for (var b4 = 0; b4 < nb; b4++) {
     var arr = byBand[b4];
@@ -1703,7 +1711,7 @@ function glDrawSites(L, t, w, h, box, dpr) {
   gl.uniform1f(loc.u_R, R);
   gl.uniform1f(loc.u_half, half);
   gl.uniform1f(loc.u_dotR, dotR);
-  gl.uniform1f(loc.u_alpha, L.siteAlpha || 0.6);
+  gl.uniform1f(loc.u_alpha, (L.siteAlpha || 0.6) * (L.opacity == null ? 1 : L.opacity));
   var _cs = (L.citySel !== undefined && L.citySel !== '*' && L.citySel !== 'none') ? parseFloat(L.citySel) : -1;
   if (loc.u_citySel) gl.uniform1f(loc.u_citySel, _cs);
   /* 自适应抽稀：扇区 < 6px 时抽稀，远看只画骨架 */
@@ -1787,7 +1795,7 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   gl.uniform2f(loc.u_t1, t[0] * rX + t[2] * rY + t[4], t[1] * rX + t[3] * rY + t[5]);
   gl.uniform2f(loc.u_size, w, h);
   gl.uniform2f(loc.u_half, cellW * 0.5, cellH * 0.5);
-  gl.uniform1f(loc.u_alpha, GRID_ALPHA);
+  gl.uniform1f(loc.u_alpha, GRID_ALPHA * (L.opacity == null ? 1 : L.opacity));
   gl.uniform3fv(loc.u_colors, gridBandRgb(L));
   /* 选区压暗：矩形/圆形在着色器里判，拖拽选区零重建成本；多边形选区不支持压暗 */
   var sel = currentSel(), st = 0, sx = 0, sy = 0, sz = 0, sw = 0;
@@ -3076,6 +3084,49 @@ function renderLegend() {
       body.innerHTML = bhtml;
       bindSiteLegendClick(body);
       sub.textContent = STATE.siteGroupFilter ? ('仅显示 ' + (STATE.siteGroupFilter === 'indoor' ? '室分' : STATE.siteGroupFilter)) : '';
+      return;
+    }
+    /* 工参图层：分级模式下图例跟随档位（每档一行：色 + 区间 + 数量），点行可过滤该档 */
+    if (L.styleMode === 'grade' && L.gradeBreaks && L.gradeBreaks.edges) {
+      title.textContent = '工参 · 分级';
+      var ghtml = '';
+      var nG = L.gradeBreaks.edges.length - 1;
+      var indoorG = null;
+      var fb = function (v) { return String(Math.round(v * 100) / 100); };
+      /* 全部档位都列出（含空档 0 个），只按已出现分组取色会漏档，所以先建键表 */
+      var gByKey = {};
+      for (var gg = 0; gg < (L.colorGroups || []).length; gg++) {
+        var gv0 = L.colorGroups[gg];
+        if (gv0.indoor) { indoorG = gv0.color; continue; }
+        gByKey[gv0.key] = gv0;
+      }
+      for (var gi2 = 0; gi2 < nG; gi2++) {
+        var gv = gByKey['g' + gi2];
+        var gcol = gv ? gv.color : ((L.gradeColors && L.gradeColors[gi2]) || '#888888');
+        var gcnt = (gv && gv.idx) ? gv.idx.length : 0;
+        var lo = fb(L.gradeBreaks.edges[gi2]), hi = fb(L.gradeBreaks.edges[gi2 + 1]);
+        var range = (gi2 === nG - 1) ? ('[' + lo + ', ' + hi + ']') : ('[' + lo + ', ' + hi + ')');
+        var _onG = (STATE.siteGroupFilter === 'g' + gi2) ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+        ghtml += '<div class="li lgi' + _onG + '" data-g="g' + gi2 + '" title="点击只看该档">' +
+          '<i style="background:' + gcol + ';border-radius:0"></i><span>' + range +
+          '（' + gcnt.toLocaleString() + ' 个）</span></div>';
+      }
+      for (var ge = 0; ge < (L.colorGroups || []).length; ge++) {
+        if (L.colorGroups[ge].key === '（空）') {
+          var _onE = (STATE.siteGroupFilter === '（空）') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+          ghtml += '<div class="li lgi' + _onE + '" data-g="（空）" title="点击只看空值">' +
+            '<i style="background:rgba(127,127,127,0.55);border-radius:0"></i><span>空值（' +
+            (L.colorGroups[ge].idx ? L.colorGroups[ge].idx.length.toLocaleString() : 0) + ' 个）</span></div>';
+          break;
+        }
+      }
+      if (!indoorG) indoorG = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
+      var _onIG = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
+      ghtml += '<div class="li lgi' + _onIG + '" data-g="indoor" title="点击只看室分">' +
+        '<i style="background:' + indoorG + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
+      body.innerHTML = ghtml;
+      bindSiteLegendClick(body);
+      sub.textContent = L.gradeField ? ('按 ' + L.gradeField + ' 分级') : '';
       return;
     }
     /* 工参图层：显示制式色 + 形状说明（圆=室分，扇区=宏站） */
