@@ -1068,6 +1068,73 @@ function siteUseBand(L) {
   return !!STATE.bandStyle;
 }
 
+/* 按字段分级着色的色带（每条 7 色，分级数不足 7 时等距采样） */
+var GRADE_RAMPS = [
+  { name: '红 → 绿', colors: ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#1a9850'] },
+  { name: '蓝', colors: ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c', '#08306b', '#041a3d'] },
+  { name: '紫 → 橙', colors: ['#2d004b', '#5e3c99', '#b2abd2', '#f7f7f7', '#fdb863', '#e08214', '#b35806'] },
+  { name: '彩虹', colors: ['#ff0000', '#f7a518', '#edf038', '#4ff380', '#0cac0f', '#002aff', '#7b2d8b'] }
+];
+function gradeRampColors(rampIdx, n) {
+  var ramp = GRADE_RAMPS[rampIdx] || GRADE_RAMPS[0];
+  var src = ramp.colors, out = [];
+  if (n <= 1) return [src[src.length - 1]];
+  for (var i = 0; i < n; i++) {
+    var idx = Math.round(i * (src.length - 1) / (n - 1));
+    out.push(src[idx]);
+  }
+  return out;
+}
+/* 分级断点：等距（min~max 均分）或分位数（排序后按比例取位）。
+   返回 edges（n+1 个，首尾为 min/max）与每档计数；数值不足或无数值列时返回 null */
+function computeGradeBreaks(L, field, method, n) {
+  if (!L || !L.ds || !field || !n || n < 2) return null;
+  var vals = [];
+  var numArr = L.ds.num[field];
+  if (numArr) {
+    for (var i = 0; i < numArr.length; i++) { var v = numArr[i]; if (isFinite(v)) vals.push(v); }
+  } else {
+    var txt = null;
+    try { txt = L.ds.columnText(field); } catch (e) { txt = null; }
+    if (!txt) return null;
+    for (var j = 0; j < txt.length; j++) {
+      var pv = parseFloat(String(txt[j]).trim());
+      if (isFinite(pv)) vals.push(pv);
+    }
+  }
+  if (vals.length < 2) return null;
+  var min = Infinity, max = -Infinity;
+  for (var k = 0; k < vals.length; k++) { if (vals[k] < min) min = vals[k]; if (vals[k] > max) max = vals[k]; }
+  if (!(max > min)) return null;
+  var edges = [];
+  if (method === 'quantile') {
+    var srt = vals.slice().sort(function (a, b) { return a - b; });
+    for (var q = 0; q <= n; q++) {
+      var pos = q * (srt.length - 1) / n;
+      edges.push(srt[Math.floor(pos)]);
+    }
+    edges[0] = min; edges[n] = max;
+  } else {
+    for (var e2 = 0; e2 <= n; e2++) edges.push(min + (max - min) * e2 / n);
+  }
+  /* 断点去重：重复值会产生空档，显示与分组都按实际档位走（空档计数为 0） */
+  var counts = [];
+  for (var c = 0; c < n; c++) counts.push(0);
+  for (var m = 0; m < vals.length; m++) {
+    var vv = vals[m], b = 0;
+    while (b < n - 1 && vv >= edges[b + 1]) b++;
+    counts[b]++;
+  }
+  return { edges: edges, counts: counts, total: vals.length };
+}
+function gradeBucket(breaks, v) {
+  if (!breaks || !isFinite(v)) return -1;
+  var edges = breaks.edges, n = edges.length - 1;
+  var b = 0;
+  while (b < n - 1 && v >= edges[b + 1]) b++;
+  return b;
+}
+
 function buildSiteColors(L) {
   var ds = L.ds, n = ds.n;
   var mode = L.styleMode || STATE.siteColor;   /* 图层级样式优先于全局 */
@@ -1075,6 +1142,23 @@ function buildSiteColors(L) {
   var bandArr = L.bandCol ? ds.num[L.bandCol] : null;
   /* 按字段分类时的整列取值：一次性提取，避免十几万行逐行 value() */
   var fieldArr = (mode === 'field' && L.colorField) ? ds.columnText(L.colorField) : null;
+  /* 按字段分级时的整列数值：优先 ds.num，否则文本列转数值（分级断点在应用时算好存在 L 上） */
+  var gradeVals = null;
+  if (mode === 'grade' && L.gradeField) {
+    if (ds.num[L.gradeField]) gradeVals = ds.num[L.gradeField];
+    else {
+      try {
+        var _gt = ds.columnText(L.gradeField);
+        if (_gt) {
+          gradeVals = new Float64Array(_gt.length);
+          for (var _gi = 0; _gi < _gt.length; _gi++) {
+            var _pv = parseFloat(String(_gt[_gi]).trim());
+            gradeVals[_gi] = isFinite(_pv) ? _pv : NaN;
+          }
+        }
+      } catch (e) { gradeVals = null; }
+    }
+  }
   /* 文本频段列（如 4G 的「频段」= FDD900/F1）一次性提取整列，别逐行 value() */
   var bandTextArr = (L.bandCol && !bandArr) ? ds.columnText(L.bandCol) : null;
   var stypeArr = L.ds.stype;   /* 解析时已存成字符串数组，O(1) 读 */
@@ -1095,6 +1179,13 @@ function buildSiteColors(L) {
     if (mode === 'field') {
       var fv = fieldArr ? fieldArr[i] : '';
       return String(fv == null || fv === '' ? '（空）' : fv);
+    }
+    /* 按字段分级：分组键就是档位号（空值 / 无断点单独归一类） */
+    if (mode === 'grade') {
+      var gv = gradeVals ? gradeVals[i] : NaN;
+      if (!isFinite(gv)) return '（空）';
+      var gb = L.gradeBreaks ? gradeBucket(L.gradeBreaks, gv) : -1;
+      return gb < 0 ? '（空）' : ('g' + gb);
     }
     if (mode === 'az') {
       var a = L.azCol ? ds.num[L.azCol][i] : NaN;
@@ -1153,6 +1244,13 @@ function buildSiteColors(L) {
       else if (mode === 'field') {
         col = (L.colorMap && L.colorMap[k]) ||
           ('rgba(' + SITE_PALETTE[ki % SITE_PALETTE.length].join(',') + ',0.55)');
+      } else if (mode === 'grade') {
+        if (k === '（空）') col = 'rgba(127,127,127,0.55)';
+        else {
+          var _gi2 = parseInt(String(k).slice(1), 10);
+          col = (L.gradeColors && L.gradeColors[_gi2]) ||
+            ('rgba(' + SITE_PALETTE[_gi2 % SITE_PALETTE.length].join(',') + ',0.55)');
+        }
       } else col = 'rgba(' + SITE_PALETTE[k % SITE_PALETTE.length].join(',') + ',0.55)';
       return {
         key: k,
