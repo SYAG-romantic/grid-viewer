@@ -133,10 +133,20 @@ function hexToRgba(hex, a) {
   var n = parseInt(m[1], 16);
   return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
 }
+/* 颜色取值的归一化：既接受 rgba(1,2,3,a) 也接受 #rrggbb。
+   原来只认 rgba()，传入 '#c86bff' 会匹配失败回落成灰色，
+   于是面板显示 #888888 而地图实际是紫色。 */
 function rgbaToHex(s) {
-  var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(String(s || ''));
-  if (!m) return '#888888';
-  return '#' + [1, 2, 3].map(function (i) { return ('0' + (+m[i]).toString(16)).slice(-2); }).join('');
+  var str = String(s || '');
+  var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(str);
+  if (m) {
+    return '#' + [1, 2, 3].map(function (i) { return ('0' + (+m[i]).toString(16)).slice(-2); }).join('');
+  }
+  var h = /^#?([0-9a-f]{6})$/i.exec(str.trim());
+  if (h) return '#' + h[1].toLowerCase();
+  var h3 = /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(str.trim());
+  if (h3) return ('#' + h3[1] + h3[1] + h3[2] + h3[2] + h3[3] + h3[3]).toLowerCase();
+  return '#888888';
 }
 
 function openFieldPop(L) {
@@ -151,6 +161,7 @@ function openFieldPop(L) {
     colorMap: L.colorMap ? JSON.parse(JSON.stringify(L.colorMap)) : {},
     stroke: rgbaToHex(L.strokeColor || '#c86bff'),
     lineWidth: L.lineWidth || 2.5,
+    bandOverride: L.bandOverride ? JSON.parse(JSON.stringify(L.bandOverride)) : null,
     nameField: (isVec ? L.nameField : L.nameCol) || '',
     labelOn: !!L.labelOn
   };
@@ -263,6 +274,7 @@ function renderFieldPane(L, T) {
       '<option value="rat"' + (T.styleMode === 'rat' ? ' selected' : '') + '>按制式（4G 红 / 5G 蓝）</option>' +
       '<option value="single"' + (T.styleMode === 'single' ? ' selected' : '') + '>单色</option>' +
       '<option value="field"' + (T.styleMode === 'field' ? ' selected' : '') + '>按字段分类</option>' +
+      '<option value="band"' + (T.styleMode === 'band' ? ' selected' : '') + '>按频段（可调颜色 / 半径 / 波束角）</option>' +
       '</select></div>';
     if (T.styleMode === 'single') {
       h += '<div class="fld"><span>颜色</span><div class="fld-color">' +
@@ -276,6 +288,11 @@ function renderFieldPane(L, T) {
           '" data-c="' + SW[si] + '" style="background:' + SW[si] + '"></i>';
       }
       h += '</div></div>';
+    }
+    if (T.styleMode === 'band') {
+      h += '<div class="fld" style="color:var(--fg3);font-size:11.5px">' +
+        '默认值取自频段表，改动只作用于本图层。</div>';
+      h += '<div id="fldBandList"></div>';
     }
     if (T.styleMode === 'field') {
       var keys2 = fieldKeys(L);
@@ -331,7 +348,7 @@ function renderFieldBody() {
   body.innerHTML = renderFieldPane(L, T);
   bindFieldEvents();
   if (FIELD_PAGE === 'name') updateFieldPreview();
-  if (FIELD_PAGE === 'style') renderClassList();
+  if (FIELD_PAGE === 'style') { renderClassList(); renderBandList(); }
 }
 
 function bindFieldEvents() {
@@ -400,6 +417,69 @@ function renderClassList() {
   });
 }
 
+/* 按频段着色时的参数表：颜色 / 半径 / 波束角。默认取 BAND_STYLE 表，
+   改动只写进本图层的 bandOverride，不动全局表、不影响其它图层。 */
+function renderBandList() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var box = document.getElementById('fldBandList');
+  if (!box || !L || !T) return;
+  if (L.kind !== 'site' || T.styleMode !== 'band') { box.innerHTML = ''; return; }
+  if (!L.bandCol) {
+    box.innerHTML = '<div class="fld-lbl">该图层没有频段列，无法按频段着色</div>';
+    return;
+  }
+  var keys = [], seen = {};
+  try {
+    var arr = buildBandInfo(L);
+    for (var i = 0; i < arr.length && keys.length < 40; i++) {
+      var k = arr[i];
+      if (!k || seen[k]) continue;
+      seen[k] = 1; keys.push(k);
+    }
+  } catch (e) { }
+  if (!keys.length) {
+    box.innerHTML = '<div class="fld-lbl">没有识别出可用的频段取值</div>';
+    return;
+  }
+  var defR = (L.rat === '5G') ? 60 : 80;
+  var defBeam = (L.rat === '5G') ? 45 : 35;
+  var h = '<div class="band-row band-hd"><span>频段</span><span>颜色</span><span>半径</span><span>波束</span></div>';
+  for (var j = 0; j < keys.length; j++) {
+    var k2 = keys[j];
+    var st = BAND_STYLE[k2] || null;
+    var ov = (T.bandOverride && T.bandOverride[k2]) || {};
+    var baseCol = ov.c ? ('rgb(' + ov.c + ')') : (st ? ('rgb(' + st.c + ')') : 'rgba(231,76,60,1)');
+    var rr = (ov.r != null && isFinite(ov.r)) ? ov.r : (st ? st.r : defR);
+    var bm = (ov.beam != null && isFinite(ov.beam)) ? ov.beam : (st ? st.beam : defBeam);
+    h += '<div class="band-row" data-k="' + esc(k2) + '">' +
+      '<span class="bk" title="' + esc(k2) + '">' + esc(k2) + '</span>' +
+      '<input type="color" class="bc" value="' + rgbaToHex(baseCol) + '">' +
+      '<input type="number" class="bn" min="5" max="500" step="5" value="' + rr + '">' +
+      '<input type="number" class="bn" min="10" max="360" step="5" value="' + bm + '">' +
+      '</div>';
+  }
+  box.innerHTML = h;
+  Array.prototype.forEach.call(box.querySelectorAll('.band-row[data-k]'), function (row) {
+    var kk = row.getAttribute('data-k');
+    var ci = row.querySelector('.bc');
+    var nums = row.querySelectorAll('.bn');
+    function upd() {
+      if (!T.bandOverride) T.bandOverride = {};
+      var rgba = hexToRgba(ci.value, 0.7);
+      var rgb = rgba ? rgba.replace(/^rgba\(/, '').replace(/,0\.7\)$/, '') : null;
+      var rv = parseFloat(nums[0].value), bv = parseFloat(nums[1].value);
+      T.bandOverride[kk] = {
+        c: rgb,
+        r: isFinite(rv) ? rv : null,
+        beam: isFinite(bv) ? bv : null
+      };
+    }
+    ci.oninput = upd;
+    nums[0].oninput = upd;
+    nums[1].oninput = upd;
+  });
+}
+
 /* 预览前 3 个取值：选完立刻能看出对不对，不必等导出才发现 */
 function updateFieldPreview() {
   var L = FIELD_L, T = FIELD_TMP;
@@ -441,8 +521,28 @@ function applyFieldPop() {
     L.singleColor = hexToRgba(T.single, 0.7) || 'rgba(231,76,60,0.7)';
     L.colorField = T.colorField || null;
     L.colorMap = T.colorMap ? JSON.parse(JSON.stringify(T.colorMap)) : null;
+    L.bandOverride = T.bandOverride ? JSON.parse(JSON.stringify(T.bandOverride)) : null;
+    /* 渲染层是按全局开关决定画不画频段样式的：只要有任意图层选了按频段就打开 */
+    var _anyBand = false;
+    for (var _bi = 0; _bi < layers.length; _bi++) {
+      if (layers[_bi].kind === 'site' && layers[_bi].styleMode === 'band') { _anyBand = true; break; }
+    }
+    STATE.bandStyle = _anyBand;
     if (typeof buildSiteColors === 'function') buildSiteColors(L);
-    if (typeof buildSiteGL === 'function') { try { buildSiteGL(L).catch(function () { L.siteGlOk = false; }); } catch (e) { L.siteGlOk = false; } }
+    /* 换了着色方式，旧的分组过滤可能已经没有对应分组：清掉并让缓冲重建，
+       否则整层顶点为空、看起来像数据没了 */
+    if (STATE.siteGroupFilter) {
+      var _okG = false;
+      for (var _gi3 = 0; _gi3 < (L.colorGroups || []).length; _gi3++) {
+        if (L.colorGroups[_gi3].key === STATE.siteGroupFilter) { _okG = true; break; }
+      }
+      if (!_okG) STATE.siteGroupFilter = null;
+    }
+    /* 站点缓冲异步重建：等它落地后再重绘，否则改完参数画面不变 */
+    var _glJob = null;
+    if (typeof buildSiteGL === 'function') {
+      try { _glJob = buildSiteGL(L); } catch (e) { L.siteGlOk = false; }
+    }
   } else {
     L.nameField = T.nameField || null;
     L.strokeColor = T.stroke;
@@ -453,7 +553,11 @@ function applyFieldPop() {
   renderLayerList();
   if (typeof scheduleLabels === 'function') scheduleLabels();
   scheduleCacheUi();
-  scheduleDraw();
+  if (_glJob && _glJob.then) {
+    _glJob.then(function () { scheduleDraw(); }, function () { L.siteGlOk = false; scheduleDraw(); });
+  } else {
+    scheduleDraw();
+  }
   showErr('图层属性已更新');
 }
 
@@ -558,6 +662,23 @@ function fitCitySelection(duration) {
 
 function selectLayer(L) {
   selected = L;
+  /* 切到不含当前过滤分组的图层时自动取消过滤：
+     否则整层没有顶点，看起来像数据丢了 */
+  if (STATE.siteGroupFilter && L && L.kind === 'site') {
+    var _hasG = false;
+    for (var _i = 0; _i < (L.colorGroups || []).length; _i++) {
+      if (L.colorGroups[_i].key === STATE.siteGroupFilter) { _hasG = true; break; }
+    }
+    if (!_hasG) {
+      STATE.siteGroupFilter = null;
+      if (typeof rebuildAllSiteGL === 'function') {
+        rebuildAllSiteGL().then(function () {
+          if (typeof scheduleDraw === 'function') scheduleDraw();
+          if (typeof scheduleLabels === 'function') scheduleLabels();
+        });
+      }
+    }
+  }
   renderLayerList();
   renderLegend();
 }
@@ -930,27 +1051,6 @@ function bindPopupResize(popupId) {
     })(handles[hi]);
   }
 }
-/* 频段样式开关（顶部）：扇区颜色/半径/波束角按频段表（BAND_STYLE）切换 */
-function syncBandBtn() {
-  var b = document.getElementById('btnBand');
-  if (b) b.classList.toggle('on', !!STATE.bandStyle);
-}
-function bindBandToggle() {
-  var b = document.getElementById('btnBand');
-  if (!b) return;
-  syncBandBtn();
-  b.addEventListener('click', function () {
-    STATE.bandStyle = !STATE.bandStyle;
-    syncBandBtn();
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].kind === 'site' && layers[i].ok) { try { buildSiteColors(layers[i]); } catch (e) {} }
-    }
-    scheduleDraw();
-    renderLegend();
-    saveViewState();
-  });
-}
-
 function bindRatToggle() {
   var box = document.getElementById('ratBox');
   var btn = document.getElementById('ratBtn');
@@ -1041,7 +1141,7 @@ function removeLayer(L) {
       if (L.siteCityBuf) GLS.gl.deleteBuffer(L.siteCityBuf);
       if (L.siteRbBuf) GLS.gl.deleteBuffer(L.siteRbBuf);
     } catch (e) {}
-    L.sitePosBuf = null; L.siteCityBuf = null; L.siteRbBuf = null; L.siteGlOk = false;
+    L.sitePosBuf = null; L.siteCityBuf = null; L.siteRbBuf = null; L.siteGrpBuf = null; L.siteGlOk = false;
   }
   if (selected === L) selected = layers.length ? layers[layers.length - 1] : null;
   renderLayerList(); renderLegend();
@@ -1555,7 +1655,8 @@ function layerUi(L) {
     nameField: L.nameField || null, nameCol: L.nameCol || null,
     styleMode: L.styleMode || null, singleColor: L.singleColor || null,
     colorField: L.colorField || null, colorMap: L.colorMap || null,
-    strokeColor: L.strokeColor || null, lineWidth: L.lineWidth || null
+    strokeColor: L.strokeColor || null, lineWidth: L.lineWidth || null,
+    bandOverride: L.bandOverride || null
   };
 }
 function applyLayerUi(L, ui) {
@@ -1573,6 +1674,7 @@ function applyLayerUi(L, ui) {
   L.colorMap = ui.colorMap || null;
   L.strokeColor = ui.strokeColor || null;
   L.lineWidth = ui.lineWidth || null;
+  L.bandOverride = ui.bandOverride || null;
   if (L.kind === 'site' && typeof buildSiteColors === 'function') buildSiteColors(L);
 }
 
@@ -1634,6 +1736,7 @@ function saveViewState(immediate) {
       var s = {
         c: v.getCenter(), z: v.getZoom(),
         mode: STATE.gridColorMode, city: STATE.cityFilter, band: !!STATE.bandStyle,
+        base: STATE.base,
         vis: layers.map(function (L) { return !!L.visible; }),
         visN: (function () { var o = {}; layers.forEach(function (L) { o[L.name] = !!L.visible; }); return o; })(),
         panel: !document.getElementById('panel').classList.contains('hide')
@@ -1652,10 +1755,21 @@ function readViewState() {
 function applyViewState(s) {
   if (!s) s = readViewState();
   if (!s) return;
+  /* 底图先恢复：它决定坐标纠偏开关，必须在其它按坐标计算的动作之前生效 */
+  if (s.base) {
+    var _nb = normBaseId(s.base);
+    var _nd = baseDef(_nb);
+    var _beforeCrs = STATE.crsMode;
+    STATE.base = _nb;
+    STATE.crsMode = _nd.gcj ? 1 : 0;
+    rebuildBase();
+    syncBaseDropdown();
+    /* 图层已经按旧坐标系投影过，坐标系变了要重算 */
+    if (STATE.crsMode !== _beforeCrs && layers.length && typeof reprojectAll === 'function') reprojectAll();
+  }
   if (s.mode && s.mode !== STATE.gridColorMode) applyGridColorMode(s.mode);
   if (typeof s.band === 'boolean' && s.band !== !!STATE.bandStyle) {
     STATE.bandStyle = s.band;
-    if (typeof syncBandBtn === 'function') syncBandBtn();
     for (var bi2 = 0; bi2 < layers.length; bi2++) {
       if (layers[bi2].kind === 'site' && layers[bi2].ok) { try { buildSiteColors(layers[bi2]); } catch (e) {} }
     }
@@ -1813,11 +1927,7 @@ async function loadVectorFiles(fileList) {
         busyPhase('正在准备绘制：' + grp.baseName);
         for (var pm = 0; pm < res.polygons.length; pm++) {
           var pgM = res.polygons[pm];
-          if (!pgM._ringsMerc) {
-            pgM._ringsMerc = pgM.rings.map(function (ringM) {
-              return ringM.map(function (ptM) { return [lonToMercX(ptM[0]), latToMercY(ptM[1])]; });
-            });
-          }
+          vRingsOf(pgM);
           if (pm % 1200 === 1199) {
             var busyElM = document.getElementById('busyS');
             if (busyElM) busyElM.textContent = '已准备 ' + (pm + 1).toLocaleString() + ' / ' + res.polygons.length.toLocaleString() + ' 个多边形';
@@ -3828,21 +3938,6 @@ function bindUI() {
   if (_srv) _srv.textContent = STATE.siteR + ' px';
     scheduleDraw();
   };
-  var _sc = $('siteColor');
-  if (_sc) _sc.onchange = function (e) {
-    STATE.siteColor = e.target.value;
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].kind === 'site' && layers[i].projected) buildSiteColors(layers[i]);
-    }
-    scheduleDraw();
-  };
-  /* 栅格着色模式：RSRP均值 / SINR均值 / 覆盖率（顶部「指标」下拉驱动；
-     侧栏同名下拉已移除，gridColor 元素不存在时跳过接线） */
-  var gridColorEl = $('gridColor');
-  if (gridColorEl) gridColorEl.onchange = function (e) { applyGridColorMode(e.target.value); };
-  applyGridColorMode(STATE.gridColorMode);
-  var _bzl = $('btnZoomLayer');
-  if (_bzl) _bzl.onclick = function () { if (selected) fitLayer(selected); };
 
   /* 地市筛选只保留顶部「地市」下拉（侧栏同名筛选已移除） */
 
@@ -4140,7 +4235,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1105h';
+    var workerUrl = 'worker.js?v=1106a';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4182,14 +4277,50 @@ function workerCall(type, payload, transfer) {
   });
 }
 
+/* 底图坐标系变了（高德 GCJ-02 ↔ 天地图 CGCS2000）：所有已加载图层的投影都要重算。
+   新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
+   这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
+async function reprojectAll() {
+  /* 边界层不走 projectLayer，清掉墨卡托缓存即可，下次绘制按新坐标系重建 */
+  var vi;
+  for (vi = 0; vi < layers.length; vi++) {
+    var VL = layers[vi];
+    if (VL.kind === 'vector' && VL.polygons) {
+      for (var pj = 0; pj < VL.polygons.length; pj++) VL.polygons[pj]._ringsMerc = null;
+    }
+  }
+  var todo = layers.filter(function (L) { return L.ok && L.kind !== 'vector'; });
+  if (!todo.length) { scheduleDraw(); scheduleLabels(); return; }
+  busy('正在按底图坐标系校正数据…');
+  busyPct(0, '共 ' + todo.length + ' 个图层');
+  for (var i = 0; i < todo.length; i++) {
+    var L = todo[i];
+    busyPct(i / todo.length, '校正 ' + (i + 1) + ' / ' + todo.length + '：' + L.name);
+    await yieldFrame();
+    try {
+      await projectLayerAsync(L);
+      if (L.kind === 'grid') {
+        rebuildBuckets(L, true);
+        await yieldFrame();
+        try { await buildGridGLAsync(L); } catch (e) { L.glOk = false; }
+      } else if (L.kind === 'site') {
+        buildSiteColors(L);
+        try { await buildSiteGL(L); } catch (e) { L.siteGlOk = false; }
+      }
+    } catch (e) { }
+  }
+  busyOff();
+  scheduleDraw();
+  scheduleLabels();
+  if (currentSel()) { try { applySelection(); } catch (e) { } }
+}
+
 function boot() {
   initMap();
   bindLabelMapEvents();   /* 注记跟着地图平移/缩放刷新，必须在 initMap 之后 */
   bindUI();
   initTopbarPopMutex();
   bindRatToggle();
-  bindBandToggle();
-  bindLabelToggle();
   initStatsPanel();
   initFieldPop();
   bindFoldAll();
@@ -4554,11 +4685,7 @@ function stSelectScene(si) {
   var L = layers[ST.layerId];
   if (!L || !L.polygons || !L.polygons[si]) return;
   var pg = L.polygons[si];
-  if (!pg._ringsMerc) {
-    pg._ringsMerc = pg.rings.map(function (ring) {
-      return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-    });
-  }
+  vRingsOf(pg);
   ST.selScene = si;
   STATE.hlPoly = { L: L, pg: pg };
   STATE.sceneName = getSceneName(pg.props || {}, L) || ('场景 ' + (si + 1));
@@ -4652,11 +4779,7 @@ function stCompute(sceneIdxs, done) {
   for (var si = 0; si < sceneIdxs.length; si++) {
     var pg = L.polygons[sceneIdxs[si]];
     if (!pg) continue;
-    if (!pg._ringsMerc) {
-      pg._ringsMerc = pg.rings.map(function (ring) {
-        return ring.map(function (pt) { return [lonToMercX(pt[0]), latToMercY(pt[1])]; });
-      });
-    }
+    vRingsOf(pg);
     if (!pg._ringsMerc || !pg._ringsMerc.length) continue;
     var bb = pg._bbox || polyBBoxMerc(pg);
     scenes.push({ idx: sceneIdxs[si], pg: pg, L: L, rings: pg._ringsMerc, bb: bb });
