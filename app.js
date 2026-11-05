@@ -27,8 +27,7 @@ function renderLayerList() {
   var FIT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg>';
   var DEL_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg>';
   var TAG_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6M14 7h6M4 17h10M18 17h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg>';
-  var ATTR_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M9 9v11"/></svg>';
-  var html = '';
+    var html = '';
   for (var ki = 0; ki < KIND_ORDER.length; ki++) {
     var ko = KIND_ORDER[ki];
     var gLayers = groups[ko.kind];
@@ -65,9 +64,6 @@ function renderLayerList() {
         (((L.kind === 'vector' && L.polygons && L.polygons.length) ||
           ((L.kind === 'site' || L.kind === 'grid') && L.ds && L.ds.columns && L.ds.columns.length))
           ? '<button data-act="fld" class="icobtn" title="图层属性">' + TAG_SVG + '</button>' : '') +
-        ((((L.kind === 'site' || L.kind === 'grid') && L.ds && L.ds.columns && L.ds.columns.length) ||
-          (L.kind === 'vector' && L.polygons && L.polygons.length))
-          ? '<button data-act="attr" class="icobtn" title="属性表">' + ATTR_SVG + '</button>' : '') +
         '<button data-act="fit" class="icobtn" title="缩放到范围">' + FIT_SVG + '</button>' +
         '<button data-act="del" class="icobtn" title="移除">' + DEL_SVG + '</button>' +
         '</span>' +
@@ -107,8 +103,6 @@ function renderLayerList() {
     el.querySelector('[data-act="fit"]').onclick = function () { fitLayer(L); };
     var _fldBtn = el.querySelector('[data-act="fld"]');
     if (_fldBtn) _fldBtn.onclick = function (e) { e.stopPropagation(); openFieldPop(L); };
-    var _attrBtn = el.querySelector('[data-act="attr"]');
-    if (_attrBtn) _attrBtn.onclick = function (e) { e.stopPropagation(); openAttrTable(L); };
   });
 
   /* 「收起全部」的文字跟实际分组状态走（用户单独点过某个分组标题也会同步）；
@@ -124,9 +118,6 @@ function renderLayerList() {
     }
     _fa.textContent = _allClosed ? '展开全部' : '收起全部';
   }
-  /* 1106g：图层变化时鹰眼跟着刷新；工程待办里新到的图层自动补设置 */
-  if (typeof drawOverview === 'function') { try { drawOverview(); } catch (e) {} }
-  if (typeof applyPendingProject === 'function') { try { applyPendingProject(); } catch (e) {} }
 }
 
 /* ==================== 图层属性：名称字段 + 符号化 ====================
@@ -1259,7 +1250,6 @@ function bindRatToggle() {
 function removeLayer(L) {
   var i = layers.indexOf(L);
   if (i >= 0) layers.splice(i, 1);
-  if (typeof ATTR !== 'undefined' && ATTR && ATTR.L === L) closeAttrTable();   /* 属性表跟随图层关闭 */
   /* 统计模块的图层选择跟着同步：删掉选中的统计图层→恢复默认；删它之前的图层→下标前移 */
   if (typeof ST !== 'undefined') {
     ST.gen = (ST.gen || 0) + 1;
@@ -4133,7 +4123,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106g：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106h：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4540,7 +4530,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106g';
+    var workerUrl = 'worker.js?v=1106h';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -5451,439 +5441,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106g：空间书签 / 实时经纬度 / 鹰眼 ==================== */
-var BM_KEY = 'tucha_bookmarks';
-function loadBookmarks() {
-  try { var a = JSON.parse(lsGet(BM_KEY, '[]') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
-}
-function saveBookmarks(a) { try { lsSet(BM_KEY, JSON.stringify(a)); } catch (e) {} }
-function renderBmList() {
-  var box = document.getElementById('bmList');
-  if (!box) return;
-  var list = loadBookmarks();
-  if (!list.length) { box.innerHTML = ''; return; }
-  var h = '';
-  for (var i = 0; i < list.length; i++) {
-    var b = list[i];
-    h += '<div class="bm-item" data-i="' + i + '"><b>' + esc(b.name) + '</b>' +
-      '<span>' + (b.z != null ? (Math.round(b.z * 10) / 10 + ' 级') : '') + '</span>' +
-      '<button data-del="' + i + '" title="删除书签">×</button></div>';
-  }
-  box.innerHTML = h;
-  Array.prototype.forEach.call(box.querySelectorAll('.bm-item'), function (el) {
-    el.onclick = function () {
-      var b = loadBookmarks()[parseInt(el.getAttribute('data-i'), 10)];
-      if (!b || !b.c) return;
-      try { map.getView().animate({ center: b.c.slice(), zoom: b.z, duration: 400 }); } catch (e) {}
-    };
-  });
-  Array.prototype.forEach.call(box.querySelectorAll('[data-del]'), function (btn) {
-    btn.onclick = function (e) {
-      e.stopPropagation();
-      var list2 = loadBookmarks();
-      list2.splice(parseInt(btn.getAttribute('data-del'), 10), 1);
-      saveBookmarks(list2);
-      renderBmList();
-    };
-  });
-}
-function saveBookmark() {
-  if (!map) return;
-  var v = map.getView();
-  var list = loadBookmarks();
-  var inp = document.getElementById('bmName');
-  var name = inp ? inp.value.trim() : '';
-  if (!name) name = '书签 ' + (list.length + 1);
-  list.push({ name: name, c: v.getCenter().slice(), z: v.getZoom() });
-  saveBookmarks(list);
-  if (inp) inp.value = '';
-  renderBmList();
-}
-
-/* 实时经纬度：鼠标移动时更新（rAF 节流，不跟重绘抢帧） */
-var _coordRaf = 0, _coordLast = null;
-function bindCoordRead() {
-  var el = document.getElementById('coordRead');
-  if (!el || !map) return;
-  map.on('pointermove', function (e) {
-    _coordLast = e.coordinate;
-    if (_coordRaf) return;
-    _coordRaf = requestAnimationFrame(function () {
-      _coordRaf = 0;
-      if (!_coordLast) return;
-      var ll = mercToLonLat(_coordLast[0], _coordLast[1]);
-      el.textContent = ll[0].toFixed(4) + '°E, ' + ll[1].toFixed(4) + '°N';
-    });
-  });
-  map.getViewport().addEventListener('pointerleave', function () { el.textContent = '—'; });
-}
-
-/* 鹰眼：各可见图层包围盒 + 当前视口红框，点击跳转；图层包围盒按层缓存一次 */
-var _ovExt = null;
-function ovLayerBoxes() {
-  var boxes = [];
-  for (var i = 0; i < layers.length; i++) {
-    var L = layers[i];
-    if (!L.visible || !L.ok) continue;
-    if (L._ovUnion) { boxes.push(L._ovUnion); continue; }
-    var u = null;
-    if (L.kind === 'vector' && L.polygons) {
-      for (var p = 0; p < L.polygons.length; p++) {
-        var bb = L.polygons[p]._bbox || polyBBoxMerc(L.polygons[p]);
-        if (!bb) continue;
-        if (!u) u = bb.slice();
-        else { u[0] = Math.min(u[0], bb[0]); u[1] = Math.min(u[1], bb[1]); u[2] = Math.max(u[2], bb[2]); u[3] = Math.max(u[3], bb[3]); }
-      }
-    } else if ((L.kind === 'site' || L.kind === 'grid') && L.mx && L.my) {
-      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (var k = 0; k < L.mx.length; k++) {
-        var x = L.mx[k], y = L.my[k];
-        if (!isFinite(x) || !isFinite(y)) continue;
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (y < y0) y0 = y; if (y > y1) y1 = y;
-      }
-      if (x0 !== Infinity) u = [x0, y0, x1, y1];
-    }
-    if (u) { L._ovUnion = u; boxes.push(u); }
-  }
-  return boxes;
-}
-function drawOverview() {
-  var cv = document.getElementById('ovCanvas');
-  var hint = document.getElementById('ovHint');
-  if (!cv || !map) return;
-  var c = cv.getContext('2d');
-  var W = cv.width, H = cv.height;
-  c.clearRect(0, 0, W, H);
-  c.fillStyle = '#eef0e8'; c.fillRect(0, 0, W, H);
-  var boxes = ovLayerBoxes();
-  var ext = null;
-  for (var i = 0; i < boxes.length; i++) {
-    var b = boxes[i];
-    if (!ext) ext = b.slice();
-    else { ext[0] = Math.min(ext[0], b[0]); ext[1] = Math.min(ext[1], b[1]); ext[2] = Math.max(ext[2], b[2]); ext[3] = Math.max(ext[3], b[3]); }
-  }
-  if (!ext) {
-    if (hint) hint.textContent = '暂无可见图层';
-    _ovExt = null;
-    return;
-  }
-  if (hint) hint.textContent = boxes.length + ' 个图层范围';
-  var pw = (ext[2] - ext[0]) * 0.08 + 1, ph = (ext[3] - ext[1]) * 0.08 + 1;
-  ext = [ext[0] - pw, ext[1] - ph, ext[2] + pw, ext[3] + ph];
-  _ovExt = ext;
-  var sx = W / (ext[2] - ext[0]), sy = H / (ext[3] - ext[1]);
-  function X(x) { return (x - ext[0]) * sx; }
-  function Y(y) { return H - (y - ext[1]) * sy; }
-  c.fillStyle = 'rgba(200,210,180,0.5)';
-  c.strokeStyle = 'rgba(120,130,100,0.7)';
-  c.lineWidth = 1;
-  for (var j = 0; j < boxes.length; j++) {
-    var b2 = boxes[j];
-    c.beginPath();
-    c.rect(X(b2[0]), Y(b2[3]), (b2[2] - b2[0]) * sx, (b2[3] - b2[1]) * sy);
-    c.fill(); c.stroke();
-  }
-  var v = map.getView().calculateExtent(map.getSize());
-  c.strokeStyle = '#d43b3b'; c.lineWidth = 2;
-  c.fillStyle = 'rgba(212,59,59,0.08)';
-  c.beginPath();
-  c.rect(X(v[0]), Y(v[3]), (v[2] - v[0]) * sx, (v[3] - v[1]) * sy);
-  c.fill(); c.stroke();
-}
-function bindOverview() {
-  var cv = document.getElementById('ovCanvas');
-  var box = document.getElementById('ovBox');
-  var fold = document.getElementById('ovFold');
-  if (!cv || !map) return;
-  map.on('moveend', drawOverview);
-  cv.onclick = function (e) {
-    if (!_ovExt) return;
-    var r = cv.getBoundingClientRect();
-    var fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-    var mx = _ovExt[0] + fx * (_ovExt[2] - _ovExt[0]);
-    var my = _ovExt[3] - fy * (_ovExt[3] - _ovExt[1]);
-    try { map.getView().animate({ center: [mx, my], duration: 300 }); } catch (err) {}
-  };
-  if (fold) fold.onclick = function () {
-    box.classList.toggle('folded');
-    fold.textContent = box.classList.contains('folded') ? '+' : '–';
-  };
-}
-
-/* ============================ 1106g：属性表（底部通栏） ==================== */
-var ATTR = null;   /* { L, cols, idx, filter, sort, dir, page, sel } */
-var ATTR_PAGE = 200;
-function attrColumns(L) {
-  if (L.kind === 'vector') return fieldKeys(L);
-  return L.ds.columns.slice();
-}
-function attrCellText(L, i, col) {
-  if (L.kind === 'vector') {
-    var pg = L.polygons[i];
-    var v = pg && pg.props ? pg.props[col] : '';
-    return v == null ? '' : String(v);
-  }
-  var v2 = L.ds.value(i, col);
-  return v2 == null ? '' : String(v2);
-}
-/* 整列数组：排序 / 筛选用（逐行 value() 会反复切行，33 万行扛不住；
-   文本列走带缓存的 columnText，数值列走 ds.num） */
-function attrColArray(L, col) {
-  if (L.kind === 'vector') {
-    var out = new Array(L.polygons.length);
-    for (var i = 0; i < L.polygons.length; i++) {
-      var v = L.polygons[i].props ? L.polygons[i].props[col] : '';
-      out[i] = v == null ? '' : String(v);
-    }
-    return out;
-  }
-  if (L.ds.num[col]) return L.ds.num[col];
-  return L.ds.columnText(col);
-}
-function attrRebuild() {
-  var A = ATTR; if (!A) return;
-  var L = A.L;
-  var n = L.kind === 'vector' ? L.polygons.length : L.ds.n;
-  var idx = [];
-  var f = (A.filter || '').trim().toLowerCase();
-  if (!f) {
-    for (var i = 0; i < n; i++) idx.push(i);
-  } else {
-    var arrs = [];
-    for (var c = 0; c < A.cols.length; c++) arrs.push(attrColArray(L, A.cols[c]));
-    for (var i2 = 0; i2 < n; i2++) {
-      for (var c2 = 0; c2 < arrs.length; c2++) {
-        var v = arrs[c2][i2];
-        if (v != null && String(v).toLowerCase().indexOf(f) >= 0) { idx.push(i2); break; }
-      }
-    }
-  }
-  if (A.sort >= 0 && A.sort < A.cols.length) {
-    var col = A.cols[A.sort];
-    var arr = attrColArray(L, col);
-    var num = (L.kind !== 'vector') && !!(L.ds.num[col] || colLooksNumeric(L.ds, col));
-    var dir = A.dir;
-    idx.sort(function (a, b) {
-      var va = arr[a], vb = arr[b];
-      if (num) {
-        var na = parseFloat(va), nb = parseFloat(vb);
-        var fa = isFinite(na) ? na : Infinity, fb = isFinite(nb) ? nb : Infinity;
-        return (fa - fb) * dir;
-      }
-      var sa = String(va == null ? '' : va), sb = String(vb == null ? '' : vb);
-      return (sa < sb ? -1 : (sa > sb ? 1 : 0)) * dir;
-    });
-  }
-  A.idx = idx;
-  var pages = Math.max(1, Math.ceil(idx.length / ATTR_PAGE));
-  if (A.page >= pages) A.page = pages - 1;
-  if (A.sel >= 0 && idx.indexOf(A.sel) < 0) A.sel = -1;
-}
-function attrRender() {
-  var A = ATTR; if (!A) return;
-  var L = A.L;
-  var panel = document.getElementById('attrPanel');
-  var title = document.getElementById('apTitle');
-  if (title) title.textContent = '属性表 — ' + L.name;
-  var table = document.getElementById('apTable');
-  if (!table) return;
-  var h = '<tr>';
-  for (var c = 0; c < A.cols.length; c++) {
-    var arrow = (A.sort === c) ? (A.dir > 0 ? ' ▲' : ' ▼') : '';
-    h += '<th data-c="' + c + '">' + esc(A.cols[c]) + arrow + '</th>';
-  }
-  h += '</tr>';
-  var start = A.page * ATTR_PAGE, end = Math.min(start + ATTR_PAGE, A.idx.length);
-  for (var r = start; r < end; r++) {
-    var i = A.idx[r];
-    h += '<tr data-i="' + i + '"' + (A.sel === i ? ' class="sel"' : '') + '>';
-    for (var c2 = 0; c2 < A.cols.length; c2++) {
-      h += '<td>' + esc(attrCellText(L, i, A.cols[c2])) + '</td>';
-    }
-    h += '</tr>';
-  }
-  if (!A.idx.length) h += '<tr><td colspan="' + Math.max(1, A.cols.length) + '" style="color:var(--fg3)">没有匹配的行</td></tr>';
-  table.innerHTML = h;
-  Array.prototype.forEach.call(table.querySelectorAll('th'), function (th) {
-    th.onclick = function () {
-      var c3 = parseInt(th.getAttribute('data-c'), 10);
-      if (A.sort === c3) A.dir = -A.dir; else { A.sort = c3; A.dir = 1; }
-      attrRebuild(); attrRender();
-    };
-  });
-  Array.prototype.forEach.call(table.querySelectorAll('tr[data-i]'), function (tr) {
-    tr.onclick = function () {
-      A.sel = parseInt(tr.getAttribute('data-i'), 10);
-      attrRender();
-    };
-    tr.ondblclick = function () {
-      A.sel = parseInt(tr.getAttribute('data-i'), 10);
-      attrLocate();
-    };
-  });
-  var pages = Math.max(1, Math.ceil(A.idx.length / ATTR_PAGE));
-  document.getElementById('apPage').textContent = '第 ' + (A.page + 1) + ' / ' + pages + ' 页';
-  document.getElementById('apCount').textContent = '共 ' + A.idx.length.toLocaleString() + ' 行（' +
-    (L.kind === 'vector' ? L.polygons.length : L.ds.n).toLocaleString() + ' 行中）';
-  document.getElementById('apPrev').disabled = A.page <= 0;
-  document.getElementById('apNext').disabled = A.page >= pages - 1;
-  panel.classList.add('show');
-  document.getElementById('mapwrap').classList.add('attr-open');
-}
-function openAttrTable(L) {
-  if (!L || !L.ok) { showErr('该图层没有可查看的属性'); return; }
-  ATTR = { L: L, cols: attrColumns(L), idx: [], filter: '', sort: -1, dir: 1, page: 0, sel: -1 };
-  var inp = document.getElementById('apFilter');
-  if (inp) inp.value = '';
-  attrRebuild(); attrRender();
-}
-function closeAttrTable() {
-  ATTR = null;
-  var panel = document.getElementById('attrPanel');
-  if (panel) panel.classList.remove('show');
-  document.getElementById('mapwrap').classList.remove('attr-open');
-}
-function attrLocate() {
-  var A = ATTR; if (!A || A.sel < 0) { showErr('先点一行再定位'); return; }
-  var L = A.L, i = A.sel;
-  if (L.kind === 'vector') {
-    var pg = L.polygons[i];
-    var bb = pg._bbox || polyBBoxMerc(pg);
-    if (bb) {
-      var pw = (bb[2] - bb[0]) * 0.18 + 60, ph = (bb[3] - bb[1]) * 0.18 + 60;
-      try { map.getView().fit([bb[0] - pw, bb[1] - ph, bb[2] + pw, bb[3] + ph], { duration: 400, maxZoom: 16.5 }); } catch (e) {}
-      STATE.hlPoly = { L: L, pg: pg };
-      scheduleDraw();
-    }
-    return;
-  }
-  var x = L.mx[i], y = L.my[i];
-  if (!isFinite(x) || !isFinite(y)) { showErr('该行没有经纬度，无法定位'); return; }
-  try { map.getView().animate({ center: [x, y], zoom: Math.max(map.getView().getZoom() || 10, 15), duration: 400 }); } catch (e) {}
-  STATE.hlCell = { L: L, i: i };
-  scheduleDraw();
-}
-
-/* ============================ 1106g：工程文件 ==================== */
-/* 工程 = 视图 + 指标/地市/频段/底图 + 每层界面设置 + 书签（不含数据本身）；
-   打开时按图层名匹配，没加载的图层先进待办，数据进来后自动补上 */
-var PROJECT_PENDING = null;
-function exportProject() {
-  if (!map) return;
-  var v = map.getView();
-  var proj = {
-    app: 'tucha', v: 1, savedAt: new Date().toISOString(),
-    view: { c: v.getCenter().slice(), z: v.getZoom() },
-    mode: STATE.gridColorMode, city: STATE.cityFilter, band: !!STATE.bandStyle, base: STATE.base,
-    layers: layers.filter(function (L) { return L.ok; }).map(function (L) {
-      return { name: L.name, kind: L.kind, ui: layerUi(L) };
-    }),
-    bookmarks: loadBookmarks()
-  };
-  var blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json;charset=utf-8' });
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  var d = new Date();
-  var p = function (n) { return (n < 10 ? '0' : '') + n; };
-  a.download = '图层查看工程_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.json';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-}
-function applyProject(proj) {
-  if (!proj || proj.app !== 'tucha') { showErr('这不是图层查看的工程文件'); return; }
-  if (proj.view && proj.view.c) {
-    try { map.getView().setCenter(proj.view.c.slice()); } catch (e) {}
-    if (proj.view.z != null) { try { map.getView().setZoom(proj.view.z); } catch (e) {} }
-  }
-  if (proj.base) {
-    var _nb = normBaseId(proj.base);
-    var _nd = baseDef(_nb);
-    var _beforeCrs = STATE.crsMode;
-    STATE.base = _nb;
-    STATE.crsMode = _nd.gcj ? 1 : 0;
-    rebuildBase();
-    syncBaseDropdown();
-    if (STATE.crsMode !== _beforeCrs && layers.length && typeof reprojectAll === 'function') reprojectAll();
-  }
-  if (proj.mode && proj.mode !== STATE.gridColorMode) applyGridColorMode(proj.mode);
-  if (typeof proj.band === 'boolean' && proj.band !== !!STATE.bandStyle) {
-    STATE.bandStyle = proj.band;
-    for (var bi = 0; bi < layers.length; bi++) {
-      if (layers[bi].kind === 'site' && layers[bi].ok) { try { buildSiteColors(layers[bi]); } catch (e) {} }
-    }
-  }
-  if (proj.city !== undefined && proj.city !== STATE.cityFilter) {
-    /* 只改筛选不跳视图：工程里存的中心/缩放优先于地市范围 */
-    STATE.cityFilter = proj.city;
-    if (typeof applyCityToAllLayers === 'function') applyCityToAllLayers();
-    var cc = document.getElementById('cityCur');
-    var cb = document.querySelector('#cityPop button[data-v="' + proj.city + '"] span');
-    if (cc && cb) cc.textContent = cb.textContent;
-  }
-  var pending = {};
-  var matched = 0;
-  (proj.layers || []).forEach(function (pl) {
-    var found = null;
-    for (var i = 0; i < layers.length; i++) if (layers[i].name === pl.name) { found = layers[i]; break; }
-    if (found && pl.ui) { applyLayerUi(found, pl.ui); matched++; }
-    else if (pl.ui) pending[pl.name] = pl.ui;
-  });
-  PROJECT_PENDING = pending;
-  var cur = loadBookmarks();
-  (proj.bookmarks || []).forEach(function (b) {
-    var dup = false;
-    for (var j = 0; j < cur.length; j++) if (cur[j].name === b.name) { dup = true; break; }
-    if (!dup && b.c) cur.push(b);
-  });
-  saveBookmarks(cur);
-  renderBmList();
-  renderLayerList();
-  if (typeof renderLegend === 'function') renderLegend();
-  scheduleDraw(); scheduleLabels();
-  saveViewState();
-  if (matched === 0 && Object.keys(pending).length) {
-    showErr('工程里的图层都还没加载：先导入数据文件，设置会自动补上。');
-  } else if (matched === 0 && !(proj.layers || []).length) {
-    showErr('工程里没有图层设置。');
-  }
-}
-function applyPendingProject() {
-  if (!PROJECT_PENDING || applyPendingProject._busy) return;
-  applyPendingProject._busy = true;
-  try {
-    var keys = Object.keys(PROJECT_PENDING);
-    if (!keys.length) { PROJECT_PENDING = null; return; }
-    var done = false;
-    keys.forEach(function (name) {
-      for (var i = 0; i < layers.length; i++) {
-        if (layers[i].name === name) {
-          applyLayerUi(layers[i], PROJECT_PENDING[name]);
-          delete PROJECT_PENDING[name];
-          done = true;
-          break;
-        }
-      }
-    });
-    if (done) { renderLayerList(); scheduleDraw(); }
-    if (!Object.keys(PROJECT_PENDING).length) PROJECT_PENDING = null;
-  } finally {
-    applyPendingProject._busy = false;
-  }
-}
-function importProjectFile(file) {
-  if (!file) return;
-  var rd = new FileReader();
-  rd.onload = function () {
-    try { applyProject(JSON.parse(rd.result)); }
-    catch (e) { showErr('工程文件解析失败：' + (e && e.message ? e.message : '格式不对')); }
-  };
-  rd.onerror = function () { showErr('工程文件读取失败'); };
-  rd.readAsText(file);
-}
-
-/* ============================ 1106g：地图出图 ==================== */
+/* ============================ 1106h：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -6084,44 +5642,9 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106g：新功能接线 ==================== */
+/* ============================ 1106h：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
-  /* 书签 */
-  var bmBtn = $g('btnBmSave');
-  if (bmBtn) bmBtn.onclick = saveBookmark;
-  renderBmList();
-  /* 坐标读数 + 鹰眼 */
-  bindCoordRead();
-  bindOverview();
-  /* 属性表 */
-  var apPrev = $g('apPrev'), apNext = $g('apNext');
-  if (apPrev) apPrev.onclick = function () { if (ATTR && ATTR.page > 0) { ATTR.page--; attrRender(); } };
-  if (apNext) apNext.onclick = function () {
-    if (!ATTR) return;
-    var pages = Math.max(1, Math.ceil(ATTR.idx.length / ATTR_PAGE));
-    if (ATTR.page < pages - 1) { ATTR.page++; attrRender(); }
-  };
-  var apClose = $g('apClose');
-  if (apClose) apClose.onclick = closeAttrTable;
-  var apLocate = $g('apLocate');
-  if (apLocate) apLocate.onclick = attrLocate;
-  var apClearSel = $g('apClearSel');
-  if (apClearSel) apClearSel.onclick = function () { if (ATTR) { ATTR.sel = -1; attrRender(); } };
-  var apFilter = $g('apFilter');
-  var _apT = null;
-  if (apFilter) apFilter.oninput = function () {
-    if (_apT) clearTimeout(_apT);
-    var v = this.value;
-    _apT = setTimeout(function () { if (ATTR) { ATTR.filter = v; ATTR.page = 0; attrRebuild(); attrRender(); } }, 300);
-  };
-  /* 工程 */
-  var ps = $g('btnProjSave');
-  if (ps) ps.onclick = exportProject;
-  var po = $g('btnProjOpen');
-  if (po) po.onclick = function () { var pk = $g('pickProj'); if (pk) pk.click(); };
-  var pk = $g('pickProj');
-  if (pk) pk.onchange = function () { importProjectFile(this.files[0]); this.value = ''; };
   /* 出图 */
   var bp = $g('btnPrint');
   if (bp) bp.onclick = openPrintDlg;
