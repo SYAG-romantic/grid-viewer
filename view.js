@@ -2691,8 +2691,13 @@ function hidePopup() { document.getElementById('popup').classList.remove('show')
 /* ============================ 11. 图例 / 统计 ============================ */
 
 /* ---- 经纬度定位标记 ---- */
+/* 图钉：对外一律按 WGS84 收（用户输入 / 搜索框显示），画的位置按当前底图换算。
+   高德 GCJ-02 时先正向转成火星坐标再投影，否则图钉会落在数据点西南两三百米外；
+   天地图不转。lon/lat 字段保持用户输入的 WGS84，搜索框显示不变。 */
 function setPin(lon, lat) {
-  STATE.pin = { lon: lon, lat: lat, mx: lonToMercX(lon), my: latToMercY(lat) };
+  var g = (typeof STATE !== 'undefined' && STATE.crsMode === 1 && typeof wgs84ToGcj02 === 'function')
+    ? wgs84ToGcj02(lon, lat) : [lon, lat];
+  STATE.pin = { lon: lon, lat: lat, mx: lonToMercX(g[0]), my: latToMercY(g[1]) };
   var el = document.getElementById('jump');
   if (el) el.value = lon.toFixed(6) + ',' + lat.toFixed(6);
   scheduleDraw();
