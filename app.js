@@ -3689,6 +3689,8 @@ function onToolClick(t, e, p) {
   var def = TOOLS[t] || {};
   if (t === 'coord') {
     var ll = mercToLonLat(p[0], p[1]);
+    /* 拾取读数对外一律报 WGS84：高德底图下地图坐标是 GCJ-02，需反向转回 */
+    if (STATE.crsMode === 1 && typeof gcj02ToWgs84 === 'function') ll = gcj02ToWgs84(ll[0], ll[1]);
     var near = nearestGridPoint(p, 14);
     var val = null, dist = 0;
     if (near && near.rsrp) {
@@ -3699,6 +3701,7 @@ function onToolClick(t, e, p) {
       var nx = near.L.mx[near.i], ny = near.L.my[near.i];
       dist = Math.hypot(nx - p[0], ny - p[1]);
       var ln = mercToLonLat(nx, ny);
+      if (STATE.crsMode === 1 && typeof gcj02ToWgs84 === 'function') ln = gcj02ToWgs84(ln[0], ln[1]);
       near = { band: near.band, x: nx, y: ny, dist: dist, rsrpVal: val, lon: ln[0], lat: ln[1] };
     }
     STATE.coordPick = { x: p[0], y: p[1], lon: ll[0], lat: ll[1], near: near };
@@ -4123,7 +4126,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106i：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106j：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4286,7 +4289,7 @@ function bindUI() {
       if (lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
         setPin(lon, lat);
         map.getView().animate({
-          center: [lonToMercX(lon), latToMercY(lat)],
+          center: [STATE.pin.mx, STATE.pin.my],   /* setPin 已按底图换算过 */
           zoom: Math.max(map.getView().getZoom(), 17),
           duration: 320
         });
@@ -4530,7 +4533,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106i';
+    var workerUrl = 'worker.js?v=1106j';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -5441,7 +5444,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106i：地图出图 ==================== */
+/* ============================ 1106j：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5642,7 +5645,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106i：出图接线 ==================== */
+/* ============================ 1106j：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
