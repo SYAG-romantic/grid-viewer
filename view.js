@@ -647,6 +647,44 @@ function renderBaseList() {
   });
 }
 
+/* 切底图时坐标系变了：把用户放的标记（图钉、拾取点）按存的 WGS84 经纬度重新换算
+   到新底图上，视图中心也换到同一个真实点——切图前后看的是同一处，不用重新搜。
+   图钉/拾取点存的 lon/lat 本来就是 WGS84（1106j 起），直接换算即可。
+   注意：只动用户放的标记；选区（场景/框选/缓冲区）存的是旧墨卡托坐标，
+   切图后仍按旧坐标画，那是另一处待修，不在这里动。 */
+function reprojectUserMarkers(oldGcj) {
+  var newGcj = (STATE.crsMode === 1);
+  if (oldGcj === newGcj) return;
+  function toNew(lon, lat) {   /* WGS84 -> 当前底图坐标系的墨卡托 */
+    var g = (newGcj && typeof wgs84ToGcj02 === 'function') ? wgs84ToGcj02(lon, lat) : [lon, lat];
+    return [lonToMercX(g[0]), latToMercY(g[1])];
+  }
+  /* 视图中心：旧墨卡托 -> 经纬度 -> 反解回 WGS84（旧底图是高德时）-> 新墨卡托 */
+  if (typeof map !== 'undefined' && map && map.getView) {
+    var c = map.getView().getCenter();
+    if (c) {
+      var ll = mercToLonLat(c[0], c[1]);
+      if (oldGcj && typeof gcj02ToWgs84 === 'function') ll = gcj02ToWgs84(ll[0], ll[1]);
+      map.getView().setCenter(toNew(ll[0], ll[1]));
+    }
+  }
+  if (STATE.pin) {
+    var pc = toNew(STATE.pin.lon, STATE.pin.lat);
+    STATE.pin.mx = pc[0]; STATE.pin.my = pc[1];
+  }
+  var cp = STATE.coordPick;
+  if (cp) {
+    var cc = toNew(cp.lon, cp.lat);
+    cp.x = cc[0]; cp.y = cc[1];
+    if (cp.near) {
+      var nc = toNew(cp.near.lon, cp.near.lat);
+      cp.near.x = nc[0]; cp.near.y = nc[1];
+      cp.near.dist = Math.hypot(cp.near.x - cp.x, cp.near.y - cp.y);
+    }
+  }
+  if (typeof scheduleDraw === 'function') scheduleDraw();
+}
+
 /* 切底图：同步坐标纠偏开关（高德 GCJ-02 要纠偏，天地图不纠），
    纠偏状态变了就重投影所有图层 */
 function applyBase(id) {
@@ -659,6 +697,7 @@ function applyBase(id) {
   STATE.crsMode = wantGcj ? 1 : 0;
   rebuildBase();
   syncBaseDropdown();
+  if (changed) reprojectUserMarkers(!wantGcj);   /* 旧底图是不是高德 */
   saveViewState();
   if (changed && typeof reprojectAll === 'function') reprojectAll();
 }
