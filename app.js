@@ -4126,7 +4126,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106j：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106k：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4533,7 +4533,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106j';
+    var workerUrl = 'worker.js?v=1106k';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4579,6 +4579,12 @@ function workerCall(type, payload, transfer) {
    新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
    这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
 async function reprojectAll() {
+  /* 1106k：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
+     只重投影图层不管图钉，切底图后图钉会留在旧坐标系里偏两三百米，
+     必须重搜一次才纠回来。lon/lat 存的是 WGS84，直接重调 setPin 即可。 */
+  if (STATE.pin && typeof setPin === 'function') {
+    try { setPin(STATE.pin.lon, STATE.pin.lat); } catch (e) { }
+  }
   /* 边界层不走 projectLayer，清掉墨卡托缓存即可，下次绘制按新坐标系重建 */
   var vi;
   for (vi = 0; vi < layers.length; vi++) {
@@ -5444,7 +5450,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106j：地图出图 ==================== */
+/* ============================ 1106k：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5645,7 +5651,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106j：出图接线 ==================== */
+/* ============================ 1106k：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
