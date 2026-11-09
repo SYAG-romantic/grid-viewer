@@ -2667,7 +2667,7 @@ function currentSelFull() {
   return currentSel();
 }
 
-/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106l 的图钉同法）。
+/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106m 的图钉同法）。
    场景选区以边界多边形本身为准（vRingsOf 按新坐标系重建，不逐点换算）；
    矩形/圆形/缓冲区/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
    圆形半径按地面米守恒（面板显示的地面半径 = r×cos 纬度）。
@@ -2735,6 +2735,26 @@ function reprojectSelections(oldGcj) {
     STATE.bufferPending.c = reprojectPt(STATE.bufferPending.c);
   }
   if (typeof scheduleDraw === 'function') scheduleDraw();
+}
+
+/* 切底图时坐标系变了：测量工具的点也按 WGS84 重新换算到新底图上。
+   长度/面积/方位角/夹角都是面板每次按点现算的（measureHtml），点换算过去后读数不变；
+   瞬时的 measCursor 下次鼠标移动即更新，不动。 */
+function reprojectMeasurements(oldGcj) {
+  var newGcj = (STATE.crsMode === 1);
+  if (oldGcj === newGcj) return;
+  if (!STATE.measPts || !STATE.measPts.length) return;
+  function toNew(lon, lat) {   /* WGS84 -> 当前底图坐标系的墨卡托 */
+    var g = (newGcj && typeof wgs84ToGcj02 === 'function') ? wgs84ToGcj02(lon, lat) : [lon, lat];
+    return [lonToMercX(g[0]), latToMercY(g[1])];
+  }
+  STATE.measPts = STATE.measPts.map(function (p) {
+    var ll = mercToLonLat(p[0], p[1]);
+    if (oldGcj && typeof gcj02ToWgs84 === 'function') ll = gcj02ToWgs84(ll[0], ll[1]);
+    return toNew(ll[0], ll[1]);
+  });
+  if (typeof scheduleDraw === 'function') scheduleDraw();
+  if (typeof updateToolPanel === 'function') updateToolPanel();
 }
 
 /* 切换子工具。同组内换子工具要清掉上一项的绘制状态 */
@@ -4196,7 +4216,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106l：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106m：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4603,7 +4623,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106l';
+    var workerUrl = 'worker.js?v=1106m';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4649,7 +4669,7 @@ function workerCall(type, payload, transfer) {
    新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
    这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
 async function reprojectAll() {
-  /* 1106l：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
+  /* 1106m：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
      只重投影图层不管图钉，切底图后图钉会留在旧坐标系里偏两三百米，
      必须重搜一次才纠回来。lon/lat 存的是 WGS84，直接重调 setPin 即可。 */
   if (STATE.pin && typeof setPin === 'function') {
@@ -5520,7 +5540,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106l：地图出图 ==================== */
+/* ============================ 1106m：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5721,7 +5741,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106l：出图接线 ==================== */
+/* ============================ 1106m：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
