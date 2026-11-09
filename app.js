@@ -2483,6 +2483,16 @@ function mercToLonLat(x, y) {
 }
 
 /* 球面距离（真实地面米） */
+/* 墨卡托 -> WGS84 经纬度（对外一律按 WGS84）：高德底图下地图坐标是 GCJ-02，
+   直接 mercToLonLat 得到的是火星坐标；算地面距离/方位角/面积、显示经纬度时都要先反解回 WGS84，
+   否则高德和天地图下算出来的数会差约 0.05%（两公里差 1 米、夹角差 0.01°）；
+   天地图不转。 */
+function mercToWgs(mx, my) {
+  var ll = mercToLonLat(mx, my);
+  if (STATE.crsMode === 1 && typeof gcj02ToWgs84 === 'function') ll = gcj02ToWgs84(ll[0], ll[1]);
+  return ll;
+}
+
 function groundDist(a, b) {
   var p1 = a[1] * Math.PI / 180, p2 = b[1] * Math.PI / 180;
   var dp = p2 - p1, dl = (b[0] - a[0]) * Math.PI / 180;
@@ -2667,7 +2677,7 @@ function currentSelFull() {
   return currentSel();
 }
 
-/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106m 的图钉同法）。
+/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106n 的图钉同法）。
    场景选区以边界多边形本身为准（vRingsOf 按新坐标系重建，不逐点换算）；
    矩形/圆形/缓冲区/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
    圆形半径按地面米守恒（面板显示的地面半径 = r×cos 纬度）。
@@ -2968,7 +2978,7 @@ function measureHtml() {
         : '在地图上点击添加顶点。双击或右键结束，Esc 取消。';
     return '<div class="k">' + tip + '</div>';
   }
-  var ll = P.map(function (p) { return mercToLonLat(p[0], p[1]); });
+  var ll = P.map(function (p) { return mercToWgs(p[0], p[1]); });
   var h = '';
 
   if (t === 'azimuth') {
@@ -3036,12 +3046,12 @@ function statTableHtml() {
   var s = STATE.selStats;
   if (!s) return '';
   var h = '<table>';  if (s.kind === 'poly' && s.poly) {
-    var ll = s.poly.map(function (p) { return mercToLonLat(p[0], p[1]); });
+    var ll = s.poly.map(function (p) { return mercToWgs(p[0], p[1]); });
     h += '<tr><td class="k">顶点数</td><td class="num">' + ll.length + '</td></tr>';
     h += '<tr><td class="k">周长</td><td class="num">' + fmtLen(polyPerim(ll)) + '</td></tr>';
     h += '<tr><td class="k">面积</td><td class="num hl">' + fmtArea(polyArea(ll)) + '</td></tr>';
   } else if (s.kind === 'circle' && s.circle) {
-    var c = mercToLonLat(s.circle.c[0], s.circle.c[1]);
+    var c = mercToWgs(s.circle.c[0], s.circle.c[1]);
     var gr = s.circle.r * Math.cos(c[1] * Math.PI / 180);
     h += '<tr><td class="k">圆心</td><td class="num">' + c[0].toFixed(5) + ', ' + c[1].toFixed(5) + '</td></tr>';
     h += '<tr><td class="k">半径</td><td class="num">' + fmtLen(gr) + '</td></tr>';
@@ -3049,8 +3059,8 @@ function statTableHtml() {
   } else if (s.box) {
     var b = s.box;
     var midY = (b[1] + b[3]) / 2, midX = (b[0] + b[2]) / 2;
-    var w = groundDist(mercToLonLat(b[0], midY), mercToLonLat(b[2], midY));
-    var hgt = groundDist(mercToLonLat(midX, b[1]), mercToLonLat(midX, b[3]));
+    var w = groundDist(mercToWgs(b[0], midY), mercToWgs(b[2], midY));
+    var hgt = groundDist(mercToWgs(midX, b[1]), mercToWgs(midX, b[3]));
     h += '<tr><td class="k">范围</td><td class="num">' + fmtLen(w) + ' × ' + fmtLen(hgt) + '</td></tr>';
     h += '<tr><td class="k">面积</td><td class="num">' + fmtArea(w * hgt) + '</td></tr>';
   }
@@ -3153,7 +3163,7 @@ function coordHtml() {
       h += '<tr><td></td><td>距 ' + fmtLen(n.dist) + '</td></tr>';
     }
     if (n.band >= 0) {
-      var nc = mercToLonLat(n.x, n.y);
+      var nc = (n.lon !== undefined && n.lat !== undefined) ? [n.lon, n.lat] : mercToWgs(n.x, n.y);
       h += '<tr><td class="k">栅格中心</td><td class="num" style="font-size:11.5px">' +
         nc[0].toFixed(5) + ', ' + nc[1].toFixed(5) + '</td></tr>';
     }
@@ -3234,7 +3244,7 @@ function drawMeasure(c, t, w, h) {
   var live = (!STATE.measDone && STATE.measCursor) ? toPx(STATE.measCursor) : null;
   var close = (kind === 'area' && pts.length >= 3);
   var line = pts.concat(live ? [live] : []);
-  var ll = P.map(function (p) { return mercToLonLat(p[0], p[1]); });
+  var ll = P.map(function (p) { return mercToWgs(p[0], p[1]); });
 
   c.save();
   c.font = '12px "Microsoft YaHei","PingFang SC",sans-serif';
@@ -3918,7 +3928,7 @@ function pickBufferCenter(e, p) {
     }
   }
   if (best) return { c: [best.L.mx[best.i], best.L.my[best.i]], name: siteNameOf(best.L, best.i) };
-  var ll = mercToLonLat(p[0], p[1]);
+  var ll = mercToWgs(p[0], p[1]);
   return { c: [p[0], p[1]], name: '点击点（' + ll[0].toFixed(4) + ', ' + ll[1].toFixed(4) + '）' };
 }
 
@@ -4216,7 +4226,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106m：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106n：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4623,7 +4633,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106m';
+    var workerUrl = 'worker.js?v=1106n';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4669,7 +4679,7 @@ function workerCall(type, payload, transfer) {
    新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
    这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
 async function reprojectAll() {
-  /* 1106m：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
+  /* 1106n：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
      只重投影图层不管图钉，切底图后图钉会留在旧坐标系里偏两三百米，
      必须重搜一次才纠回来。lon/lat 存的是 WGS84，直接重调 setPin 即可。 */
   if (STATE.pin && typeof setPin === 'function') {
@@ -5540,7 +5550,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106m：地图出图 ==================== */
+/* ============================ 1106n：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5741,7 +5751,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106m：出图接线 ==================== */
+/* ============================ 1106n：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
