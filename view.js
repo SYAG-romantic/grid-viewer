@@ -698,6 +698,7 @@ function applyBase(id) {
   rebuildBase();
   syncBaseDropdown();
   if (changed) reprojectUserMarkers(!wantGcj);   /* 旧底图是不是高德 */
+  if (changed && typeof reprojectSelections === 'function') reprojectSelections(!wantGcj);
   saveViewState();
   if (changed && typeof reprojectAll === 'function') reprojectAll();
 }
