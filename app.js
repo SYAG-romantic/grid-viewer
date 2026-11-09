@@ -2667,6 +2667,76 @@ function currentSelFull() {
   return currentSel();
 }
 
+/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106l 的图钉同法）。
+   场景选区以边界多边形本身为准（vRingsOf 按新坐标系重建，不逐点换算）；
+   矩形/圆形/缓冲区/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
+   圆形半径按地面米守恒（面板显示的地面半径 = r×cos 纬度）。
+   统计不由这里重算——reprojectAll 末尾的 applySelection 会在图层重投影完后重算。
+   只换算已确认的选区；拖拽中的 selDrag/selCircleDrag、橡皮筋 polyCursor 是瞬时状态，
+   下次鼠标移动即更新，不动。 */
+function reprojectSelections(oldGcj) {
+  var newGcj = (STATE.crsMode === 1);
+  if (oldGcj === newGcj) return;
+  function toNew(lon, lat) {   /* WGS84 -> 当前底图坐标系的墨卡托 */
+    var g = (newGcj && typeof wgs84ToGcj02 === 'function') ? wgs84ToGcj02(lon, lat) : [lon, lat];
+    return [lonToMercX(g[0]), latToMercY(g[1])];
+  }
+  function fromOld(mx, my) {   /* 旧墨卡托 -> WGS84 */
+    var ll = mercToLonLat(mx, my);
+    if (oldGcj && typeof gcj02ToWgs84 === 'function') ll = gcj02ToWgs84(ll[0], ll[1]);
+    return ll;
+  }
+  function reprojectPt(p) {
+    var ll = fromOld(p[0], p[1]);
+    return toNew(ll[0], ll[1]);
+  }
+  /* 场景选区：以边界多边形为准重建（不逐点换算） */
+  var sceneRebuilt = false;
+  if (STATE.polyRings && STATE.hlPoly && STATE.hlPoly.pg && typeof vRingsOf === 'function') {
+    try {
+      var rings = vRingsOf(STATE.hlPoly.pg);
+      if (rings && rings.length && rings[0].length >= 3) {
+        STATE.polyRings = rings;
+        STATE.polyPts = rings[0];
+        sceneRebuilt = true;
+      }
+    } catch (e) {}
+  }
+  if (!sceneRebuilt) {
+    /* 手绘多边形（进行中或已完成）：逐点换算，建新数组、不动原数组 */
+    if (STATE.polyPts && STATE.polyPts.length) {
+      STATE.polyPts = STATE.polyPts.map(function (p) { return reprojectPt(p); });
+    }
+    if (STATE.polyRings && STATE.polyRings.length) {
+      STATE.polyRings = STATE.polyRings.map(function (ring) {
+        return ring.map(function (p) { return reprojectPt(p); });
+      });
+    }
+  }
+  /* 矩形：两角换算后重取 min/max */
+  if (STATE.selBox) {
+    var b0 = reprojectPt([STATE.selBox[0], STATE.selBox[1]]);
+    var b1 = reprojectPt([STATE.selBox[2], STATE.selBox[3]]);
+    STATE.selBox = [Math.min(b0[0], b1[0]), Math.min(b0[1], b1[1]),
+                    Math.max(b0[0], b1[0]), Math.max(b0[1], b1[1])];
+  }
+  /* 圆形（含缓冲区）：圆心换算，半径按地面米守恒 */
+  if (STATE.selCircle) {
+    var oc = STATE.selCircle.c;
+    var cosOld = Math.cos(mercToLonLat(oc[0], oc[1])[1] * Math.PI / 180);
+    var nc = reprojectPt(oc);
+    var cosNew = Math.cos(mercToLonLat(nc[0], nc[1])[1] * Math.PI / 180);
+    if (!(cosOld > 0.05)) cosOld = 0.05;
+    if (!(cosNew > 0.05)) cosNew = 0.05;
+    STATE.selCircle = { c: nc, r: STATE.selCircle.r * cosOld / cosNew };
+  }
+  /* 待确认的缓冲区圆心：还是同一个点，跟着换算 */
+  if (STATE.bufferPending && STATE.bufferPending.c) {
+    STATE.bufferPending.c = reprojectPt(STATE.bufferPending.c);
+  }
+  if (typeof scheduleDraw === 'function') scheduleDraw();
+}
+
 /* 切换子工具。同组内换子工具要清掉上一项的绘制状态 */
 function setTool(id) {
   var prev = STATE.tool;
@@ -4126,7 +4196,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106k：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106l：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4533,7 +4603,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106k';
+    var workerUrl = 'worker.js?v=1106l';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4579,7 +4649,7 @@ function workerCall(type, payload, transfer) {
    新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
    这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
 async function reprojectAll() {
-  /* 1106k：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
+  /* 1106l：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
      只重投影图层不管图钉，切底图后图钉会留在旧坐标系里偏两三百米，
      必须重搜一次才纠回来。lon/lat 存的是 WGS84，直接重调 setPin 即可。 */
   if (STATE.pin && typeof setPin === 'function') {
@@ -5450,7 +5520,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106k：地图出图 ==================== */
+/* ============================ 1106l：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5651,7 +5721,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106k：出图接线 ==================== */
+/* ============================ 1106l：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
