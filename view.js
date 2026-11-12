@@ -1947,6 +1947,11 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
   var polys = L.polygons;
   var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
+  /* _bbox 是 WGS84 墨卡托，box 是当前底图坐标系：把裁剪范围换算回 WGS84 再比，
+     否则高德下视野东/北边缘的多边形会提前 200 多米被裁掉（塌点中心仍用 WGS84，
+     塌点只在多边形不足几像素时画，200 多米差不到 1 像素，不值得逐个换算） */
+  var _wbox = (typeof wgsBboxOf === 'function') ? wgsBboxOf(box) : box;
+  var w0 = _wbox[0], w1 = _wbox[1], w2 = _wbox[2], w3 = _wbox[3];
   var scale = st.scale, dotLim = st.dotLim, thinPx = st.thinPx;
   var cityOn = st.cityOn, cityMatcher = st.cityMatcher;
   var startT = performance.now();
@@ -1965,7 +1970,7 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
     var pb = pg._bbox;
     if (pb === undefined) pb = polyBBoxMerc(pg);
     if (pb) {
-      if (pb[2] < b0 || pb[0] > b2 || pb[3] < b1 || pb[1] > b3) continue;
+      if (pb[2] < w0 || pb[0] > w2 || pb[3] < w1 || pb[1] > w3) continue;
       if (scale > 0 && (pb[2] - pb[0]) * scale < dotLim && (pb[3] - pb[1]) * scale < dotLim) {
         var cxm = (pb[0] + pb[2]) * 0.5, cym = (pb[1] + pb[3]) * 0.5;
         var cpx = t0 * cxm + t2 * cym + t4;
@@ -2119,11 +2124,14 @@ function drawVector(c, L, t, w, h, box) {
 function drawVectorHighlight(c, L, t, box) {
   var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
+  /* _bbox 是 WGS84 墨卡托：裁剪范围换算回 WGS84 再比，与 vecRenderChunk 同口径 */
+  var _wbox = (typeof wgsBboxOf === 'function') ? wgsBboxOf(box) : box;
+  var w0 = _wbox[0], w1 = _wbox[1], w2 = _wbox[2], w3 = _wbox[3];
   /* 搜索高亮：深红色边框（拖动时跳过，moveend 再画） */
   if (typeof STATE !== 'undefined' && STATE.hlPoly && STATE.hlPoly.L === L && !STATE._dragging) {
     var hpg = STATE.hlPoly.pg;
     var hbb = hpg._bbox;
-    if (hbb && !(hbb[2] < b0 || hbb[0] > b2 || hbb[3] < b1 || hbb[1] > b3)) {
+    if (hbb && !(hbb[2] < w0 || hbb[0] > w2 || hbb[3] < w1 || hbb[1] > w3)) {
       c.save();
       c.strokeStyle = '#8b0000';
       c.lineWidth = 3;
@@ -2442,6 +2450,9 @@ function pickAt(pixel) {
       var coord = map.getCoordinateFromPixel(pixel);
       if (!coord) break;
       var mxx = coord[0], myy = coord[1];
+      /* _bbox 是 WGS84 墨卡托：先把点击点换算回 WGS84 再做包围盒预筛，环判定仍用原始点击点 */
+      var _wpt = (typeof frameMercToWgs === 'function') ? frameMercToWgs(mxx, myy) : [mxx, myy];
+      var wxx = _wpt[0], wyy = _wpt[1];
       var pMatcher = (L3.citySel && L3.citySel !== '*') ? vecCityMatcher(L3.polygons, L3.citySel, L3.cityCode) : null;
       var pAny = false;
       if (pMatcher) {
@@ -2454,7 +2465,7 @@ function pickAt(pixel) {
         var pg = L3.polygons[pi];
         if (pMatcher && !pMatcher(pg.props || {})) continue;
         var bb = pg._bbox;
-        if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
+        if (bb && (wxx < bb[0] || wxx > bb[2] || wyy < bb[1] || wyy > bb[3])) continue;
         vRingsOf(pg);
         if (ptInPoly(mxx, myy, pg._ringsMerc)) { best = { L: L3, poly: pg }; break; }
       }
@@ -3250,6 +3261,9 @@ function drawLabels() {
         var mbb = mpg._bbox;
         if (!mbb) continue;
         var mcx = (mbb[0] + mbb[2]) / 2, mcy = (mbb[1] + mbb[3]) / 2;
+        /* _bbox 中心是 WGS84 墨卡托：换算到当前底图坐标系再定位，否则高德下标注偏离多边形 200 多米 */
+        var _mc = (typeof wgsMercToFrame === 'function') ? wgsMercToFrame(mcx, mcy) : [mcx, mcy];
+        mcx = _mc[0]; mcy = _mc[1];
         if (mcx < extent[0] || mcx > extent[2] || mcy < extent[1] || mcy > extent[3]) continue;
         var mpx = map.getPixelFromCoordinate([mcx, mcy]);
         if (!mpx) continue;
@@ -3273,6 +3287,8 @@ function drawLabels() {
         var vpg = L.polygons[vpi];
         var vbb = vpg._bbox;
         if (!vbb) continue;
+        /* _bbox 是 WGS84：换算到当前底图坐标系，中心与分位点、范围判定、环内判定才与绘制同口径 */
+        if (typeof frameBboxOf === 'function') vbb = frameBboxOf(vbb);
         var vcx = (vbb[0] + vbb[2]) / 2, vcy = (vbb[1] + vbb[3]) / 2;
         if (vcx < extent[0] || vcx > extent[2] || vcy < extent[1] || vcy > extent[3]) continue;
         /* 确保中心点在多边形内部（凹多边形 bbox 中心可能在外） */
