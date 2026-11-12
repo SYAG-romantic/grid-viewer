@@ -1016,6 +1016,8 @@ function showJumpResults(res, kw) {
           var vb = r.pg._bbox;
           if (vb) {
             var cx = (vb[0] + vb[2]) / 2, cy = (vb[1] + vb[3]) / 2;
+            /* _bbox 中心是 WGS84 墨卡托：换算到当前底图坐标系再居中，否则高德下跳过去偏 200 多米 */
+            var _fc = wgsMercToFrame(cx, cy); cx = _fc[0]; cy = _fc[1];
             STATE.hlPoly = { L: r.L, pg: r.pg }; var _rp = r.pg.props || {}; STATE.sceneName = getSceneName(_rp, r.L) || String(r.name || '');
             if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
             try {
@@ -2493,6 +2495,42 @@ function mercToWgs(mx, my) {
   return ll;
 }
 
+/* 当前底图坐标系墨卡托 -> WGS84 墨卡托：pg._bbox 是按原始 WGS84 环算的，
+   拿它跟当前底图坐标（高德下是 GCJ-02 墨卡托）比之前，要先把比较点换算回 WGS84，
+   否则高德下包围盒预筛会把多边形东/北边缘 200 多米宽的一条误杀（点不出弹窗）；
+   天地图下恒等。 */
+function frameMercToWgs(mx, my) {
+  if (STATE.crsMode === 1) {
+    var ll = mercToWgs(mx, my);
+    return [lonToMercX(ll[0]), latToMercY(ll[1])];
+  }
+  return [mx, my];
+}
+/* WGS84 墨卡托 -> 当前底图坐标系墨卡托：_bbox 中心要在当前底图上定位/显示时用 */
+function wgsMercToFrame(mx, my) {
+  if (STATE.crsMode === 1 && typeof wgs84ToGcj02 === 'function') {
+    var ll = mercToLonLat(mx, my);
+    var g = wgs84ToGcj02(ll[0], ll[1]);
+    return [lonToMercX(g[0]), latToMercY(g[1])];
+  }
+  return [mx, my];
+}
+/* 墨卡托包围盒换算：四角换算后取 min/max，取并集不漏 */
+function wgsBboxOf(bb) {
+  if (!bb || STATE.crsMode !== 1) return bb;
+  var xs = [], ys = [], i, f;
+  var cs = [[bb[0], bb[1]], [bb[0], bb[3]], [bb[2], bb[1]], [bb[2], bb[3]]];
+  for (i = 0; i < 4; i++) { f = frameMercToWgs(cs[i][0], cs[i][1]); xs.push(f[0]); ys.push(f[1]); }
+  return [Math.min.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, xs), Math.max.apply(null, ys)];
+}
+function frameBboxOf(bb) {
+  if (!bb || STATE.crsMode !== 1) return bb;
+  var xs = [], ys = [], i, f;
+  var cs = [[bb[0], bb[1]], [bb[0], bb[3]], [bb[2], bb[1]], [bb[2], bb[3]]];
+  for (i = 0; i < 4; i++) { f = wgsMercToFrame(cs[i][0], cs[i][1]); xs.push(f[0]); ys.push(f[1]); }
+  return [Math.min.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, xs), Math.max.apply(null, ys)];
+}
+
 function groundDist(a, b) {
   var p1 = a[1] * Math.PI / 180, p2 = b[1] * Math.PI / 180;
   var dp = p2 - p1, dl = (b[0] - a[0]) * Math.PI / 180;
@@ -2677,7 +2715,7 @@ function currentSelFull() {
   return currentSel();
 }
 
-/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106n 的图钉同法）。
+/* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106o 的图钉同法）。
    场景选区以边界多边形本身为准（vRingsOf 按新坐标系重建，不逐点换算）；
    矩形/圆形/缓冲区/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
    圆形半径按地面米守恒（面板显示的地面半径 = r×cos 纬度）。
@@ -3867,6 +3905,9 @@ function onToolClick(t, e, p) {
 /* 按边界选择：只做边界命中（不弹属性弹窗），与 pickAt 里边界分支同口径：
    可见边界层从上往下查，包围盒预筛 + even-odd 环判定 */
 function pickVectorAt(mxx, myy) {
+  /* _bbox 是 WGS84 墨卡托：先把点击点换算回 WGS84 再做包围盒预筛，环判定仍用原始点击点 */
+  var _wpt = frameMercToWgs(mxx, myy);
+  var wxx = _wpt[0], wyy = _wpt[1];
   for (var li = layers.length - 1; li >= 0; li--) {
     var L = layers[li];
     if (!L.visible || !L.ok || L.kind !== 'vector' || !L.polygons) continue;
@@ -3882,7 +3923,7 @@ function pickVectorAt(mxx, myy) {
       var pg = L.polygons[pi];
       if (pMatcher && !pMatcher(pg.props || {})) continue;
       var bb = pg._bbox;
-      if (bb && (mxx < bb[0] || mxx > bb[2] || myy < bb[1] || myy > bb[3])) continue;
+      if (bb && (wxx < bb[0] || wxx > bb[2] || wyy < bb[1] || wyy > bb[3])) continue;
       vRingsOf(pg);
       if (ptInPoly(mxx, myy, pg._ringsMerc)) return { L: L, pg: pg };
     }
@@ -4226,7 +4267,7 @@ function bindUI() {
   /* 测量 / 框选工具 */
   initTools();
 
-  /* 1106n：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
+  /* 1106o：书签 / 鹰眼 / 属性表 / 工程 / 出图 */
   if (typeof initGFeatures === 'function') initGFeatures();
 
   /* 数据加载 */
@@ -4633,7 +4674,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106n';
+    var workerUrl = 'worker.js?v=1106o';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -4679,7 +4720,7 @@ function workerCall(type, payload, transfer) {
    新导入的数据不用管——projectLayer 每次都读 STATE.crsMode，天然跟随。
    这里的重算是为了已经在图上的图层，栅格百万行会明显停顿，给居中进度条。 */
 async function reprojectAll() {
-  /* 1106n：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
+  /* 1106o：图钉也要跟着重算。setPin 存的 mx/my 是按旧底图换算的，
      只重投影图层不管图钉，切底图后图钉会留在旧坐标系里偏两三百米，
      必须重搜一次才纠回来。lon/lat 存的是 WGS84，直接重调 setPin 即可。 */
   if (STATE.pin && typeof setPin === 'function') {
@@ -5550,7 +5591,7 @@ function stDownloadCsv(name, header, rows) {
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
-/* ============================ 1106n：地图出图 ==================== */
+/* ============================ 1106o：地图出图 ==================== */
 /* 合成顺序与画面一致：底图（OL）→ 栅格 GL → 站点 GL → #pts（边界/选区）→ 注记；
    底图跨域被污染时跳过底图、只出数据层，并在预览里注明 */
 var PRINT_URL = null;
@@ -5751,7 +5792,7 @@ function printViaBrowser() {
   w.document.close();
 }
 
-/* ============================ 1106n：出图接线 ==================== */
+/* ============================ 1106o：出图接线 ==================== */
 function initGFeatures() {
   var $g = function (id) { return document.getElementById(id); };
   /* 出图 */
