@@ -771,6 +771,7 @@ function makeLayer(ds, kind, skipCity) {
     azCol: null, bandCol: null, tiltCol: null, hgtCol: null, stypeCol: null,
     citySel: '*',
     filters: [],
+    rowPass: null,   /* 筛选行级掩码：null=不过滤，否则 Uint8Array，1=通过筛选 */
     projected: false,
     crsFix: null,
     colorGroups: null,
@@ -1209,6 +1210,7 @@ function buildSiteColors(L) {
     var bkeys = buildBandInfo(L);
     var bgroups = {}, border = [];
     for (var bi = 0; bi < n; bi++) {
+      if (L.rowPass && !L.rowPass[bi]) continue;   /* 被筛选掉的行不进任何分组 */
       var bk = isIndoor(bi) ? 'indoor' : (bkeys[bi] || 'rat');
       if (!bgroups[bk]) { bgroups[bk] = []; border.push(bk); }
       bgroups[bk].push(bi);
@@ -1230,6 +1232,7 @@ function buildSiteColors(L) {
     });
   } else {
     for (var i = 0; i < n; i++) {
+      if (L.rowPass && !L.rowPass[i]) continue;   /* 被筛选掉的行不进任何分组 */
       var key = keyOf(i);
       if (!groups[key]) { groups[key] = []; order.push(key); }
       groups[key].push(i);
@@ -1358,6 +1361,34 @@ function matchConds(L, i) {
   return true;
 }
 
+/* 边界多边形的筛选判定：与 matchConds 同一套 op 语义，取值走 pg.props（边界层没有 ds）。
+   ft 上的 colIdx/isNum 缓存是 ds 专用的，这里不用、也不写。 */
+function matchVecConds(pg, filters) {
+  var props = (pg && pg.props) || {};
+  for (var f = 0; f < filters.length; f++) {
+    var ft = filters[f];
+    var v = props[ft.field];
+    if (v == null) v = '';
+    if (ft.op === 'between') {
+      var nv = Number(v);
+      if (!isFinite(nv)) return false;
+      if (ft.v1 !== null && nv < ft.v1) return false;
+      if (ft.v2 !== null && nv > ft.v2) return false;
+    } else if (ft.op === 'eq') {
+      if (String(v) !== ft.s) return false;
+    } else if (ft.op === 'ne') {
+      if (String(v) === ft.s) return false;
+    } else if (ft.op === 'gt') {
+      if (!(Number(v) > ft.v1)) return false;
+    } else if (ft.op === 'lt') {
+      if (!(Number(v) < ft.v1)) return false;
+    } else if (ft.op === 'contains') {
+      if (String(v).indexOf(ft.s) < 0) return false;
+    }
+  }
+  return true;
+}
+
 function rebuildBuckets(L, skipGL) {
   var ds = L.ds, n = ds.n;
   var rsrp = ds.num[L.rsrpCol];
@@ -1445,8 +1476,8 @@ var STATE = {
   siteColor: 'rat',
   bandStyle: false,          /* 按频段样式（颜色/半径/波束角查 BAND_STYLE 表） */
   gridColorMode: 'rsrp',   /* 栅格着色：rsrp | sinr | cov（字段缺失的图层自动回退 rsrp） */
-  bandFilter: -1,          /* 栅格图例点选过滤：-1=不过滤，>=0 只突出该档（其余压暗） */
-  siteGroupFilter: null,   /* 工参图例点选过滤：null=全部，否则只画该 group（频段名/rat/indoor） */
+  bandFilter: new Set(),   /* 栅格图例点选过滤：空=不过滤，否则只突出集合内的档（其余压暗），可多选 */
+  siteGroupFilter: new Set(), /* 工参图例点选过滤：空=全部，否则只画集合内的 group（频段名/rat/indoor），可多选 */
   statLabel: false,        /* 把场景统计结果（覆盖率）直接标在地图上 */
   cityFilter: '*',         /* 顶部城市按钮：'*'=全疆，或 CityID 字符串 */
   pin: null,

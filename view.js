@@ -323,7 +323,7 @@ var GMODE_NAME = { rsrp: 'RSRP均值', sinr: 'SINR均值', cov: '覆盖率' };
 /* 切换栅格着色模式：含字段支持检查（缺字段回退 RSRP 并提示），
    重建所有栅格图层的分桶，并同步侧栏下拉与顶部按钮两处 UI */
 function applyGridColorMode(mode) {
-  STATE.bandFilter = -1;   /* 换了指标档位含义全变，之前的档位过滤作废 */
+  STATE.bandFilter.clear();   /* 换了指标档位含义全变，之前的档位过滤作废 */
   /* 字段支持检查：以选中图层（或第一个栅格图层）为准，缺字段则回退并提示 */
   var chk = (selected && selected.kind === 'grid') ? selected : null;
   if (!chk) {
@@ -944,13 +944,14 @@ function paintCells(c, L, t, w, h, box, cw, ch, selTest, inside) {
   var b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   var hw = cw * 0.5, hh = ch * 0.5;
   var bandsFill = gridFill(L);
-  /* 图例点选过滤：非目标档降到 10% 不透明度（WebGL 路径在着色器里同样处理） */
-  var _bf = (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1;
+  /* 图例点选过滤：非目标档降到 10% 不透明度（WebGL 路径在着色器里同样处理，可多选） */
+  var _bfSet = STATE.bandFilter;
+  var _bfOn = !!(_bfSet && _bfSet.size);
   var _a0 = c.globalAlpha;
   for (var b = 0; b < L.bandCount; b++) {
     var idx = L.buckets[b];
     if (!idx.length) continue;
-    if (_bf >= 0) c.globalAlpha = (_bf === b) ? _a0 : _a0 * 0.10;
+    if (_bfOn) c.globalAlpha = _bfSet.has(b) ? _a0 : _a0 * 0.10;
     c.fillStyle = bandsFill[b];
     c.beginPath();
     for (var k = 0; k < idx.length; k++) {
@@ -965,7 +966,7 @@ function paintCells(c, L, t, w, h, box, cw, ch, selTest, inside) {
     }
     c.fill();
   }
-  if (_bf >= 0) c.globalAlpha = _a0;
+  if (_bfOn) c.globalAlpha = _a0;
 }
 
 function drawGrid(c, L, t, w, h, box) {
@@ -1042,9 +1043,13 @@ function drawGrid(c, L, t, w, h, box) {
   }
   c.globalAlpha = gAlpha;
   var aggFill = gridFill(L);
+  /* 图例点选过滤与 paintCells 同口径：非目标档降到 10% 不透明度（可多选） */
+  var _aggBf = STATE.bandFilter;
+  var _aggBfOn = !!(_aggBf && _aggBf.size);
   for (var b4 = 0; b4 < nb; b4++) {
     var arr = byBand[b4];
     if (!arr.length) continue;
+    if (_aggBfOn) c.globalAlpha = _aggBf.has(b4) ? gAlpha : gAlpha * 0.10;
     c.fillStyle = aggFill[b4];
     for (var q = 0; q < arr.length; q++) {
       var oo = arr[q];
@@ -1121,7 +1126,7 @@ function glrInit() {
       'uniform vec3 u_colors[7];\n' +
       'uniform vec4 u_sel;\n' + /* rect: minx,miny,maxx,maxy；circle: cx,cy,r,0 */
       'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆（多边形选区不支持压暗） */
-      'uniform int u_bandFlt;\n' + /* -1 不过滤；>=0 只突出该档，其余压到很淡 */
+      'uniform int u_bandMask;\n' + /* 图例多选掩码：0 不过滤；否则只突出置位档，其余压到很淡 */
       'out vec4 v_color;\n' +
       'void main() {\n' +
       '  float px = u_t0.x * a_pos.x + u_t0.z * a_pos.y + u_t1.x + a_corner.x * u_half.x;\n' +
@@ -1135,7 +1140,7 @@ function glrInit() {
       '    if (dot(d, d) > u_sel.z * u_sel.z) dim = 0.22;\n' +
       '  }\n' +
       '  int bk = int(a_band + 0.5);\n' +
-      '  if (u_bandFlt >= 0 && bk != u_bandFlt) dim = min(dim, 0.10);\n' +
+      '  if (u_bandMask != 0 && (u_bandMask & (1 << bk)) == 0) dim = min(dim, 0.10);\n' +
       '  v_color = vec4(u_colors[bk], u_alpha * dim);\n' +
       '}\n';
     var fsrc =
@@ -1156,7 +1161,7 @@ function glrInit() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
 
     var loc = {};
-    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType', 'u_bandFlt'];
+    var unames = ['u_t0', 'u_t1', 'u_size', 'u_half', 'u_alpha', 'u_colors', 'u_sel', 'u_selType', 'u_bandMask'];
     for (var ui = 0; ui < unames.length; ui++) loc[unames[ui]] = gl.getUniformLocation(prog, unames[ui]);
     loc.a_pos = gl.getAttribLocation(prog, 'a_pos');
     loc.a_band = gl.getAttribLocation(prog, 'a_band');
@@ -1354,7 +1359,8 @@ function glsInit() {
       'uniform float u_citySel;\n' +
       'uniform float u_band;\n' +
       'uniform float u_sub;\n' +
-      'uniform int u_grpFlt;\n' +     /* -1 不过滤；>=0 只画该分组 */
+      'uniform int u_grpFltOn;\n' + /* 0 不过滤；1 按 u_grpOn 数组裁（图例多选） */
+      'uniform int u_grpOn[128];\n' + /* 分组序号→1 画 / 0 不画；过滤开启时序号 ≥128 的分组不画（与 Canvas 路径一致） */
       'out vec3 v_col;\n' +
       'void main() {\n' +
       '  if (u_sub > 1.5 && mod(float(gl_InstanceID), u_sub) > 0.5) {\n' +
@@ -1363,8 +1369,11 @@ function glsInit() {
       '  if (u_citySel > -0.5 && abs(a_city - u_citySel) > 0.5) {\n' +
       '    gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
       '  }\n' +
-      '  if (u_grpFlt >= 0 && int(a_grp + 0.5) != u_grpFlt) {\n' +
-      '    gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
+      '  if (u_grpFltOn > 0) {\n' +
+      '    int _gi = int(a_grp + 0.5);\n' +
+      '    if (_gi >= 128 || u_grpOn[_gi] == 0) {\n' +
+      '      gl_Position = vec4(2.0, 2.0, 2.0, 1.0); v_col = vec3(0.0); return;\n' +
+      '    }\n' +
       '  }\n' +
       '  vec2 sp = vec2(u_t0.x*a_pos.x + u_t0.z*a_pos.y + u_t1.x,\n' +
       '                u_t0.y*a_pos.x + u_t0.w*a_pos.y + u_t1.y);\n' +
@@ -1473,7 +1482,8 @@ function glsInit() {
         u_citySel: gl.getUniformLocation(progFan, 'u_citySel'),
         u_sub: gl.getUniformLocation(progFan, 'u_sub'),
         u_band: gl.getUniformLocation(progFan, 'u_band'),
-        u_grpFlt: gl.getUniformLocation(progFan, 'u_grpFlt')
+        u_grpFltOn: gl.getUniformLocation(progFan, 'u_grpFltOn'),
+        u_grpOn: gl.getUniformLocation(progFan, 'u_grpOn[0]')
       },
       progPt: progPt,
       locPt: {
@@ -1698,6 +1708,9 @@ function glsBindInst(gl, loc, buf, size, prog) {
   gl.vertexAttribDivisor(loc, 1);
 }
 
+/* 图例多选 uniform 数组的复用缓冲：每帧每层都填，避免逐帧分配 */
+var _grpOnScratch = new Int32Array(128);
+
 function glDrawSites(L, t, w, h, box, dpr) {
   if (!L.siteGlOk || !glsInit()) return false;
   var gl = GLS.gl;
@@ -1746,16 +1759,19 @@ function glDrawSites(L, t, w, h, box, dpr) {
   if (R < 6) _sub = Math.min(32, Math.ceil(12 / Math.max(0.5, R)));
   if (loc.u_sub) gl.uniform1f(loc.u_sub, _sub);
   if (loc.u_band) gl.uniform1f(loc.u_band, siteUseBand(L) ? 1 : 0);
-  /* 图例点选过滤：只改这个 uniform，不重建缓冲 */
-  if (loc.u_grpFlt) {
-    var _gf = -1;
-    if (STATE.siteGroupFilter) {
-      for (var _gfi = 0; _gfi < (L.colorGroups || []).length; _gfi++) {
-        if (L.colorGroups[_gfi].key === STATE.siteGroupFilter) { _gf = _gfi; break; }
+  /* 图例点选过滤：只改这两个 uniform，不重建缓冲（数组按本层分组序号填 1/0，
+     本层没有选中分组时全 0，整层不画，与旧的 -2 语义一致） */
+  if (loc.u_grpFltOn) {
+    var _filtering = !!(STATE.siteGroupFilter && STATE.siteGroupFilter.size);
+    gl.uniform1i(loc.u_grpFltOn, _filtering ? 1 : 0);
+    if (_filtering && loc.u_grpOn) {
+      _grpOnScratch.fill(0);
+      var _groups = L.colorGroups || [];
+      for (var _gfi = 0; _gfi < _groups.length && _gfi < 128; _gfi++) {
+        if (STATE.siteGroupFilter.has(_groups[_gfi].key)) _grpOnScratch[_gfi] = 1;
       }
-      if (_gf < 0) _gf = -2;   /* 该层没有这个分组：用一个不存在的序号把全部裁掉 */
+      gl.uniform1iv(loc.u_grpOn, _grpOnScratch);
     }
-    gl.uniform1i(loc.u_grpFlt, _gf);
   }
 
   glsBindInst(gl, loc.a_pos, L.sitePosBuf, 2);
@@ -1837,8 +1853,12 @@ function glDrawGrid(L, t, w, h, box, dpr, clear) {
   }
   gl.uniform4f(loc.u_sel, sx, sy, sz, sw);
   gl.uniform1i(loc.u_selType, st);
-  /* 图例点选过滤：只压暗不改缓冲，切换零成本 */
-  gl.uniform1i(loc.u_bandFlt, (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1);
+  /* 图例点选过滤：只压暗不改缓冲，切换零成本（掩码位=档位号，可多选） */
+  var _bm = 0;
+  if (STATE.bandFilter && STATE.bandFilter.size) {
+    STATE.bandFilter.forEach(function (_b) { if (_b >= 0 && _b < 30) _bm |= (1 << _b); });
+  }
+  if (loc.u_bandMask) gl.uniform1i(loc.u_bandMask, _bm);
 
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, L.glCount);
   return true;
@@ -1966,6 +1986,7 @@ function vecRenderChunk(c, L, t, box, st, budgetMs) {
   for (; pi < polys.length; pi++) {
     if (pi > st.pi && (pi & 255) === 0 && performance.now() - startT > budgetMs) break;
     var pg = polys[pi];
+    if (pg._pass === false) continue;   /* 被筛选掉的多边形不画 */
     if (cityOn && !cityMatcher(pg.props || {})) continue;
     var pb = pg._bbox;
     if (pb === undefined) pb = polyBBoxMerc(pg);
@@ -2035,10 +2056,11 @@ function drawVector(c, L, t, w, h, box) {
     return;
   }
   var vc = L._vcache;
-  var vcOk = vc && vc.citySel === L.citySel && vc.cityCode === L.cityCode && vc.dpr === dpr;
+  var _fltSig = L._fltSig || 0;
+  var vcOk = vc && vc.citySel === L.citySel && vc.cityCode === L.cityCode && vc.dpr === dpr && vc.fltSig === _fltSig;
   /* —— 有进行中的分片任务 —— */
   var job = L._vcJob;
-  if (job && !(job.citySel === L.citySel && job.cityCode === L.cityCode && job.dpr === dpr)) {
+  if (job && !(job.citySel === L.citySel && job.cityCode === L.cityCode && job.dpr === dpr && job.fltSig === _fltSig)) {
     L._vcJob = null; job = null;
   }
   if (job) {
@@ -2049,7 +2071,7 @@ function drawVector(c, L, t, w, h, box) {
       if (done) {
         L._vcache = { cv: job.cv2, wCss: job.wCss, hCss: job.hCss, ext: job.ext,
                       t0: job.t0, t3: job.t3, tc4: job.tc4, tc5: job.tc5,
-                      dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
+                      dpr: dpr, citySel: L.citySel, cityCode: L.cityCode, fltSig: _fltSig };
         L._vcJob = null;
         vecBlit(c, L._vcache, t);
       } else {
@@ -2105,12 +2127,12 @@ function drawVector(c, L, t, w, h, box) {
   var tc = [t[0], t[1], t[2], t[3], t[4] - tlx, t[5] - tly];
   var nJob = { cv2: cv2, c2: c2, tc: tc, ext: ext, wCss: wCss, hCss: hCss,
                t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
-               dpr: dpr, citySel: L.citySel, cityCode: L.cityCode,
+               dpr: dpr, citySel: L.citySel, cityCode: L.cityCode, fltSig: _fltSig,
                st: vecRenderInit(L, tc, ext, true) };
   L._vcJob = nJob;
   if (vecRenderChunk(c2, L, tc, ext, nJob.st, 28)) {
     L._vcache = { cv: cv2, wCss: wCss, hCss: hCss, ext: ext, t0: t[0], t3: t[3], tc4: tc[4], tc5: tc[5],
-                  dpr: dpr, citySel: L.citySel, cityCode: L.cityCode };
+                  dpr: dpr, citySel: L.citySel, cityCode: L.cityCode, fltSig: _fltSig };
     L._vcJob = null;
     vecBlit(c, L._vcache, t);
   } else {
@@ -2170,10 +2192,13 @@ function drawSites(c, L, t, w, h, box) {
   var half = (_is5gCv ? 45 : 35) * DEG * 0.5;
   var azArr = L.azCol ? L.ds.num[L.azCol] : null;
   var mx = L.mx, my = L.my;
-  /* 与 WebGL 路径同口径：图例点选过滤时只画目标分组 */
+  /* 缓存恢复时图层先入 layers、投影在 yield 后才跑，中间帧 mx/my 为空：没东西可画直接跳过，
+     投影完下一帧再画（注记 drawLabels 同口径已判 !L.mx）。否则 mx[i] 在 null 上抛错。 */
+  if (!mx || !my) return;
+  /* 与 WebGL 路径同口径：图例点选过滤时只画目标分组（可多选） */
   var groups = (L.colorGroups || []).filter(function (g) {
-    if (!STATE.siteGroupFilter) return true;
-    return g.key === STATE.siteGroupFilter;
+    if (!STATE.siteGroupFilter.size) return true;
+    return STATE.siteGroupFilter.has(g.key);
   });
   var gi, g, k, i, x, y, px, py, idx;
 
@@ -2315,19 +2340,21 @@ function pickSiteSector(L, pixel, t, res) {
   /* 地市口径与绘制一致：被地市筛掉的扇区不可点（citySel 是城市索引；'none' 表示该层无此地市） */
   var _csIdx = (L.citySel !== undefined && L.citySel !== '*' && L.citySel !== 'none') ? parseInt(L.citySel, 10) : -1;
   var hits = [];
-  /* 图例点选过滤：被隐藏的分组不可点 */
-  var _fGrp = -2;   /* -2 表示不过滤 */
-  if (STATE.siteGroupFilter) {
-    _fGrp = -1;
+  /* 图例点选过滤：被隐藏的分组不可点（先按本层分组建允许表，行循环里 O(1) 判） */
+  var _fAllow = null;
+  if (STATE.siteGroupFilter.size) {
+    _fAllow = new Uint8Array((L.colorGroups || []).length);
+    var _anyF = false;
     for (var _fg = 0; _fg < (L.colorGroups || []).length; _fg++) {
-      if (L.colorGroups[_fg].key === STATE.siteGroupFilter) { _fGrp = _fg; break; }
+      if (STATE.siteGroupFilter.has(L.colorGroups[_fg].key)) { _fAllow[_fg] = 1; _anyF = true; }
     }
-    if (_fGrp < 0) return [];   /* 该层没有这个分组，整层不可点 */
+    if (!_anyF) return [];   /* 该层没有选中的分组，整层不可点 */
   }
   for (var i = 0; i < n; i++) {
     if (L.citySel === 'none') break;
     if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
-    if (_fGrp >= 0 && L._grpOf && L._grpOf[i] !== _fGrp) continue;
+    if (L.rowPass && !L.rowPass[i]) continue;   /* 被筛选掉的行点不中 */
+    if (_fAllow && L._grpOf && !_fAllow[L._grpOf[i]]) continue;
     var x = mx[i], y = my[i];
     if (!isFinite(x) || !isFinite(y)) continue;
     var sx = t[0] * x + t[2] * y + t[4];
@@ -2463,6 +2490,7 @@ function pickAt(pixel) {
       }
       for (var pi = 0; pi < L3.polygons.length; pi++) {
         var pg = L3.polygons[pi];
+        if (pg._pass === false) continue;   /* 被筛选掉的场景点不中 */
         if (pMatcher && !pMatcher(pg.props || {})) continue;
         var bb = pg._bbox;
         if (bb && (wxx < bb[0] || wxx > bb[2] || wyy < bb[1] || wyy > bb[3])) continue;
@@ -3053,12 +3081,13 @@ function rebuildAllSiteGL() {
   return Promise.all(jobs);
 }
 
-/* 工参图例点选过滤：点一下只看该分组，再点取消 */
+/* 工参图例点选过滤：点一下选中该分组，再点取消；可同时选多个，全不选=全部显示 */
 function bindSiteLegendClick(body) {
   Array.prototype.forEach.call(body.querySelectorAll('.li[data-g]'), function (el) {
     el.onclick = function () {
       var g = el.getAttribute('data-g');
-      STATE.siteGroupFilter = (STATE.siteGroupFilter === g) ? null : g;
+      if (STATE.siteGroupFilter.has(g)) STATE.siteGroupFilter.delete(g);
+      else STATE.siteGroupFilter.add(g);
       /* GL 缓冲是异步重建的，必须等它完成再重绘——否则画的还是旧缓冲，
          要等下一次缩放才更新 */
       renderLegend();   /* 选中态立即反馈 */
@@ -3067,6 +3096,19 @@ function bindSiteLegendClick(body) {
       scheduleLabels();
     };
   });
+}
+
+/* 图例行选中态（工参/栅格共用逻辑）：集合空时不标；非空时成员 on、非成员 dim */
+function lgRowCls(isMember, anySel) {
+  if (!anySel) return '';
+  return isMember ? ' on' : ' dim';
+}
+/* 图例副标题：0 个为空、1 个走 singleFn、多于 1 个走 multiFn */
+function lgSubText(set, singleFn, multiFn) {
+  var n = set ? set.size : 0;
+  if (!n) return '';
+  if (n === 1) return singleFn(set.values().next().value);
+  return multiFn(n);
 }
 
 function renderLegend() {
@@ -3098,19 +3140,19 @@ function renderLegend() {
         if (bk === 'rat') continue;   /* 未识别频段不在图例单列（用户定） */
         if (seenB[bk]) continue;
         seenB[bk] = 1;
-        var _onB = (STATE.siteGroupFilter === bk) ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-        bhtml += '<div class="li lgi' + _onB + '" data-g="' + esc(bk) + '" title="点击只看该频段">' +
+        var _onB = lgRowCls(STATE.siteGroupFilter.has(bk), STATE.siteGroupFilter.size);
+        bhtml += '<div class="li lgi' + _onB + '" data-g="' + esc(bk) + '" title="点击切换该频段的显示，可多选">' +
           '<i style="background:' + bgv.color + ';border-radius:0;' +
           'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + bk + '</span></div>';
       }
       /* 室分：用图层里室分的实际颜色（与扇区同制式色，4G 红 / 5G 蓝），不再用灰色 */
       if (!indoorColor) indoorColor = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
-      var _onI = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-      bhtml += '<div class="li lgi' + _onI + '" data-g="indoor" title="点击只看室分">' +
+      var _onI = lgRowCls(STATE.siteGroupFilter.has('indoor'), STATE.siteGroupFilter.size);
+      bhtml += '<div class="li lgi' + _onI + '" data-g="indoor" title="点击切换室分的显示，可多选">' +
         '<i style="background:' + indoorColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
       body.innerHTML = bhtml;
       bindSiteLegendClick(body);
-      sub.textContent = STATE.siteGroupFilter ? ('仅显示 ' + (STATE.siteGroupFilter === 'indoor' ? '室分' : STATE.siteGroupFilter)) : '';
+      sub.textContent = lgSubText(STATE.siteGroupFilter, function (_k) { return '仅显示 ' + (_k === 'indoor' ? '室分' : _k); }, function (_n) { return '已选 ' + _n + ' 组'; });
       return;
     }
     /* 工参图层：分级模式下图例跟随档位（每档一行：色 + 区间 + 数量），点行可过滤该档 */
@@ -3133,23 +3175,23 @@ function renderLegend() {
         var gcnt = (gv && gv.idx) ? gv.idx.length : 0;
         var lo = fb(L.gradeBreaks.edges[gi2]), hi = fb(L.gradeBreaks.edges[gi2 + 1]);
         var range = (gi2 === nG - 1) ? ('[' + lo + ', ' + hi + ']') : ('[' + lo + ', ' + hi + ')');
-        var _onG = (STATE.siteGroupFilter === 'g' + gi2) ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-        ghtml += '<div class="li lgi' + _onG + '" data-g="g' + gi2 + '" title="点击只看该档">' +
+        var _onG = lgRowCls(STATE.siteGroupFilter.has('g' + gi2), STATE.siteGroupFilter.size);
+        ghtml += '<div class="li lgi' + _onG + '" data-g="g' + gi2 + '" title="点击切换该档的显示，可多选">' +
           '<i style="background:' + gcol + ';border-radius:0"></i><span>' + range +
           '（' + gcnt.toLocaleString() + ' 个）</span></div>';
       }
       for (var ge = 0; ge < (L.colorGroups || []).length; ge++) {
         if (L.colorGroups[ge].key === '（空）') {
-          var _onE = (STATE.siteGroupFilter === '（空）') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-          ghtml += '<div class="li lgi' + _onE + '" data-g="（空）" title="点击只看空值">' +
+          var _onE = lgRowCls(STATE.siteGroupFilter.has('（空）'), STATE.siteGroupFilter.size);
+          ghtml += '<div class="li lgi' + _onE + '" data-g="（空）" title="点击切换空值的显示，可多选">' +
             '<i style="background:rgba(127,127,127,0.55);border-radius:0"></i><span>空值（' +
             (L.colorGroups[ge].idx ? L.colorGroups[ge].idx.length.toLocaleString() : 0) + ' 个）</span></div>';
           break;
         }
       }
       if (!indoorG) indoorG = (L.rat === '5G') ? 'rgba(52,152,219,0.7)' : 'rgba(231,76,60,0.7)';
-      var _onIG = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-      ghtml += '<div class="li lgi' + _onIG + '" data-g="indoor" title="点击只看室分">' +
+      var _onIG = lgRowCls(STATE.siteGroupFilter.has('indoor'), STATE.siteGroupFilter.size);
+      ghtml += '<div class="li lgi' + _onIG + '" data-g="indoor" title="点击切换室分的显示，可多选">' +
         '<i style="background:' + indoorG + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
       body.innerHTML = ghtml;
       bindSiteLegendClick(body);
@@ -3164,18 +3206,17 @@ function renderLegend() {
       if (g.key === 'rat' || !g.indoor) { ratColor = g.color; break; }
     }
     var ratName = (L.rat === '5G') ? '5G' : (L.rat === '4G') ? '4G' : '扇区';
-    /* 制式模式下同样支持点选过滤（按 group key：rat / indoor） */
-    var _onR = (STATE.siteGroupFilter === 'rat') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-    var _onIR = (STATE.siteGroupFilter === 'indoor') ? ' on' : (STATE.siteGroupFilter ? ' dim' : '');
-    html += '<div class="li lgi' + _onR + '" data-g="rat" title="点击只看宏站扇区">' +
+    /* 制式模式下同样支持点选过滤（按 group key：rat / indoor，可多选） */
+    var _onR = lgRowCls(STATE.siteGroupFilter.has('rat'), STATE.siteGroupFilter.size);
+    var _onIR = lgRowCls(STATE.siteGroupFilter.has('indoor'), STATE.siteGroupFilter.size);
+    html += '<div class="li lgi' + _onR + '" data-g="rat" title="点击切换宏站扇区的显示，可多选">' +
       '<i style="background:' + ratColor + ';border-radius:0;' +
       'clip-path:polygon(50% 100%,0 0,100% 0)"></i><span>' + ratName + ' 宏站扇区</span></div>';
-    html += '<div class="li lgi' + _onIR + '" data-g="indoor" title="点击只看室分">' +
+    html += '<div class="li lgi' + _onIR + '" data-g="indoor" title="点击切换室分的显示，可多选">' +
       '<i style="background:' + ratColor + ';border-radius:50%"></i><span>室分（圆点）</span></div>';
     body.innerHTML = html;
     bindSiteLegendClick(body);
-    sub.textContent = STATE.siteGroupFilter
-      ? ('仅显示 ' + (STATE.siteGroupFilter === 'indoor' ? '室分' : '宏站扇区')) : '';
+    sub.textContent = lgSubText(STATE.siteGroupFilter, function (_k) { return '仅显示 ' + (_k === 'indoor' ? '室分' : '宏站扇区'); }, function (_n) { return '已选 ' + _n + ' 组'; });
     return;
   }
 
@@ -3189,11 +3230,11 @@ function renderLegend() {
   var mode = gridLayer ? (gridLayer.bandMode || 'rsrp') : STATE.gridColorMode;
   var gm = GRID_MODES[mode];
   title.textContent = gridLayer ? (GMODE_NAME[mode] || 'RSRP均值') : '图例';
-  /* 档位行可点：点一下只看这一档（其余压暗），再点取消。找弱覆盖点时不用再从一堆颜色里挑 */
-  var _bf = (typeof STATE.bandFilter === 'number') ? STATE.bandFilter : -1;
+  /* 档位行可点：点一下突出这一档（其余压暗），再点取消；可同时选多个档。找弱覆盖点时不用再从一堆颜色里挑 */
+  var _bfSet = STATE.bandFilter;
   for (var b = 0; b < gm.bands.length; b++) {
-    html += '<div class="li lgi' + (_bf === b ? ' on' : '') + (_bf >= 0 && _bf !== b ? ' dim' : '') +
-      '" data-band="' + b + '" title="点击只看这一档，再点一次取消">' +
+    html += '<div class="li lgi' + lgRowCls(_bfSet.has(b), _bfSet.size) +
+      '" data-band="' + b + '" title="点击切换这一档的突出显示，可多选">' +
       '<i style="background:' + gm.fill[b] + '"></i>' +
       '<span>' + gm.bands[b].label + '</span></div>';
   }
@@ -3201,13 +3242,14 @@ function renderLegend() {
   Array.prototype.forEach.call(body.querySelectorAll('.li[data-band]'), function (el) {
     el.onclick = function () {
       var bi = parseInt(el.getAttribute('data-band'), 10);
-      STATE.bandFilter = (STATE.bandFilter === bi) ? -1 : bi;
+      if (STATE.bandFilter.has(bi)) STATE.bandFilter.delete(bi);
+      else STATE.bandFilter.add(bi);
       renderLegend();
       scheduleDraw();
     };
   });
 
-  sub.textContent = _bf >= 0 ? ('仅突出 ' + gm.bands[_bf].label) : '';
+  sub.textContent = lgSubText(STATE.bandFilter, function (_b) { return '仅突出 ' + gm.bands[_b].label; }, function (_n) { return '已选 ' + _n + ' 档'; });
 }
 
 
@@ -3256,6 +3298,7 @@ function drawLabels() {
       ctx.font = '600 12px -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
       for (var mi = 0; mi < L.polygons.length && drawn < LABEL_MAX; mi++) {
         var mpg = L.polygons[mi];
+        if (mpg._pass === false) continue;   /* 被筛选掉的不画统计标注 */
         var mst = mpg._stat;
         if (!mst || mst.cov == null || !isFinite(mst.cov)) continue;
         var mbb = mpg._bbox;
@@ -3285,6 +3328,7 @@ function drawLabels() {
     if (L.kind === 'vector' && L.labelOn && L.polygons) {
       for (var vpi = 0; vpi < L.polygons.length && drawn < LABEL_MAX; vpi++) {
         var vpg = L.polygons[vpi];
+        if (vpg._pass === false) continue;   /* 被筛选掉的不画场景名 */
         var vbb = vpg._bbox;
         if (!vbb) continue;
         /* _bbox 是 WGS84：换算到当前底图坐标系，中心与分位点、范围判定、环内判定才与绘制同口径 */
@@ -3332,14 +3376,15 @@ function drawLabels() {
     if (L.kind !== 'site' || !L.mx || !L.my || !L.nameCol) continue;
     /* 4G/5G 注记开关 */
     if (!L.labelOn) continue;
-    /* 图例点选过滤：只画目标分组，其余行跳过（用行→分组索引 O(1) 判断） */
-    var _lbGrp = -2;
-    if (STATE.siteGroupFilter) {
-      _lbGrp = -1;
+    /* 图例点选过滤：只画目标分组，其余行跳过（先按本层分组建允许表，行循环里 O(1) 判） */
+    var _lbAllow = null;
+    if (STATE.siteGroupFilter.size) {
+      _lbAllow = new Uint8Array((L.colorGroups || []).length);
+      var _anyLb = false;
       for (var _gi2 = 0; _gi2 < (L.colorGroups || []).length; _gi2++) {
-        if (L.colorGroups[_gi2].key === STATE.siteGroupFilter) { _lbGrp = _gi2; break; }
+        if (STATE.siteGroupFilter.has(L.colorGroups[_gi2].key)) { _lbAllow[_gi2] = 1; _anyLb = true; }
       }
-      if (_lbGrp < 0) continue;   /* 该层没有这个分组，整层跳过 */
+      if (!_anyLb) continue;   /* 该层没有选中的分组，整层跳过 */
     }
     /* 地市筛选：扇区已被 shader 过滤，注记也要跟着过滤，否则别的城市名字还挂在图上 */
     if (L.citySel === 'none') continue;
@@ -3355,7 +3400,8 @@ function drawLabels() {
     var _bandKeysL = (siteUseBand(L) && L.bandCol && typeof buildBandInfo === 'function') ? buildBandInfo(L) : null;
     for (var i = 0; i < n && drawn < LABEL_MAX; i++) {
       if (_csIdx >= 0 && L.cityIdx && L.cityIdx[i] !== _csIdx) continue;
-      if (_lbGrp >= 0 && L._grpOf && L._grpOf[i] !== _lbGrp) continue;
+      if (L.rowPass && !L.rowPass[i]) continue;   /* 被筛选掉的行不画注记 */
+      if (_lbAllow && L._grpOf && !_lbAllow[L._grpOf[i]]) continue;
       var x = mx[i], y = my[i];
       if (x < extent[0] || x > extent[2] || y < extent[1] || y > extent[3]) continue;
       var nm = L._nameArr ? L._nameArr[i] : (_sarr ? _sarr[i] : L.ds.value(i, nameCol));

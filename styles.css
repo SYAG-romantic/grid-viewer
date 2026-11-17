@@ -326,6 +326,9 @@ button.tbtn.near{transform:scale(1.06)}
 button.tbtn.on.near{transform:scale(1.09)}
 button.tbtn.hot{transform:scale(1.17);box-shadow:0 10px 24px rgba(0,0,0,.5)}
 button.tbtn.on.hot{transform:scale(1.19)}
+/* 按下优先于悬停放大类：.hot/.near 与 :active 优先级相同但写在后面，会盖住按压反馈，
+   按下去看不到收缩。按下=收缩＋变蓝，与顶栏一致 */
+button.tbtn:active,button.tbtn.hot:active,button.tbtn.near:active,button.tbtn.on:active{transform:scale(.96);color:var(--accent)}
 button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
   border:3px solid transparent;border-left-color:currentColor;opacity:.6}
 .tfly{position:absolute;left:calc(100% + 7px);top:0;min-width:158px;padding:4px;
@@ -343,6 +346,9 @@ button.tbtn .tcar{position:absolute;right:3px;bottom:3px;width:0;height:0;
 .tfly button:hover svg{color:var(--fg2)}
 .tfly button.on svg{color:var(--accent)}
 .tfly button:hover{background:var(--hover);transform:translateX(2px)}
+/* 按压反馈：:hover 的 translateX 优先级盖住了通用 button:active，这里补一条同优先级的 :active；
+   不改 color，已选中的项按下时仍保持 accent 色 */
+.tfly button:active{transform:scale(.94);background:var(--active)}
 .tfly button.on{color:var(--accent);font-weight:500}
 .tfly button.on:after{content:"";margin-left:auto;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .tfly .tsep{height:1px;margin:4px 6px;background:var(--line)}
@@ -820,6 +826,14 @@ html.light #btnTheme .ic-sun{display:block}
 .fld-cls input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--line);
   border-radius:4px;background:none;cursor:pointer;flex:0 0 auto}
 .fld-cls span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 筛选条件行：字段/条件/值一排，平铺无动效（与属性弹窗内其它控件同一口径） */
+.flt-row{display:flex;gap:6px;align-items:center;margin:0 0 7px}
+.flt-row select{flex:1 1 0;min-width:0}
+.flt-row select[data-k=op]{flex:0 0 76px}
+.flt-row input[type=text]{flex:1 1 0;min-width:0}
+.flt-row button{flex:0 0 auto;padding:7px 9px}
+.flt-btns button{margin-right:6px}
+#fieldPop .flt-row button:active,#fieldPop .flt-btns button:active{transform:none}
 #fldBody input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 0}
 
 /* 底图下拉里未配置密钥的项（天地图）：置灰但仍可见，点击引导去配置 */

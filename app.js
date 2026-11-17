@@ -56,6 +56,10 @@ function renderLayerList() {
       if (L.kind === 'grid' && L.bandFallback) {
         meta += ' · 缺' + (STATE.gridColorMode === 'sinr' ? 'SINR' : '采样列') + '，按 RSRP 着色';
       }
+      /* 挂了筛选条件的图层标出来，否则图上少了要素还以为数据丢了 */
+      if (L.filters && L.filters.length) {
+        meta += ' · 筛选 ' + L.filters.length + ' 个条件';
+      }
       html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
         '<div class="lt">' +
         '<input type="checkbox" ' + (L.visible ? 'checked' : '') + ' data-act="vis">' +
@@ -170,7 +174,8 @@ function openFieldPop(L) {
     gradeMethod: L.gradeMethod || 'equal',
     gradeN: L.gradeN || 5,
     gradeRamp: (L.gradeRamp == null ? 0 : L.gradeRamp),
-    gradeColors: L.gradeColors ? L.gradeColors.slice() : null
+    gradeColors: L.gradeColors ? L.gradeColors.slice() : null,
+    filters: filtersToEdit(L.filters)
   };
   var t = document.getElementById('fldTitle');
   if (t) t.textContent = isSite ? '工参图层属性' : (isGrid ? '栅格图层属性' : '边界图层属性');
@@ -231,11 +236,86 @@ function fieldKeys(L) {
 }
 
 function fieldPages(L) {
-  if (L.kind === 'grid') return [{ k: 'info', t: '信息' }];   /* 栅格只有信息 + 不透明度 */
+  if (L.kind === 'grid') return [{ k: 'info', t: '信息' }, { k: 'filter', t: '筛选' }];
   var a = [{ k: 'info', t: '信息' }, { k: 'name', t: '名称' }];
   if (L.kind === 'site') a.push({ k: 'style', t: '符号化' });
   if (L.kind === 'vector') a.push({ k: 'border', t: '边框' });
+  a.push({ k: 'filter', t: '筛选' });
   return a;   /* 注记开关并进「名称」页：名称和"要不要显示"本来是一个动作 */
+}
+
+/* ---- 图层筛选（QGIS 式）：条件行存 L.filters，筛掉的要素不画、点不中、统计导出不算 ---- */
+var FILTER_OPS = [
+  { v: 'eq', t: '等于' }, { v: 'ne', t: '不等于' },
+  { v: 'gt', t: '大于' }, { v: 'lt', t: '小于' },
+  { v: 'contains', t: '包含' }, { v: 'between', t: '介于' }
+];
+/* 存储形态 {field,op,v1,v2,s} → 编辑形态 {field,op,v1,v2}（v1/v2 均为输入框字符串） */
+function filtersToEdit(list) {
+  var out = [];
+  (list || []).forEach(function (ft) {
+    if (!ft || !ft.field) return;
+    var r = { field: ft.field, op: ft.op || 'eq', v1: '', v2: '' };
+    if (ft.op === 'between') {
+      r.v1 = (ft.v1 == null ? '' : String(ft.v1));
+      r.v2 = (ft.v2 == null ? '' : String(ft.v2));
+    } else if (ft.op === 'gt' || ft.op === 'lt') {
+      r.v1 = (ft.v1 == null ? '' : String(ft.v1));
+    } else {
+      r.v1 = (ft.s == null ? '' : String(ft.s));
+    }
+    out.push(r);
+  });
+  return out;
+}
+function _fltNumOrNull(v) {
+  if (v == null || v === '') return null;
+  var n = Number(v);
+  return isFinite(n) ? n : undefined;   /* undefined = 非数字，整行丢弃 */
+}
+/* 清洗：字段或值为空的行丢弃；数值条件非数字的行丢弃；介于单边为空=开区间。
+   接受编辑形态与存储形态两种输入，输出一律是干净的存储形态（不带 colIdx/isNum 缓存，
+   matchConds 下次用时重算，防列变化后缓存过期）。 */
+function cleanFilters(rows) {
+  var out = [];
+  (rows || []).forEach(function (r) {
+    if (!r || !r.field) return;
+    var op = r.op || 'eq';
+    if (op === 'between') {
+      var a = _fltNumOrNull(r.v1), b = _fltNumOrNull(r.v2);
+      if (a === undefined || b === undefined) return;
+      if (a === null && b === null) return;
+      out.push({ field: r.field, op: 'between', v1: a, v2: b, s: null });
+    } else if (op === 'gt' || op === 'lt') {
+      var n = _fltNumOrNull(r.v1);
+      if (n === null || n === undefined) return;
+      out.push({ field: r.field, op: op, v1: n, v2: null, s: null });
+    } else {
+      var s = (r.s != null) ? String(r.s) : ((r.v1 != null) ? String(r.v1) : '');
+      if (s === '') return;
+      out.push({ field: r.field, op: op, v1: null, v2: null, s: s });
+    }
+  });
+  return out;
+}
+/* 按 L.filters 重算行级/多边形级通过标志（不重建缓冲/桶，调用方决定要不要重建）。
+   栅格没有掩码：rebuildBuckets 里 matchConds 直接生效。 */
+function refreshFilterMasks(L) {
+  if (!L) return;
+  var f = L.filters || [];
+  if (L.kind === 'site') {
+    if (!f.length || !L.ds) { L.rowPass = null; return; }
+    var n = L.ds.n, m = new Uint8Array(n);
+    for (var i = 0; i < n; i++) m[i] = matchConds(L, i) ? 1 : 0;
+    L.rowPass = m;
+  } else if (L.kind === 'vector') {
+    var polys = L.polygons || [];
+    for (var p = 0; p < polys.length; p++) {
+      polys[p]._pass = f.length ? matchVecConds(polys[p], f) : true;
+    }
+    /* 离屏矢量缓存按 citySel/cityCode/dpr 键控：筛选变化也要让它失效，否则还贴旧图 */
+    L._fltSig = (L._fltSig || 0) + 1;
+  }
 }
 
 /* 右栏内容：只渲染当前页，避免一长条堆到底 */
@@ -342,6 +422,19 @@ function renderFieldPane(L, T) {
     return h;
   }
 
+  if (FIELD_PAGE === 'filter') {
+    var nF = (T.filters || []).length;
+    h += '<div class="fld"><span>当前状态</span><div class="fld-layer">' +
+      (nF ? ('已设置 ' + nF + ' 个条件，点「应用」后生效（多条件为“且”）') : '未筛选：显示全部要素') + '</div></div>';
+    h += '<div id="fltRows"></div>';
+    h += '<div class="fld flt-btns"><button type="button" id="fltAdd">+ 添加条件</button>' +
+      '<button type="button" id="fltClear">清空全部</button></div>';
+    h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
+      '筛掉的要素不显示、点不中，统计和导出也不计入；条件保存在缓存里，刷新后仍在。' +
+      '顶部搜索不受筛选影响。「介于」只填一边表示开区间。</div>';
+    return h;
+  }
+
   if (FIELD_PAGE === 'label') {
     h += '<div class="fld"><label class="fld-chk"><input type="checkbox" id="fldLabelOn"' +
       (T.labelOn ? ' checked' : '') + '> 在地图上显示名称</label></div>';
@@ -350,6 +443,52 @@ function renderFieldPane(L, T) {
     return h;
   }
   return h;
+}
+
+/* 筛选页条件行：字段/条件下拉用原生 select（行数动态增减，原生控件最稳），
+   值输入只写临时表不重渲染（否则每敲一个字就丢焦点）；增删行与换条件才重渲染整页 */
+function renderFilterRows() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var box = document.getElementById('fltRows');
+  if (!L || !T || !box) return;
+  var keys = fieldKeys(L);
+  var rows = T.filters || (T.filters = []);
+  var h = '';
+  for (var ri = 0; ri < rows.length; ri++) {
+    var r = rows[ri];
+    h += '<div class="flt-row" data-ri="' + ri + '">';
+    h += '<select data-k="field" title="字段"><option value="">（选择字段）</option>';
+    for (var ki = 0; ki < keys.length; ki++) {
+      h += '<option value="' + esc(keys[ki]) + '"' + (r.field === keys[ki] ? ' selected' : '') + '>' + esc(keys[ki]) + '</option>';
+    }
+    h += '</select>';
+    h += '<select data-k="op" title="条件">';
+    for (var oi = 0; oi < FILTER_OPS.length; oi++) {
+      h += '<option value="' + FILTER_OPS[oi].v + '"' + (r.op === FILTER_OPS[oi].v ? ' selected' : '') + '>' + FILTER_OPS[oi].t + '</option>';
+    }
+    h += '</select>';
+    h += '<input type="text" data-k="v1" value="' + esc(r.v1 || '') + '" placeholder="值" autocomplete="off">';
+    if (r.op === 'between') {
+      h += '<input type="text" data-k="v2" value="' + esc(r.v2 || '') + '" placeholder="到" autocomplete="off">';
+    }
+    h += '<button type="button" data-k="del" title="删除这行">×</button></div>';
+  }
+  box.innerHTML = h;
+  Array.prototype.forEach.call(box.querySelectorAll('.flt-row'), function (rowEl) {
+    var idx = parseInt(rowEl.getAttribute('data-ri'), 10);
+    var row = rows[idx];
+    if (!row) return;
+    var fSel = rowEl.querySelector('[data-k="field"]');
+    if (fSel) fSel.onchange = function () { row.field = this.value; };
+    var oSel = rowEl.querySelector('[data-k="op"]');
+    if (oSel) oSel.onchange = function () { row.op = this.value; renderFieldBody(); };
+    var v1 = rowEl.querySelector('[data-k="v1"]');
+    if (v1) v1.oninput = function () { row.v1 = this.value; };
+    var v2 = rowEl.querySelector('[data-k="v2"]');
+    if (v2) v2.oninput = function () { row.v2 = this.value; };
+    var del = rowEl.querySelector('[data-k="del"]');
+    if (del) del.onclick = function () { rows.splice(idx, 1); renderFieldBody(); };
+  });
 }
 
 /* 属性弹窗内的自定义下拉：与顶栏 .dsel 同一套样式/交互 */
@@ -469,6 +608,17 @@ function bindFieldEvents() {
     T.gradeField = null; T.gradeMethod = 'equal'; T.gradeN = 5; T.gradeRamp = 0; T.gradeColors = null;
     renderFieldBody();
   };
+  if (FIELD_PAGE === 'filter') {
+    renderFilterRows();
+    if ($('fltAdd')) $('fltAdd').onclick = function () {
+      (T.filters || (T.filters = [])).push({ field: '', op: 'eq', v1: '', v2: '' });
+      renderFieldBody();
+    };
+    if ($('fltClear')) $('fltClear').onclick = function () {
+      T.filters = [];
+      renderFieldBody();
+    };
+  }
   if ($('fldApply')) $('fldApply').onclick = applyFieldPop;
 }
 
@@ -631,6 +781,11 @@ function updateFieldPreview() {
 function applyFieldPop() {
   var L = FIELD_L, T = FIELD_TMP;
   if (!L || !T) return;
+  var _glJob = null;
+  /* 筛选条件：三种图层通用。先判是否变过，没变不重建（大数据量下重建要几秒） */
+  var _newFilters = cleanFilters(T.filters);
+  var _filtersChanged = JSON.stringify(_newFilters) !== JSON.stringify(cleanFilters(L.filters || []));
+  L.filters = _newFilters;
   if (L.kind === 'site') {
     var wantCol = T.nameField || L._nameColAuto || null;
     if (wantCol !== L.nameCol) {
@@ -658,28 +813,42 @@ function applyFieldPop() {
       if (layers[_bi].kind === 'site' && layers[_bi].styleMode === 'band') { _anyBand = true; break; }
     }
     STATE.bandStyle = _anyBand;
+    /* 筛选变了先重算行掩码，buildSiteColors 分组时跳过被筛掉的行 */
+    if (_filtersChanged) refreshFilterMasks(L);
     if (typeof buildSiteColors === 'function') buildSiteColors(L);
-    /* 换了着色方式，旧的分组过滤可能已经没有对应分组：清掉并让缓冲重建，
-       否则整层顶点为空、看起来像数据没了 */
-    if (STATE.siteGroupFilter) {
-      var _okG = false;
-      for (var _gi3 = 0; _gi3 < (L.colorGroups || []).length; _gi3++) {
-        if (L.colorGroups[_gi3].key === STATE.siteGroupFilter) { _okG = true; break; }
-      }
-      if (!_okG) STATE.siteGroupFilter = null;
+    /* 换了着色方式，旧的分组过滤里可能已有不存在的分组：从集合里剔除失效 key，
+       否则对应分组画不出、看起来像数据没了 */
+    if (STATE.siteGroupFilter.size) {
+      var _del = [];
+      STATE.siteGroupFilter.forEach(function (_k) {
+        var _okG = false;
+        for (var _gi3 = 0; _gi3 < (L.colorGroups || []).length; _gi3++) {
+          if (L.colorGroups[_gi3].key === _k) { _okG = true; break; }
+        }
+        if (!_okG) _del.push(_k);
+      });
+      for (var _di = 0; _di < _del.length; _di++) STATE.siteGroupFilter.delete(_del[_di]);
     }
     /* 站点缓冲异步重建：等它落地后再重绘，否则改完参数画面不变 */
-    var _glJob = null;
     if (typeof buildSiteGL === 'function') {
       try { _glJob = buildSiteGL(L); } catch (e) { L.siteGlOk = false; }
     }
   } else if (L.kind === 'grid') {
     L.opacity = T.opacity;
+    if (_filtersChanged && L.ok && L.buckets) {
+      /* 与换着色指标同一条路径：先同步重建桶（跳过 GL），再异步重建 GL 缓冲 */
+      rebuildBuckets(L, true);
+      try { _glJob = buildGridGLAsync(L); } catch (e2) { L.glOk = false; }
+      /* 选区还开着时重算统计（桶变了，旧统计作废） */
+      if (typeof currentSel === 'function' && currentSel() && typeof applySelection === 'function') applySelection();
+    }
   } else {
     L.nameField = T.nameField || null;
     L.strokeColor = T.stroke;
     L.lineWidth = T.lineWidth;
     L.opacity = T.opacity;
+    /* 边界筛选：重算每多边形 _pass 并使离屏缓存失效 */
+    if (_filtersChanged) refreshFilterMasks(L);
   }
   L.labelOn = !!T.labelOn;
   closeFieldPop();
@@ -796,21 +965,21 @@ function fitCitySelection(duration) {
 
 function selectLayer(L) {
   selected = L;
-  /* 切到不含当前过滤分组的图层时自动取消过滤：
-     否则整层没有顶点，看起来像数据丢了 */
-  if (STATE.siteGroupFilter && L && L.kind === 'site') {
-    var _hasG = false;
-    for (var _i = 0; _i < (L.colorGroups || []).length; _i++) {
-      if (L.colorGroups[_i].key === STATE.siteGroupFilter) { _hasG = true; break; }
-    }
-    if (!_hasG) {
-      STATE.siteGroupFilter = null;
-      if (typeof rebuildAllSiteGL === 'function') {
-        rebuildAllSiteGL().then(function () {
-          if (typeof scheduleDraw === 'function') scheduleDraw();
-          if (typeof scheduleLabels === 'function') scheduleLabels();
-        });
+  /* 切到不含某些过滤分组的图层时，从集合里剔除失效 key：
+     否则整层没有顶点，看起来像数据丢了（过滤改 uniform 即可，不重建缓冲） */
+  if (STATE.siteGroupFilter.size && L && L.kind === 'site') {
+    var _del = [];
+    STATE.siteGroupFilter.forEach(function (_k) {
+      var _hasG = false;
+      for (var _i = 0; _i < (L.colorGroups || []).length; _i++) {
+        if (L.colorGroups[_i].key === _k) { _hasG = true; break; }
       }
+      if (!_hasG) _del.push(_k);
+    });
+    if (_del.length) {
+      for (var _di = 0; _di < _del.length; _di++) STATE.siteGroupFilter.delete(_del[_di]);
+      if (typeof scheduleDraw === 'function') scheduleDraw();
+      if (typeof scheduleLabels === 'function') scheduleLabels();
     }
   }
   renderLayerList();
@@ -1796,7 +1965,8 @@ function layerUi(L) {
     opacity: (L.opacity == null ? null : L.opacity),
     gradeField: L.gradeField || null, gradeMethod: L.gradeMethod || null,
     gradeN: L.gradeN || null, gradeRamp: L.gradeRamp || null,
-    gradeColors: L.gradeColors || null, gradeBreaks: L.gradeBreaks || null
+    gradeColors: L.gradeColors || null, gradeBreaks: L.gradeBreaks || null,
+    filters: cleanFilters(L.filters || [])
   };
 }
 function applyLayerUi(L, ui) {
@@ -1822,6 +1992,10 @@ function applyLayerUi(L, ui) {
   L.gradeRamp = ui.gradeRamp || null;
   L.gradeColors = ui.gradeColors || null;
   L.gradeBreaks = ui.gradeBreaks || null;
+  /* 筛选条件：只恢复数据本身，不重建缓冲/桶——恢复流程里投影和重建在后面才跑，
+     到时按 L.filters 自动生效（栅格 rebuildBuckets、工参 buildSiteColors 已含筛选口径） */
+  L.filters = cleanFilters(ui.filters || []);
+  refreshFilterMasks(L);   /* 工参行掩码 / 边界 _pass 此时已可算（只依赖 ds/props） */
   if (L.kind === 'site' && typeof buildSiteColors === 'function') buildSiteColors(L);
 }
 
@@ -3921,6 +4095,7 @@ function pickVectorAt(mxx, myy) {
     }
     for (var pi = 0; pi < L.polygons.length; pi++) {
       var pg = L.polygons[pi];
+      if (pg._pass === false) continue;   /* 被筛选掉的场景点不中 */
       if (pMatcher && !pMatcher(pg.props || {})) continue;
       var bb = pg._bbox;
       if (bb && (wxx < bb[0] || wxx > bb[2] || wyy < bb[1] || wyy > bb[3])) continue;
@@ -4674,7 +4849,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106o';
+    var workerUrl = 'worker.js?v=1106p';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
@@ -5118,6 +5293,7 @@ function stFindScenes(kw) {
     ? vecCityMatcher(L.polygons, CITY_NAMES[STATE.cityFilter] || STATE.cityFilter, STATE.cityFilter) : null;
   var out = [];
   for (var i = 0; i < L.polygons.length; i++) {
+    if (L.polygons[i]._pass === false) continue;   /* 被筛选掉的场景不进统计查询 */
     if (_cm && !_cm(L.polygons[i].props || {})) continue;
     var nm = getSceneName(L.polygons[i].props || {}, L) || '';
     if (!kw || nm.toLowerCase().indexOf(kw) >= 0) out.push(i);
