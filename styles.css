@@ -892,7 +892,7 @@ html.light #btnTheme .ic-sun{display:block}
 #fieldPop .sw{transition:border-color .15s ease}
 #fieldPop .sw:hover{transform:none;border-color:var(--accent)}
 
-/* ============ 1106g：出图按钮 / 缓冲区表单 / 出图对话框 / 分级列表 ============ */
+/* ============ 1106g：出图按钮 / 数字输入行 / 出图对话框 / 分级列表 ============ */
 /* 左面板：出图按钮行（平面，无悬浮动画） */
 .print-row{display:flex;gap:6px;margin-top:10px}
 .print-row button{flex:1;height:32px;padding:0 4px;font-size:12.5px;border:1px solid var(--line);
@@ -900,15 +900,15 @@ html.light #btnTheme .ic-sun{display:block}
 .print-row button:hover{background:var(--hover)}
 .print-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
 .print-row button.pri:hover{background:var(--accent2)}
-/* 统计面板内的缓冲区表单 */
-.buf-row{display:flex;gap:6px;align-items:center;margin-top:8px}
-.buf-row input{flex:1;min-width:0;height:30px;font-size:12.5px;border:1px solid var(--line);
+/* 统计面板内的数字输入行（外扩米数 / 半径） */
+.num-row{display:flex;gap:6px;align-items:center;margin-top:8px}
+.num-row input{flex:1;min-width:0;height:30px;font-size:12.5px;border:1px solid var(--line);
   border-radius:8px;background:var(--glass);color:var(--fg);padding:0 8px;outline:none}
-.buf-row button{height:30px;padding:0 12px;font-size:12.5px;border:1px solid var(--line);
+.num-row button{height:30px;padding:0 12px;font-size:12.5px;border:1px solid var(--line);
   border-radius:8px;background:var(--glass);color:var(--fg);cursor:pointer}
-.buf-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
-.buf-row button:hover{background:var(--hover)}
-.buf-row button.pri:hover{background:var(--accent2)}
+.num-row button.pri{background:var(--accent);border-color:transparent;color:#fff}
+.num-row button:hover{background:var(--hover)}
+.num-row button.pri:hover{background:var(--accent2)}
 /* 地图出图对话框 */
 #printMask{display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.3);z-index:60}
 #printMask.show{display:block}
