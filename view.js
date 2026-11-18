@@ -650,7 +650,7 @@ function renderBaseList() {
 /* 切底图时坐标系变了：把用户放的标记（图钉、拾取点）按存的 WGS84 经纬度重新换算
    到新底图上，视图中心也换到同一个真实点——切图前后看的是同一处，不用重新搜。
    图钉/拾取点存的 lon/lat 本来就是 WGS84（1106j 起），直接换算即可。
-   注意：只动用户放的标记；选区（场景/框选/缓冲区）存的是旧墨卡托坐标，
+   注意：只动用户放的标记；选区（场景/框选/圆形）存的是旧墨卡托坐标，
    切图后仍按旧坐标画，那是另一处待修，不在这里动。 */
 function reprojectUserMarkers(oldGcj) {
   var newGcj = (STATE.crsMode === 1);
@@ -893,6 +893,9 @@ function drawSelRings(c, t, w, h, box) {
     var idx = L.selIdx;
     if (!idx || !idx.length) continue;
     if (!L.mx || !L.my) continue;   /* 未投影时无内容可画，下一帧补画 */
+    /* 地市筛选：圈也要跟着过滤（与工参注记同口径），否则切了地市、别的城市的圈还画着 */
+    if (L.citySel === 'none') continue;
+    var _csIdx = (L.citySel && L.citySel !== '*') ? parseInt(L.citySel, 10) : -1;
     if (L.kind === 'grid') {
       var yc = (box[1] + box[3]) * 0.5;
       var latRad = 2 * Math.atan(Math.exp(yc / 6378137)) - Math.PI / 2;
@@ -905,6 +908,7 @@ function drawSelRings(c, t, w, h, box) {
       c.lineWidth = 2.5;
       c.beginPath();
       for (var k = 0; k < idx.length; k++) {
+        if (_csIdx >= 0 && L.cityIdx && L.cityIdx[idx[k]] !== _csIdx) continue;
         var x = L.mx[idx[k]], y = L.my[idx[k]];
         if (!isFinite(x) || !isFinite(y)) continue;
         var px = t[0] * x + t[2] * y + t[4];
@@ -914,7 +918,10 @@ function drawSelRings(c, t, w, h, box) {
       }
       c.stroke();
     } else if (L.kind === 'site') {
-      for (var k2 = 0; k2 < idx.length; k2++) strokeSiteHl(c, L, idx[k2], t, w, h);
+      for (var k2 = 0; k2 < idx.length; k2++) {
+        if (_csIdx >= 0 && L.cityIdx && L.cityIdx[idx[k2]] !== _csIdx) continue;
+        strokeSiteHl(c, L, idx[k2], t, w, h);
+      }
     }
   }
 }
@@ -1964,6 +1971,26 @@ function vecCityMatcher(polys, cityName, cityCode) {
   };
 }
 
+/* 边界层地市谓词（绘制/注记/选择圈/图例计数共用，与 vecRenderInit 同口径）：
+   citySel 为 '*' 或无城市字段时不过滤；有字段但一个都匹配不上时也视为不过滤
+   （兜底：避免字段口径不一致导致整层消失）。返回 {on, match}。 */
+function vecCitySelOf(L) {
+  var cityF = L.citySel, cityC = L.cityCode;
+  var on = !!(cityF && cityF !== '*');
+  var match = null;
+  if (on) {
+    match = vecCityMatcher(L.polygons, cityF, cityC);
+    var any = false;
+    if (match) {
+      for (var i = 0; i < L.polygons.length; i++) {
+        if (match(L.polygons[i].props || {})) { any = true; break; }
+      }
+    }
+    if (!any) { on = false; match = null; }
+  }
+  return { on: on, match: match };
+}
+
 /* 把离屏缓存按当前视图变换贴到主画布（平移 + 缩放） */
 function vecBlit(c, vc, t) {
   var kx = t[0] / vc.t0, ky = t[3] / vc.t3;
@@ -1980,20 +2007,8 @@ function vecIntersects(vc, box) {
 /* 渲染准备：地市匹配器 + 抽稀参数。settled=true 表示画缓存用的清晰版（不做拖动降级） */
 function vecRenderInit(L, t, box, settled) {
   var polys = L.polygons;
-  var cityF = L.citySel;
-  var cityC = L.cityCode;
-  var cityOn = cityF && cityF !== '*';
-  var cityMatcher = null;
-  if (cityOn) {
-    cityMatcher = vecCityMatcher(polys, cityF, cityC);
-    var anyMatch = false;
-    if (cityMatcher) {
-      for (var _pi = 0; _pi < polys.length; _pi++) {
-        if (cityMatcher(polys[_pi].props || {})) { anyMatch = true; break; }
-      }
-    }
-    if (!anyMatch) { cityOn = false; cityMatcher = null; }
-  }
+  var _cs = vecCitySelOf(L);
+  var cityOn = _cs.on, cityMatcher = _cs.match;
   var dragging = !settled && (typeof STATE !== 'undefined') && (STATE._dragging || STATE.navigating);
   return {
     pi: 0, cityOn: cityOn, cityMatcher: cityMatcher,
@@ -2207,12 +2222,14 @@ function drawVectorHighlight(c, L, t, box) {
   /* 选择页的圈：与搜索高亮同样式，命中的多边形各描一遍 */
   var selPgs = L.selPgs;
   if (selPgs && selPgs.length && !STATE._dragging) {
+    var _vcSel2 = vecCitySelOf(L);   /* 地市筛选：圈与多边形绘制同口径 */
     c.save();
     c.strokeStyle = '#8b0000';
     c.lineWidth = 3;
     c.beginPath();
     for (var si = 0; si < selPgs.length; si++) {
       var spg = selPgs[si];
+      if (_vcSel2.on && !_vcSel2.match(spg.props || {})) continue;
       var sbb = spg._bbox;
       if (sbb && (sbb[2] < w0 || sbb[0] > w2 || sbb[3] < w1 || sbb[1] > w3)) continue;
       strokePgRings(c, spg, t);
@@ -2514,6 +2531,8 @@ function pickAt(pixel) {
       if (!L2.visible || !L2.ok) continue;
       if (L2.kind === 'grid' && L2.buckets) {
         for (var b = 0; b < (L2.bandCount || 6) && !best; b++) {
+          /* 图例档位过滤：只点中突出显示的档（与工参点选认图例分组同口径） */
+          if (STATE.bandFilter && STATE.bandFilter.size && !STATE.bandFilter.has(b)) continue;
           var idx = L2.buckets[b];
           for (var k = 0; k < idx.length; k++) {
             var _gi = idx[k];
@@ -3186,7 +3205,18 @@ function renderLegend() {
     title.textContent = '边界';
     html += '<div class="li"><i style="background:' + (L.strokeColor || '#c86bff') + ';border-radius:0"></i><span>多边形边界（描边）</span></div>';
     body.innerHTML = html;
-    sub.textContent = L.polygons ? (L.polygons.length.toLocaleString() + ' 个多边形') : '';
+    /* 总数与绘制同口径：只计通过地市且未被筛选掉的多边形（单次遍历） */
+    var _vcn = 0;
+    if (L.polygons) {
+      var _vcSel3 = vecCitySelOf(L);
+      for (var _vi = 0; _vi < L.polygons.length; _vi++) {
+        var _vpg = L.polygons[_vi];
+        if (_vpg._pass === false) continue;
+        if (_vcSel3.on && !_vcSel3.match(_vpg.props || {})) continue;
+        _vcn++;
+      }
+    }
+    sub.textContent = L.polygons ? (_vcn.toLocaleString() + ' 个多边形') : '';
     return;
   }
   if (L && L.kind === 'site') {
@@ -3227,6 +3257,16 @@ function renderLegend() {
       var fb = function (v) { return String(Math.round(v * 100) / 100); };
       /* 全部档位都列出（含空档 0 个），只按已出现分组取色会漏档，所以先建键表 */
       var gByKey = {};
+      /* 分组个数与扇区绘制同口径：只计通过当前地市的行（筛选已在 buildSiteColors 里处理） */
+      var _csIdxG = (L.citySel && L.citySel !== '*' && L.citySel !== 'none') ? parseInt(L.citySel, 10) : -1;
+      var _grpCnt = function (gv) {
+        if (!gv || !gv.idx) return 0;
+        if (L.citySel === 'none') return 0;
+        if (!(_csIdxG >= 0) || !L.cityIdx) return gv.idx.length;
+        var _n = 0;
+        for (var _q = 0; _q < gv.idx.length; _q++) if (L.cityIdx[gv.idx[_q]] === _csIdxG) _n++;
+        return _n;
+      };
       for (var gg = 0; gg < (L.colorGroups || []).length; gg++) {
         var gv0 = L.colorGroups[gg];
         if (gv0.indoor) { indoorG = gv0.color; continue; }
@@ -3235,7 +3275,7 @@ function renderLegend() {
       for (var gi2 = 0; gi2 < nG; gi2++) {
         var gv = gByKey['g' + gi2];
         var gcol = gv ? gv.color : ((L.gradeColors && L.gradeColors[gi2]) || '#888888');
-        var gcnt = (gv && gv.idx) ? gv.idx.length : 0;
+        var gcnt = _grpCnt(gv);
         var lo = fb(L.gradeBreaks.edges[gi2]), hi = fb(L.gradeBreaks.edges[gi2 + 1]);
         var range = (gi2 === nG - 1) ? ('[' + lo + ', ' + hi + ']') : ('[' + lo + ', ' + hi + ')');
         var _onG = lgRowCls(STATE.siteGroupFilter.has('g' + gi2), STATE.siteGroupFilter.size);
@@ -3248,7 +3288,7 @@ function renderLegend() {
           var _onE = lgRowCls(STATE.siteGroupFilter.has('（空）'), STATE.siteGroupFilter.size);
           ghtml += '<div class="li lgi' + _onE + '" data-g="（空）" title="点击切换空值的显示，可多选">' +
             '<i style="background:rgba(127,127,127,0.55);border-radius:0"></i><span>空值（' +
-            (L.colorGroups[ge].idx ? L.colorGroups[ge].idx.length.toLocaleString() : 0) + ' 个）</span></div>';
+            _grpCnt(L.colorGroups[ge]).toLocaleString() + ' 个）</span></div>';
           break;
         }
       }
@@ -3355,6 +3395,8 @@ function drawLabels() {
   for (var li = 0; li < layers.length && drawn < LABEL_MAX; li++) {
     var L = layers[li];
     if (!L.visible || !L.ok) continue;
+    /* 边界层地市谓词：注记与多边形绘制同口径，否则别的地市的名字还挂在图上 */
+    var _vcSel = (L.kind === 'vector' && L.polygons) ? vecCitySelOf(L) : null;
     /* 场景指标：统计结果直接标在场景中心，颜色按覆盖率分级。
        扫一眼就能看出哪片差，不用导出表格再回头找位置 */
     if (L.kind === 'vector' && STATE.statLabel && L.polygons) {
@@ -3362,6 +3404,7 @@ function drawLabels() {
       for (var mi = 0; mi < L.polygons.length && drawn < LABEL_MAX; mi++) {
         var mpg = L.polygons[mi];
         if (mpg._pass === false) continue;   /* 被筛选掉的不画统计标注 */
+        if (_vcSel && _vcSel.on && !_vcSel.match(mpg.props || {})) continue;   /* 不在所选地市的不画 */
         var mst = mpg._stat;
         if (!mst || mst.cov == null || !isFinite(mst.cov)) continue;
         var mbb = mpg._bbox;
@@ -3392,6 +3435,7 @@ function drawLabels() {
       for (var vpi = 0; vpi < L.polygons.length && drawn < LABEL_MAX; vpi++) {
         var vpg = L.polygons[vpi];
         if (vpg._pass === false) continue;   /* 被筛选掉的不画场景名 */
+        if (_vcSel && _vcSel.on && !_vcSel.match(vpg.props || {})) continue;   /* 不在所选地市的不画场景名 */
         var vbb = vpg._bbox;
         if (!vbb) continue;
         /* _bbox 是 WGS84：换算到当前底图坐标系，中心与分位点、范围判定、环内判定才与绘制同口径 */
