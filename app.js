@@ -2804,7 +2804,6 @@ var TOOLS = {
   free:    { group: 'select', label: '自由手绘选择', drag: 'free' },
   radius:  { group: 'select', label: '按半径选择', drag: 'radius' },
   byscene: { group: 'spatial', label: '按边界选择' },
-  buffer:  { group: 'spatial', label: '缓冲区选择' },
   coord:   { group: 'coord',  label: '经纬度拾取', clicks: 1 }
 };
 function toolGroup(id) { return (id && TOOLS[id]) ? TOOLS[id].group : ''; }
@@ -3046,7 +3045,7 @@ function currentSelFull() {
 
 /* 切底图时坐标系变了：把选区几何按 WGS84 重新换算到新底图上（与 1106o 的图钉同法）。
    场景选区以边界多边形本身为准（vRingsOf 按新坐标系重建，不逐点换算）；
-   矩形/圆形/缓冲区/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
+   矩形/圆形/手绘多边形按存的墨卡托坐标逐点经 WGS84 换算；
    圆形半径按地面米守恒（面板显示的地面半径 = r×cos 纬度）。
    统计不由这里重算——reprojectAll 末尾的 applySelection 会在图层重投影完后重算。
    只换算已确认的选区；拖拽中的 selDrag/selCircleDrag、橡皮筋 polyCursor 是瞬时状态，
@@ -3097,7 +3096,7 @@ function reprojectSelections(oldGcj) {
     STATE.selBox = [Math.min(b0[0], b1[0]), Math.min(b0[1], b1[1]),
                     Math.max(b0[0], b1[0]), Math.max(b0[1], b1[1])];
   }
-  /* 圆形（含缓冲区）：圆心换算，半径按地面米守恒 */
+  /* 圆形：圆心换算，半径按地面米守恒 */
   if (STATE.selCircle) {
     var oc = STATE.selCircle.c;
     var cosOld = Math.cos(mercToLonLat(oc[0], oc[1])[1] * Math.PI / 180);
@@ -3106,10 +3105,6 @@ function reprojectSelections(oldGcj) {
     if (!(cosOld > 0.05)) cosOld = 0.05;
     if (!(cosNew > 0.05)) cosNew = 0.05;
     STATE.selCircle = { c: nc, r: STATE.selCircle.r * cosOld / cosNew };
-  }
-  /* 待确认的缓冲区圆心：还是同一个点，跟着换算 */
-  if (STATE.bufferPending && STATE.bufferPending.c) {
-    STATE.bufferPending.c = reprojectPt(STATE.bufferPending.c);
   }
   if (typeof scheduleDraw === 'function') scheduleDraw();
 }
@@ -3146,7 +3141,7 @@ function setTool(id) {
     STATE.selCircle = null; STATE.selCircleDrag = null;
     STATE.measKind = ''; STATE.lastResult = '';
   }
-  if (prev !== id) STATE.bufferPending = null;   /* 换工具即丢弃未确认的缓冲区圆心 */
+  if (prev !== id) STATE.byscenePending = null;   /* 换工具即丢弃未确认的边界选择 */
   STATE.tool = id;
   if (toolGroup(id) !== 'coord') STATE.coordPick = null;   /* 换组即清掉拾取标记 */
   if (toolGroup(id) !== 'measure') { STATE.measCursor = null; }
@@ -3165,7 +3160,7 @@ function clearTool() {
   STATE.selBox = null; STATE.selDrag = null; STATE.selStats = null;
   STATE.polyPts = []; STATE.polyCursor = null; STATE.polyDone = false;
   STATE.selCircle = null; STATE.selCircleDrag = null;
-  STATE.coordPick = null; STATE.bufferPending = null;
+  STATE.coordPick = null; STATE.byscenePending = null;
   STATE.lastResult = '';
   var wrap = document.getElementById('mapwrap');
   if (wrap) wrap.classList.remove('toolmode');
@@ -3412,6 +3407,16 @@ function weakLabel(w, rat) {
 function statTableHtml() {
   var s = STATE.selStats;
   if (!s) return '';
+  /* 圆形选区：面板里可输精确半径（圆心不动），只对已确认的圆形选区显示 */
+  var _circEd = '';
+  if (s.kind === 'circle' && s.circle && STATE.selCircle && !STATE.selCircleDrag) {
+    var _clat = mercToLonLat(STATE.selCircle.c[0], STATE.selCircle.c[1])[1];
+    var _ccos = Math.cos(_clat * Math.PI / 180);
+    if (!(_ccos > 0.05)) _ccos = 0.05;
+    _circEd = '<div class="num-row"><span>半径</span>' +
+      '<input type="number" id="circR" value="' + Math.round(STATE.selCircle.r * _ccos) + '" min="1" max="100000" step="50">' +
+      '<span>米</span><button id="circGo">应用</button></div>';
+  }
   var h = '<table>';  if (s.kind === 'poly' && s.poly) {
     var ll = s.poly.map(function (p) { return mercToWgs(p[0], p[1]); });
     h += '<tr><td class="k">顶点数</td><td class="num">' + ll.length + '</td></tr>';
@@ -3456,7 +3461,7 @@ function statTableHtml() {
       wlabel.tip + '">' + wlabel.ratio + '</td></tr>';
   }
   h += '</table>';
-  if (!s.total) return h + '<div class="k" style="margin-top:6px">该区域内没有栅格点。</div>';
+  if (!s.total) return h + '<div class="k" style="margin-top:6px">该区域内没有栅格点。</div>' + _circEd;
   var _modeName = s.bandMode === 'sinr' ? 'SINR' : (s.bandMode === 'cov' ? '覆盖率' : 'RSRP');
   h += '<div class="k" style="margin:7px 0 3px;font-weight:700">' + _modeName + ' 档位分布</div><table class="dist">';
   var gm = GRID_MODES[s.bandMode ? s.bandMode : 'rsrp'];
@@ -3466,7 +3471,7 @@ function statTableHtml() {
       '<td class="num">' + s.counts[i].toLocaleString() + '</td>' +
       '<td class="pct">' + (s.counts[i] * 100 / s.total).toFixed(1) + '%</td></tr>';
   }
-  return h + '</table>';
+  return h + '</table>' + _circEd;
 }
 
 
@@ -3561,11 +3566,10 @@ function updateToolPanel() {
     else html = '<div class="k">按住鼠标拖出一个矩形。</div>';
   } else if (g === 'spatial') {
     title = TOOLS[t].label;
-    if (t === 'buffer' && STATE.bufferPending) html = bufferHtml();
+    if (t === 'byscene' && STATE.byscenePending) html = byscenePendingHtml();
     else if (STATE.selStats) html = statTableHtml();
     else if (t === 'byscene') html = '<div class="k">' +
       (STATE.bysceneMsg || '点一个场景边界，选中其中的栅格并统计。') + '</div>';
-    else if (t === 'buffer') html = bufferHtml();
   } else if (t === 'coord') {
     title = '经纬度拾取';
     html = coordHtml();
@@ -3596,8 +3600,10 @@ function updateToolPanel() {
   if (wasHidden && p.__clamp) p.__clamp();
   var cab = document.getElementById('tpCopy');
   if (cab) cab.onclick = copyCoords;
-  var bg = document.getElementById('bufGo');
-  if (bg) bg.onclick = applyBuffer;
+  var byz = document.getElementById('byszGo');
+  if (byz) byz.onclick = applyByscene;
+  var cg = document.getElementById('circGo');
+  if (cg) cg.onclick = applyCircleRadius;
 }
 
 /* ---------------- 绘制 ---------------- */
@@ -4184,34 +4190,29 @@ function onToolClick(t, e, p) {
     scheduleDraw();
     return;
   }
-  /* 空间选择：按边界 / 缓冲区（结果复用选区统计同一套面板） */
+  /* 空间选择：按边界（点边界后待确认：输外扩米数再统计） */
   if (t === 'byscene') {
     var hit = pickVectorAt(p[0], p[1]);
     if (!hit) {
-      STATE.bysceneMsg = '这一点不在任何可见边界内，换个位置点一下。';
-      updateToolPanel();
+      if (!STATE.byscenePending) {
+        STATE.bysceneMsg = '这一点不在任何可见边界内，换个位置点一下。';
+        updateToolPanel();
+      }
       return;
     }
     STATE.bysceneMsg = null;
+    /* 换边界：先收下当前输入的米数，下次还用这个数 */
+    var _curInp = document.getElementById('byszR');
+    if (_curInp) {
+      var _curV = parseFloat(_curInp.value);
+      if (isFinite(_curV) && _curV >= 0 && _curV <= 100000) STATE.bysceneExpand = _curV;
+    }
     var pg = hit.pg;
     vRingsOf(pg);
     if (typeof ST !== 'undefined') ST.selScene = -1;
     STATE.hlPoly = { L: hit.L, pg: pg };
     STATE.sceneName = getSceneName(pg.props || {}, hit.L) || '场景';
-    STATE.polyPts = pg._ringsMerc[0];
-    STATE.polyRings = pg._ringsMerc;
-    STATE.polyDone = true;
-    STATE.selBox = null; STATE.selCircle = null;
-    STATE.lastResult = 'select';
-    applySelection();
-    exitTool();
-    return;
-  }
-  if (t === 'buffer') {
-    /* 新圆心接管：清掉上一轮选区与统计，面板只留半径表单 */
-    STATE.selBox = null; STATE.selCircle = null; STATE.selStats = null;
-    STATE.polyPts = []; STATE.polyDone = false; STATE.polyRings = null;
-    STATE.bufferPending = pickBufferCenter(e, p);
+    STATE.byscenePending = { L: hit.L, pg: pg };
     updateToolPanel();
     scheduleDraw();
     return;
@@ -4261,75 +4262,121 @@ function pickVectorAt(mxx, myy) {
   return null;
 }
 
-/* 缓冲区圆心：优先点中的扇区，其次 20 像素内最近的小区中心，都没有则用点击点本身 */
-function siteNameOf(L, i) {
-  try {
-    if (L.nameCol) {
-      var v = L.ds.value(i, L.nameCol);
-      if (v !== '' && v != null) return String(v);
-    }
-  } catch (e) {}
-  return L.name + ' #' + (i + 1);
-}
-function pickBufferCenter(e, p) {
-  try {
-    var pixel = map.getPixelFromCoordinate(p);
-    var tr = transformOf(map, map.getSize());
-    var res = map.getView().getResolution();
-    for (var li = layers.length - 1; li >= 0; li--) {
-      var L = layers[li];
-      if (!L.visible || !L.ok || L.kind !== 'site') continue;
-      var hits = pickSiteSector(L, pixel, tr, res);
-      if (hits && hits.length) {
-        var i = hits[0];
-        return { c: [L.mx[i], L.my[i]], name: siteNameOf(L, i) };
-      }
-    }
-  } catch (err) {}
-  var tolM = 20 * (map.getView().getResolution() || 1);
-  var best = null, bestD = Infinity;
-  for (var li2 = 0; li2 < layers.length; li2++) {
-    var L2 = layers[li2];
-    if (!L2.visible || !L2.ok || L2.kind !== 'site') continue;
-    for (var k = 0; k < L2.ds.n; k++) {
-      var dx = L2.mx[k] - p[0], dy = L2.my[k] - p[1];
-      if (Math.abs(dx) > tolM || Math.abs(dy) > tolM) continue;
-      var d = dx * dx + dy * dy;
-      if (d < bestD) { bestD = d; best = { L: L2, i: k }; }
-    }
-  }
-  if (best) return { c: [best.L.mx[best.i], best.L.my[best.i]], name: siteNameOf(best.L, best.i) };
-  var ll = mercToWgs(p[0], p[1]);
-  return { c: [p[0], p[1]], name: '点击点（' + ll[0].toFixed(4) + ', ' + ll[1].toFixed(4) + '）' };
+/* 按边界选择待确认面板：场景名 + 外扩米数 + 统计 */
+function byscenePendingHtml() {
+  var bp = STATE.byscenePending;
+  var nm = bp ? (getSceneName(bp.pg.props || {}, bp.L) || '场景') : '场景';
+  var mv = (typeof STATE.bysceneExpand === 'number' && isFinite(STATE.bysceneExpand)) ? STATE.bysceneExpand : 500;
+  return '<div class="k">场景：' + esc(nm) + '</div>' +
+    '<div class="num-row"><span>外扩</span><input type="number" id="byszR" value="' + mv + '" min="0" max="100000" step="50">' +
+    '<span>米</span><button class="pri" id="byszGo">统计</button></div>' +
+    '<div class="k">点其它边界可换选区；0 米表示不外扩。</div>';
 }
 
-function bufferHtml() {
-  if (STATE.bufferPending) {
-    var bp = STATE.bufferPending;
-    return '<div class="k">圆心：' + esc(bp.name) + '</div>' +
-      '<div class="buf-row"><input type="number" id="bufR" value="500" min="10" max="100000" step="50">' +
-      '<span>米</span><button class="pri" id="bufGo">统计</button></div>' +
-      '<div class="k">点地图可换圆心；确定后按圆内栅格统计。</div>';
+/* 单环偏置（miter-join）：d > 0 向环外侧偏，d < 0 向内侧偏；钳制过长 miter 防尖刺。
+   返回新数组，不动原环；闭合环末尾的重复首点先去掉，避免零长边。 */
+function offsetRing(pts, d) {
+  var n = pts.length;
+  if (n < 3 || !d) return pts.slice();
+  var P = pts;
+  if (n > 3 && pts[0][0] === pts[n - 1][0] && pts[0][1] === pts[n - 1][1]) { P = pts.slice(0, n - 1); n = P.length; }
+  /* 环方向：signed area > 0 为 CCW（墨卡托 y 向上）；CCW 环外侧在边方向右侧 */
+  var area2 = 0;
+  for (var ai = 0; ai < n; ai++) {
+    var aa = P[ai], bb = P[(ai + 1) % n];
+    area2 += aa[0] * bb[1] - bb[0] * aa[1];
   }
-  return '<div class="k">点一个小区（或任意点）作为圆心，再输入半径统计。</div>';
+  var s = area2 > 0 ? 1 : -1;
+  var maxMiter = Math.abs(d) * 4;
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var p0 = P[(i + n - 1) % n], p1 = P[i], p2 = P[(i + 1) % n];
+    var e1x = p1[0] - p0[0], e1y = p1[1] - p0[1];
+    var e2x = p2[0] - p1[0], e2y = p2[1] - p1[1];
+    var l1 = Math.hypot(e1x, e1y), l2 = Math.hypot(e2x, e2y);
+    if (l1 < 1e-9 || l2 < 1e-9) continue;   /* 零长边跳过该顶点 */
+    e1x /= l1; e1y /= l1; e2x /= l2; e2y /= l2;
+    var n1x = s * e1y, n1y = -s * e1x;
+    var n2x = s * e2y, n2y = -s * e2x;
+    var mx = n1x + n2x, my = n1y + n2y;
+    var ml = Math.hypot(mx, my);
+    var ox, oy;
+    if (ml < 1e-9) {   /* 180° 折返：退回单边法线 */
+      ox = p1[0] + n1x * d; oy = p1[1] + n1y * d;
+    } else {
+      mx /= ml; my /= ml;
+      var cosHalf = mx * n1x + my * n1y;
+      var mLen = d / Math.max(cosHalf, 0.2);
+      if (Math.abs(mLen) > maxMiter) mLen = (mLen < 0 ? -1 : 1) * maxMiter;
+      ox = p1[0] + mx * mLen; oy = p1[1] + my * mLen;
+    }
+    out.push([ox, oy]);
+  }
+  return out;
 }
-function applyBuffer() {
-  var bp = STATE.bufferPending;
-  var inp = document.getElementById('bufR');
-  var r = inp ? parseFloat(inp.value) : NaN;
-  if (!bp || !isFinite(r) || r <= 0) { showErr('请先点一个圆心并输入有效半径'); return; }
-  /* 输入的是地面米，选区判定用墨卡托单位：按圆心纬度换算（与面板显示的地面半径同口径） */
-  var lat = mercToLonLat(bp.c[0], bp.c[1])[1];
-  var cosLat = Math.cos(lat * Math.PI / 180);
-  if (!(cosLat > 0.05)) cosLat = 0.05;
-  STATE.selCircle = { c: bp.c.slice(), r: r / cosLat };
-  STATE.bufferPending = null;
-  if (STATE.sceneSel) { STATE.sceneSel = false; if (typeof ST !== 'undefined') ST.selScene = -1; }
-  STATE.hlPoly = null; STATE.sceneName = null;
-  STATE.polyPts = []; STATE.polyDone = false; STATE.polyRings = null;
+
+/* 多边形外扩：外环向外扩 d，洞环向内缩 d；缩没的洞直接丢掉（洞小于外扩距就被填满）。
+   d 为墨卡托单位；0 米时调用方直接用原环，不走这里。 */
+function offsetRings(rings, d) {
+  var out = [];
+  for (var ri = 0; ri < rings.length; ri++) {
+    var r = offsetRing(rings[ri], ri === 0 ? d : -d);
+    if (r.length >= 3) out.push(r);
+  }
+  return out;
+}
+
+function applyByscene() {
+  var bp = STATE.byscenePending;
+  var inp = document.getElementById('byszR');
+  var m = inp ? parseFloat(inp.value) : NaN;
+  if (!bp || !isFinite(m) || m < 0 || m > 100000 || (m > 0 && m < 10)) { showErr('请输入 0 或 10~100000 米的外扩距离'); return; }
+  STATE.bysceneExpand = m;
+  var rings = vRingsOf(bp.pg);
+  if (!rings || !rings.length || rings[0].length < 3) { showErr('该边界没有可用几何'); return; }
+  var useRings = rings;
+  if (m > 0) {
+    /* 地面米换算成墨卡托单位：按多边形中心纬度（与按半径选择同口径） */
+    var _x0 = Infinity, _y0 = Infinity, _x1 = -Infinity, _y1 = -Infinity;
+    for (var _bi = 0; _bi < rings[0].length; _bi++) {
+      var _bp2 = rings[0][_bi];
+      if (_bp2[0] < _x0) _x0 = _bp2[0];
+      if (_bp2[0] > _x1) _x1 = _bp2[0];
+      if (_bp2[1] < _y0) _y0 = _bp2[1];
+      if (_bp2[1] > _y1) _y1 = _bp2[1];
+    }
+    var clat = mercToLonLat((_x0 + _x1) / 2, (_y0 + _y1) / 2)[1];
+    var cosLat = Math.cos(clat * Math.PI / 180);
+    if (!(cosLat > 0.05)) cosLat = 0.05;
+    useRings = offsetRings(rings, m / cosLat);
+    if (!useRings || !useRings.length || useRings[0].length < 3) { showErr('外扩失败，请换个边界或调小距离'); return; }
+  }
+  STATE.byscenePending = null;
+  /* 外扩后选区不再是原多边形：不清 hlPoly 的话，切底图重建会按原多边形重建、丢掉外扩 */
+  if (m > 0) STATE.hlPoly = null;
+  STATE.polyPts = useRings[0];
+  STATE.polyRings = useRings;
+  STATE.polyDone = true;
+  STATE.selBox = null; STATE.selCircle = null;
   STATE.lastResult = 'select';
   applySelection();
   exitTool();
+}
+
+/* 按半径选择：面板里输精确半径，圆心不动、按新半径重算统计 */
+function applyCircleRadius() {
+  var sc = STATE.selCircle;
+  var inp = document.getElementById('circR');
+  var m = inp ? parseFloat(inp.value) : NaN;
+  if (!sc || !isFinite(m) || m <= 0 || m > 100000) { showErr('请输入 1~100000 米的半径'); return; }
+  var lat = mercToLonLat(sc.c[0], sc.c[1])[1];
+  var cosLat = Math.cos(lat * Math.PI / 180);
+  if (!(cosLat > 0.05)) cosLat = 0.05;
+  STATE.selCircle = { c: sc.c.slice(), r: m / cosLat };
+  STATE.lastResult = 'select';
+  applySelection();
+  scheduleDraw();
+  updateToolPanel();
 }
 
 /* ============================ 13. 加载流程 ============================ */
@@ -5004,7 +5051,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106r';
+    var workerUrl = 'worker.js?v=1106s';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {
