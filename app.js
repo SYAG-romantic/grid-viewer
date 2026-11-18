@@ -4849,7 +4849,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106p';
+    var workerUrl = 'worker.js?v=1106q';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {

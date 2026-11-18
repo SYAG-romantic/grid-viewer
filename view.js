@@ -996,9 +996,7 @@ function drawGrid(c, L, t, w, h, box) {
   if (!agg) {
     var st = makeSelTest(currentSel());
     if (st) {
-      /* 有选区时：选区外压暗、选区内正常，便于看清选中了哪些点 */
-      c.globalAlpha = gAlpha * 0.22;
-      paintCells(c, L, t, w, h, box, cw, ch, st, false);
+      /* 有选区时：只画选区内，选区外不画 */
       c.globalAlpha = gAlpha;
       paintCells(c, L, t, w, h, box, cw, ch, st, true);
     } else {
@@ -1125,7 +1123,7 @@ function glrInit() {
       'uniform float u_alpha;\n' +
       'uniform vec3 u_colors[7];\n' +
       'uniform vec4 u_sel;\n' + /* rect: minx,miny,maxx,maxy；circle: cx,cy,r,0 */
-      'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆（多边形选区不支持压暗） */
+      'uniform int u_selType;\n' + /* 0 无 1 矩形 2 圆（多边形选区走 Canvas）；选区外完全不画 */
       'uniform int u_bandMask;\n' + /* 图例多选掩码：0 不过滤；否则只突出置位档，其余压到很淡 */
       'out vec4 v_color;\n' +
       'void main() {\n' +
@@ -1134,10 +1132,10 @@ function glrInit() {
       '  gl_Position = vec4(px / (u_size.x * 0.5) - 1.0, 1.0 - py / (u_size.y * 0.5), 0.0, 1.0);\n' +
       '  float dim = 1.0;\n' +
       '  if (u_selType == 1) {\n' +
-      '    if (a_pos.x < u_sel.x || a_pos.x > u_sel.z || a_pos.y < u_sel.y || a_pos.y > u_sel.w) dim = 0.22;\n' +
+      '    if (a_pos.x < u_sel.x || a_pos.x > u_sel.z || a_pos.y < u_sel.y || a_pos.y > u_sel.w) dim = 0.0;\n' +
       '  } else if (u_selType == 2) {\n' +
       '    vec2 d = a_pos - u_sel.xy;\n' +
-      '    if (dot(d, d) > u_sel.z * u_sel.z) dim = 0.22;\n' +
+      '    if (dot(d, d) > u_sel.z * u_sel.z) dim = 0.0;\n' +
       '  }\n' +
       '  int bk = int(a_band + 0.5);\n' +
       '  if (u_bandMask != 0 && (u_bandMask & (1 << bk)) == 0) dim = min(dim, 0.10);\n' +
