@@ -60,6 +60,10 @@ function renderLayerList() {
       if (L.filters && L.filters.length) {
         meta += ' · 筛选 ' + L.filters.length + ' 个条件';
       }
+      /* 挂了选择的图层标出来，否则图上多了圈还以为是搜索高亮 */
+      if (L.selDef && L.selTotal) {
+        meta += ' · 选择 ' + L.selTotal.toLocaleString() + ' 个';
+      }
       html += '<div class="layer' + (selected === L ? ' sel' : '') + '" data-id="' + L.id + '">' +
         '<div class="lt">' +
         '<input type="checkbox" ' + (L.visible ? 'checked' : '') + ' data-act="vis">' +
@@ -175,7 +179,10 @@ function openFieldPop(L) {
     gradeN: L.gradeN || 5,
     gradeRamp: (L.gradeRamp == null ? 0 : L.gradeRamp),
     gradeColors: L.gradeColors ? L.gradeColors.slice() : null,
-    filters: filtersToEdit(L.filters)
+    filters: filtersToEdit(L.filters),
+    /* 选择页：字段 + 多个值（或关系），只画圈、不进缓存；空选择时预留一行空值方便直接输入 */
+    selField: (L.selDef && L.selDef.field) || '',
+    selValues: (L.selDef && L.selDef.values && L.selDef.values.length) ? L.selDef.values.slice() : ['']
   };
   var t = document.getElementById('fldTitle');
   if (t) t.textContent = isSite ? '工参图层属性' : (isGrid ? '栅格图层属性' : '边界图层属性');
@@ -236,11 +243,12 @@ function fieldKeys(L) {
 }
 
 function fieldPages(L) {
-  if (L.kind === 'grid') return [{ k: 'info', t: '信息' }, { k: 'filter', t: '筛选' }];
+  if (L.kind === 'grid') return [{ k: 'info', t: '信息' }, { k: 'filter', t: '筛选' }, { k: 'select', t: '选择' }];
   var a = [{ k: 'info', t: '信息' }, { k: 'name', t: '名称' }];
   if (L.kind === 'site') a.push({ k: 'style', t: '符号化' });
   if (L.kind === 'vector') a.push({ k: 'border', t: '边框' });
   a.push({ k: 'filter', t: '筛选' });
+  a.push({ k: 'select', t: '选择' });
   return a;   /* 注记开关并进「名称」页：名称和"要不要显示"本来是一个动作 */
 }
 
@@ -316,6 +324,82 @@ function refreshFilterMasks(L) {
     /* 离屏矢量缓存按 citySel/cityCode/dpr 键控：筛选变化也要让它失效，否则还贴旧图 */
     L._fltSig = (L._fltSig || 0) + 1;
   }
+}
+
+/* ---- 图层选择（QGIS 式多值或选择）：命中要素只画圈，不动其它状态 ---- */
+var SEL_RING_MAX = 500;   /* 圈数上限：再多既看不清又拖帧；总数照实显示 */
+/* 清洗：去空白、空行丢弃，保留原值（匹配时再统一小写） */
+function cleanSelValues(vals) {
+  var out = [];
+  (vals || []).forEach(function (v) {
+    var s = String(v == null ? '' : v).trim();
+    if (s !== '') out.push(s);
+  });
+  return out;
+}
+/* 扫描并写回 L.selDef / L.selIdx / L.selPgs / L.selTotal。
+   或关系：字段值（按文本、不区分大小写）包含任意一个值即命中。
+   尊重图层已有筛选：栅格/工参走 matchConds，边界走 _pass。字段或值为空 = 清除选择。 */
+function applyLayerSelection(L, field, values) {
+  if (!L) return;
+  var vals = cleanSelValues(values);
+  if (!field || !vals.length) {
+    L.selDef = null; L.selIdx = null; L.selPgs = null; L.selTotal = 0;
+    return;
+  }
+  var needles = vals.map(function (s) { return s.toLowerCase(); });
+  var total = 0, q;
+  function _hit(s) {
+    for (q = 0; q < needles.length; q++) {
+      if (s.indexOf(needles[q]) >= 0) return true;
+    }
+    return false;
+  }
+  if (L.kind === 'vector') {
+    var pgs = [];
+    var polys = L.polygons || [];
+    for (var p = 0; p < polys.length; p++) {
+      var pg = polys[p];
+      if (pg._pass === false) continue;
+      var pv = pg.props ? pg.props[field] : undefined;
+      if (_hit(String(pv == null ? '' : pv).toLowerCase())) {
+        total++;
+        if (pgs.length < SEL_RING_MAX) pgs.push(pg);
+      }
+    }
+    L.selDef = { field: field, values: vals };
+    L.selIdx = null; L.selPgs = pgs; L.selTotal = total;
+    return;
+  }
+  var ds = L.ds;
+  if (!ds) {
+    L.selDef = null; L.selIdx = null; L.selPgs = null; L.selTotal = 0;
+    return;
+  }
+  var numArr = ds.num ? ds.num[field] : null;
+  var colIdx = ds.columns.indexOf(field);
+  var txtArr = null;
+  if (!numArr) {
+    if (colIdx < 0) {
+      /* 字段已不在列里：留定义、记 0 命中，重开弹窗还能看到输过的值 */
+      L.selDef = { field: field, values: vals };
+      L.selIdx = []; L.selPgs = null; L.selTotal = 0;
+      return;
+    }
+    try { txtArr = ds.columnText(field); } catch (e) { txtArr = null; }
+  }
+  var hasFilter = !!(L.filters && L.filters.length);
+  var idx = [];
+  for (var i = 0; i < ds.n; i++) {
+    if (hasFilter && !matchConds(L, i)) continue;
+    var v = numArr ? numArr[i] : (txtArr ? txtArr[i] : ds.value(i, field));
+    if (_hit(String(v == null ? '' : v).toLowerCase())) {
+      total++;
+      if (idx.length < SEL_RING_MAX) idx.push(i);
+    }
+  }
+  L.selDef = { field: field, values: vals };
+  L.selIdx = idx; L.selPgs = null; L.selTotal = total;
 }
 
 /* 右栏内容：只渲染当前页，避免一长条堆到底 */
@@ -442,6 +526,30 @@ function renderFieldPane(L, T) {
       '名称取自「名称」页指定的字段；地图缩放 14 级以上才显示。</div>';
     return h;
   }
+
+  if (FIELD_PAGE === 'select') {
+    var _selTotal = L.selTotal || 0;
+    var _selDrawn = L.selIdx ? L.selIdx.length : (L.selPgs ? L.selPgs.length : 0);
+    h += '<div class="fld"><span>当前状态</span><div class="fld-layer" id="selStatus">' +
+      (_selTotal ? ('已选择：匹配 ' + _selTotal.toLocaleString() + ' 个要素' +
+        (_selTotal > _selDrawn ? '，只画前 ' + _selDrawn + ' 个圈' : '，各画一个圈'))
+        : '未选择：选一个字段、输几个值，点「应用」后命中的要素各画一个圈') + '</div></div>';
+    var _selKeys = fieldKeys(L);
+    h += '<div class="fld"><span>字段</span><div class="flt-row"><select id="selField" title="字段">' +
+      '<option value="">（选择字段）</option>';
+    for (i = 0; i < _selKeys.length; i++) {
+      h += '<option value="' + esc(_selKeys[i]) + '"' + (T.selField === _selKeys[i] ? ' selected' : '') + '>' + esc(_selKeys[i]) + '</option>';
+    }
+    h += '</select></div></div>';
+    h += '<div class="fld"><span>值（多个值是“或”关系）</span></div>';
+    h += '<div id="selRows"></div>';
+    h += '<div class="fld flt-btns"><button type="button" id="selAdd">+ 添加值</button>' +
+      '<button type="button" id="selClear">清除选择</button></div>';
+    h += '<div class="fld" style="color:var(--fg3);font-size:11.5px;line-height:1.6">' +
+      '字段值包含其中任意一个值（不区分大小写）就选中，圈的样式与搜索高亮一致。' +
+      '只画圈，不影响统计、导出、点选和筛选；关弹窗圈还在，点「清除选择」去掉；刷新后不保留。</div>';
+    return h;
+  }
   return h;
 }
 
@@ -486,6 +594,28 @@ function renderFilterRows() {
     if (v1) v1.oninput = function () { row.v1 = this.value; };
     var v2 = rowEl.querySelector('[data-k="v2"]');
     if (v2) v2.oninput = function () { row.v2 = this.value; };
+    var del = rowEl.querySelector('[data-k="del"]');
+    if (del) del.onclick = function () { rows.splice(idx, 1); renderFieldBody(); };
+  });
+}
+
+/* 选择页值行：每行一个值（或关系），只写临时表不重渲染，增删行才重渲染整页 */
+function renderSelRows() {
+  var L = FIELD_L, T = FIELD_TMP;
+  var box = document.getElementById('selRows');
+  if (!L || !T || !box) return;
+  var rows = T.selValues || (T.selValues = []);
+  var h = '';
+  for (var ri = 0; ri < rows.length; ri++) {
+    h += '<div class="flt-row" data-ri="' + ri + '">' +
+      '<input type="text" data-k="v" value="' + esc(rows[ri] || '') + '" placeholder="值，包含匹配" autocomplete="off">' +
+      '<button type="button" data-k="del" title="删除这行">×</button></div>';
+  }
+  box.innerHTML = h;
+  Array.prototype.forEach.call(box.querySelectorAll('.flt-row'), function (rowEl) {
+    var idx = parseInt(rowEl.getAttribute('data-ri'), 10);
+    var inp = rowEl.querySelector('[data-k="v"]');
+    if (inp) inp.oninput = function () { rows[idx] = this.value; };
     var del = rowEl.querySelector('[data-k="del"]');
     if (del) del.onclick = function () { rows.splice(idx, 1); renderFieldBody(); };
   });
@@ -617,6 +747,24 @@ function bindFieldEvents() {
     if ($('fltClear')) $('fltClear').onclick = function () {
       T.filters = [];
       renderFieldBody();
+    };
+  }
+  if (FIELD_PAGE === 'select') {
+    renderSelRows();
+    if ($('selField')) $('selField').onchange = function () { T.selField = this.value; };
+    if ($('selAdd')) $('selAdd').onclick = function () {
+      (T.selValues || (T.selValues = [])).push('');
+      renderFieldBody();
+    };
+    /* 清除选择立即生效（不用再点「应用」）：表单与图上的圈一起去掉 */
+    if ($('selClear')) $('selClear').onclick = function () {
+      T.selField = ''; T.selValues = [];
+      if (FIELD_L) {
+        FIELD_L.selDef = null; FIELD_L.selIdx = null; FIELD_L.selPgs = null; FIELD_L.selTotal = 0;
+      }
+      renderFieldBody();
+      renderLayerList();
+      scheduleDraw();
     };
   }
   if ($('fldApply')) $('fldApply').onclick = applyFieldPop;
@@ -850,6 +998,13 @@ function applyFieldPop() {
     /* 边界筛选：重算每多边形 _pass 并使离屏缓存失效 */
     if (_filtersChanged) refreshFilterMasks(L);
   }
+  /* 选择页：定义没变且筛选没变时不重扫（大数据量下全表扫描要几秒）；
+     放各分支之后跑，边界的 _pass 已按新筛选刷新过 */
+  var _newSelDef = { field: T.selField || '', values: cleanSelValues(T.selValues) };
+  if (!_newSelDef.field) _newSelDef.values = [];
+  var _selChanged = JSON.stringify(_newSelDef) !==
+    JSON.stringify(L.selDef ? { field: L.selDef.field, values: L.selDef.values } : { field: '', values: [] });
+  if (_selChanged || _filtersChanged) applyLayerSelection(L, _newSelDef.field, _newSelDef.values);
   L.labelOn = !!T.labelOn;
   closeFieldPop();
   renderLayerList();
@@ -4849,7 +5004,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106q';
+    var workerUrl = 'worker.js?v=1106r';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {

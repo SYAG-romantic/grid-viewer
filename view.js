@@ -823,6 +823,7 @@ function drawAll() {
   if (STATE.measPts && STATE.measPts.length) drawMeasure(ctx, t, w, h);
   if (STATE.pin) drawPin(ctx, t, w, h);
   if (STATE.hlCell) drawHlCell(ctx, t, w, h);
+  drawSelRings(ctx, t, w, h, box);
 }
 
 /* 搜索命中小区红框：持久显示，点清除才消失 */
@@ -830,6 +831,12 @@ function drawHlCell(c, t, w, h) {
   var hl = STATE.hlCell;
   var L = hl.L, i = hl.i;
   if (!L || !L.ok) { STATE.hlCell = null; return; }
+  strokeSiteHl(c, L, i, t, w, h);
+}
+
+/* 工参单要素高亮圈：扇区边框（室分画圆），搜索高亮与选择页共用同一画法 */
+function strokeSiteHl(c, L, i, t, w, h) {
+  if (!L.mx || !L.my) return;   /* 未投影时无内容可画，下一帧补画（与 drawLabels 同口径） */
   var x = L.mx[i], y = L.my[i];
   if (!isFinite(x) || !isFinite(y)) return;
   var px = t[0] * x + t[2] * y + t[4];
@@ -874,6 +881,42 @@ function drawHlCell(c, t, w, h) {
     c.closePath();
   }
   c.stroke();
+}
+
+/* 选择页的圈：每个有选择的可见图层，命中的要素各画一个搜索同款高亮圈。
+   栅格画格子边框（与 paintCells 同一尺寸公式），工参复用搜索的扇区/圆圈画法；
+   边界在 drawVectorHighlight 里画（与搜索高亮同一路径）。 */
+function drawSelRings(c, t, w, h, box) {
+  for (var li = 0; li < layers.length; li++) {
+    var L = layers[li];
+    if (!L || !L.ok || !L.visible) continue;
+    var idx = L.selIdx;
+    if (!idx || !idx.length) continue;
+    if (!L.mx || !L.my) continue;   /* 未投影时无内容可画，下一帧补画 */
+    if (L.kind === 'grid') {
+      var yc = (box[1] + box[3]) * 0.5;
+      var latRad = 2 * Math.atan(Math.exp(yc / 6378137)) - Math.PI / 2;
+      var cosLat = Math.cos(latRad);
+      if (!(cosLat > 0.05)) cosLat = 0.05;
+      var cw = Math.max(0.8, (L.dLon || 0.0002) * DEG2MERC * Math.abs(t[0]));
+      var ch = Math.max(0.8, (L.dLat || 0.00018) * DEG2MERC / cosLat * Math.abs(t[3]));
+      var hw = cw * 0.5, hh = ch * 0.5;
+      c.strokeStyle = '#e74c3c';
+      c.lineWidth = 2.5;
+      c.beginPath();
+      for (var k = 0; k < idx.length; k++) {
+        var x = L.mx[idx[k]], y = L.my[idx[k]];
+        if (!isFinite(x) || !isFinite(y)) continue;
+        var px = t[0] * x + t[2] * y + t[4];
+        var py = t[1] * x + t[3] * y + t[5];
+        if (px < -cw - 4 || py < -ch - 4 || px > w + cw + 4 || py > h + ch + 4) continue;
+        c.rect(px - hw, py - hh, cw, ch);
+      }
+      c.stroke();
+    } else if (L.kind === 'site') {
+      for (var k2 = 0; k2 < idx.length; k2++) strokeSiteHl(c, L, idx[k2], t, w, h);
+    }
+  }
 }
 
 
@@ -2156,24 +2199,46 @@ function drawVectorHighlight(c, L, t, box) {
       c.strokeStyle = '#8b0000';
       c.lineWidth = 3;
       c.beginPath();
-      var hrings = hpg._ringsMerc;
-      if (!hrings) {
-        try { hrings = vRingsOf(hpg); }
-        catch (e0) { hrings = []; }
-      }
-      for (var hri = 0; hri < hrings.length; hri++) {
-        var hring = hrings[hri];
-        for (var hvi = 0; hvi < hring.length; hvi++) {
-          var hpx = t0 * hring[hvi][0] + t2 * hring[hvi][1] + t4;
-          var hpy = t1 * hring[hvi][0] + t3 * hring[hvi][1] + t5;
-          if (hvi === 0) c.moveTo(hpx, hpy);
-          else c.lineTo(hpx, hpy);
-        }
-        c.closePath();
-      }
+      strokePgRings(c, hpg, t);
       c.stroke();
       c.restore();
     }
+  }
+  /* 选择页的圈：与搜索高亮同样式，命中的多边形各描一遍 */
+  var selPgs = L.selPgs;
+  if (selPgs && selPgs.length && !STATE._dragging) {
+    c.save();
+    c.strokeStyle = '#8b0000';
+    c.lineWidth = 3;
+    c.beginPath();
+    for (var si = 0; si < selPgs.length; si++) {
+      var spg = selPgs[si];
+      var sbb = spg._bbox;
+      if (sbb && (sbb[2] < w0 || sbb[0] > w2 || sbb[3] < w1 || sbb[1] > w3)) continue;
+      strokePgRings(c, spg, t);
+    }
+    c.stroke();
+    c.restore();
+  }
+}
+
+/* 把一个多边形的全部环追加到当前路径（搜索高亮与选择页共用） */
+function strokePgRings(c, pg, t) {
+  var t0 = t[0], t1 = t[1], t2 = t[2], t3 = t[3], t4 = t[4], t5 = t[5];
+  var rings = pg._ringsMerc;
+  if (!rings) {
+    try { rings = vRingsOf(pg); }
+    catch (e0) { rings = []; }
+  }
+  for (var ri = 0; ri < rings.length; ri++) {
+    var ring = rings[ri];
+    for (var vi = 0; vi < ring.length; vi++) {
+      var px = t0 * ring[vi][0] + t2 * ring[vi][1] + t4;
+      var py = t1 * ring[vi][0] + t3 * ring[vi][1] + t5;
+      if (vi === 0) c.moveTo(px, py);
+      else c.lineTo(px, py);
+    }
+    c.closePath();
   }
 }
 
