@@ -3496,7 +3496,7 @@ function nearestGridPoint(merc, tolPx) {
   var best = null, bd = Infinity;
   for (var li = 0; li < layers.length; li++) {
     var L = layers[li];
-    if (!L.visible || !L.ok || L.kind !== 'grid' || !L.buckets) continue;
+    if (!L.visible || !L.ok || L.kind !== 'grid' || !L.buckets || !L.mx || !L.my) continue;   /* 缓存恢复窗口：mx/my 仍为 null */
     var rsrp = L.ds.num[L.rsrpCol];
     for (var bi = 0; bi < (L.bandCount || 6); bi++) {
       var idx = L.buckets[bi];
@@ -4172,9 +4172,10 @@ function onToolClick(t, e, p) {
     }
     if (near) {
       var nx = near.L.mx[near.i], ny = near.L.my[near.i];
-      dist = Math.hypot(nx - p[0], ny - p[1]);
       var ln = mercToLonLat(nx, ny);
       if (STATE.crsMode === 1 && typeof gcj02ToWgs84 === 'function') ln = gcj02ToWgs84(ln[0], ln[1]);
+      /* 距最近栅格一律报地面米：ll 与 ln 都是 WGS84，用 haversine 算；墨卡托差直接当米在乌鲁木齐高估约 39% */
+      dist = groundDist(ll, ln);
       near = { band: near.band, x: nx, y: ny, dist: dist, rsrpVal: val, lon: ln[0], lat: ln[1] };
     }
     STATE.coordPick = { x: p[0], y: p[1], lon: ll[0], lat: ll[1], near: near };
@@ -5051,7 +5052,7 @@ function getSiteWorker() {
   if (siteWorker) return siteWorker;
   try {
     // Worker 与主脚本同目录：rebuild 版固定为 worker.js
-    var workerUrl = 'worker.js?v=1106s';
+    var workerUrl = 'worker.js?v=1106t';
 
     siteWorker = new Worker(workerUrl);
     siteWorker.onmessage = function (e) {

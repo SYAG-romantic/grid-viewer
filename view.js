@@ -679,7 +679,8 @@ function reprojectUserMarkers(oldGcj) {
     if (cp.near) {
       var nc = toNew(cp.near.lon, cp.near.lat);
       cp.near.x = nc[0]; cp.near.y = nc[1];
-      cp.near.dist = Math.hypot(cp.near.x - cp.x, cp.near.y - cp.y);
+      /* 切底图后最近栅格距离也要保持地面米（与拾取时同口径），不能退回墨卡托差 */
+      if (cp.near.lon !== undefined && cp.near.lat !== undefined) cp.near.dist = groundDist([cp.lon, cp.lat], [cp.near.lon, cp.near.lat]);
     }
   }
   if (typeof scheduleDraw === 'function') scheduleDraw();
@@ -2501,6 +2502,7 @@ function pickAt(pixel) {
   var best = null, bestD = tol * tol;
 
   function consider(L, i) {
+    if (!L.mx || !L.my) return;   /* 缓存恢复窗口：图层已入 layers 但尚未投影，mx/my 仍为 null */
     if (L.citySel === 'none') return;
     if (L.citySel !== undefined && L.citySel !== '*' && L.cityIdx && L.cityIdx[i] !== parseInt(L.citySel, 10)) return;
     var x = L.mx[i], y = L.my[i];
@@ -2528,7 +2530,7 @@ function pickAt(pixel) {
     var _tolM = (tol + 2) * (res || 1);
     for (var li2 = layers.length - 1; li2 >= 0 && !best; li2--) {
       var L2 = layers[li2];
-      if (!L2.visible || !L2.ok) continue;
+      if (!L2.visible || !L2.ok || !L2.mx || !L2.my) continue;   /* 缓存恢复窗口：mx/my 仍为 null 时跳过本层预筛 */
       if (L2.kind === 'grid' && L2.buckets) {
         for (var b = 0; b < (L2.bandCount || 6) && !best; b++) {
           /* 图例档位过滤：只点中突出显示的档（与工参点选认图例分组同口径） */
