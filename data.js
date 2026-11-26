@@ -720,6 +720,70 @@ function detectRat(ds) {
   if (/(^|[^a-z])nr(?![a-z])/.test(cols)) return '5G';
   if (cols.indexOf('4g') >= 0 || cols.indexOf('4 g') >= 0) return '4G';
   if (/(^|[^a-z])lte(?![a-z])/.test(cols)) return '4G';
+  /* 第三级：频段列兜底——文件名、列名都未标明制式时才走。
+     频段→制式：5G 为 700M/2.6G/4.9G；4G 为 FDD900/FDD1800/F 频段，
+     以及 A、D、E 三个分开的频段（bandKeyOf 统归 'ADE' 键）。
+     数值口径注意：D 频段 2570-2620MHz 落在 2.6G 的数值区间里，
+     裸数字分不清 D（4G）与 2.6G（5G），该段数值直接弃权、不投票；
+     bandKeyOf 全局的数值映射不动（还管着 5G n41 的显示）。
+     只采样前 200 个非空值，一个文件正常只有一个制式；票多者胜，平票或无票返回 null */
+  var bandCol = pickColumn(ds.columns, ALIAS.band);
+  if (bandCol) {
+    var v5 = 0, v4 = 0, n = 0, i, k;
+    var numArr = ds.num ? ds.num[bandCol] : null;
+    if (numArr) {
+      for (i = 0; i < numArr.length && n < 200; i++) {
+        var v = numArr[i];
+        if (v == null || !isFinite(v) || v <= 0) continue;
+        n++;
+        var mhz = v < 10 ? v * 1000 : v;
+        if (mhz >= 2570 && mhz <= 2620) continue;   /* D 频段数值段：与 2.6G 歧义，弃权 */
+        k = bandKeyOf(null, v);
+        if (k === '700M' || k === '2.6G' || k === '4.9G') v5++;
+        else if (k) v4++;
+      }
+    } else if (typeof ds.columnText === 'function') {
+      var txtArr = ds.columnText(bandCol);
+      if (txtArr) {
+        for (i = 0; i < txtArr.length && n < 200; i++) {
+          var t = txtArr[i];
+          if (t == null || String(t).trim() === '') continue;
+          n++;
+          k = bandKeyOf(t, null);
+          if (k === '700M' || k === '2.6G' || k === '4.9G') v5++;
+          else if (k) v4++;
+        }
+      }
+    }
+    if (v5 > v4) return '5G';
+    if (v4 > v5) return '4G';
+  }
+  /* 第四级：小区名后缀兜底——前三级都未标明制式时才走。
+     取小区名最后一个 `_`（兼顾 `-`）之后的一段，如「景苑小区_FK-HLH-1-FDD1800」取 `FDD1800`；
+     后缀走同一套 bandKeyOf → 频段→制式映射；只采样前 200 个非空小区名，票多者胜，平票或无票返回 null */
+  var nameCol = null;
+  if (typeof ds.value === 'function' && typeof ds.columnText === 'function') {
+    nameCol = pickNameColumn(ds) || pickColumn(ds.columns, ALIAS.name);
+  }
+  if (nameCol) {
+    var nmArr = ds.columnText(nameCol);
+    if (nmArr) {
+      var s5 = 0, s4 = 0, sn = 0;
+      for (var j = 0; j < nmArr.length && sn < 200; j++) {
+        var nm = nmArr[j];
+        if (nm == null || String(nm).trim() === '') continue;
+        sn++;
+        var parts = String(nm).trim().split(/[_-]+/);
+        var suf = parts.length ? parts[parts.length - 1] : '';
+        if (!suf) continue;
+        var sk = bandKeyOf(suf, null);
+        if (sk === '700M' || sk === '2.6G' || sk === '4.9G') s5++;
+        else if (sk) s4++;
+      }
+      if (s5 > s4) return '5G';
+      if (s4 > s5) return '4G';
+    }
+  }
   return null;
 }
 
@@ -1030,7 +1094,7 @@ function bandKeyOf(text, num) {
   if (t.indexOf('700') >= 0) return '700M';
   if (t.indexOf('F频') >= 0 || /^F\d*$/.test(t)) return 'F';
   if (t.indexOf('A/D/E') >= 0 || t.indexOf('A频') >= 0 || t.indexOf('D频') >= 0 || t.indexOf('E频') >= 0 ||
-      t === 'A' || t === 'D' || t === 'E') return 'ADE';
+      t === 'A' || t === 'D' || t === 'E' || t === 'ADE' || /^D\d*$/.test(t) || /^E\d*$/.test(t)) return 'ADE';
   return null;
 }
 /* 每行的标准频段键（缓存）：绘制/拾取共用 */
